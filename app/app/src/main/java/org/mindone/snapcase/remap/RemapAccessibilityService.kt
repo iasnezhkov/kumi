@@ -22,6 +22,8 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import org.mindone.snapcase.data.SettingsRepository
 import org.mindone.snapcase.ime.QuickLauncher
+import org.mindone.snapcase.ime.QuickSearchActivity
+import org.mindone.snapcase.ime.QuickSearchBridge
 import org.mindone.snapcase.ime.SpeedKeyBinding
 import org.mindone.snapcase.system.DeviceState
 
@@ -75,8 +77,11 @@ class RemapAccessibilityService : AccessibilityService() {
     private var speedKeysEnabled = true
     @Volatile
     private var speedKeys: List<SpeedKeyBinding> = emptyList()
+    @Volatile
+    private var homeTypeToSearch = true
     private val downTimes = HashMap<Int, Long>()
     private val speedConsumedKeys = HashSet<Int>()
+    private val quickSearchConsumedKeys = HashSet<Int>()
     private var injectionFailed = false
 
     override fun onServiceConnected() {
@@ -84,14 +89,66 @@ class RemapAccessibilityService : AccessibilityService() {
         injector = KeyInjector(inputManager)
         injectionFailed = false
         active = true
+        scope.launch(Dispatchers.IO) {
+            if (QuickSearchBridge.cachedApps.isEmpty()) {
+                QuickSearchBridge.cachedApps = QuickLauncher.listLaunchableApps(this@RemapAccessibilityService)
+            }
+        }
         scope.launch {
             SettingsRepository.from(this@RemapAccessibilityService).settings.collectLatest {
                 engine.table = it.remapTable
                 onlySnap = it.remapOnlySnap
                 speedKeysEnabled = it.speedKeysEnabled
                 speedKeys = it.speedKeys
+                homeTypeToSearch = it.homeTypeToSearch
             }
         }
+    }
+
+    private fun tryQuickSearchHandoff(event: KeyEvent): Boolean {
+        if (event.action == KeyEvent.ACTION_UP) {
+            return quickSearchConsumedKeys.remove(event.keyCode)
+        }
+        if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount > 0 && event.keyCode in quickSearchConsumedKeys) {
+            return true
+        }
+        if (!QuickSearchBridge.isHandoffWindow()) return false
+        val rootPkg = rootInActiveWindow?.packageName?.toString()
+        if (rootPkg == packageName) return false
+        if (event.action != KeyEvent.ACTION_DOWN || event.repeatCount != 0) return false
+        if (event.isCtrlPressed || event.isAltPressed || event.isMetaPressed) return false
+        when (event.keyCode) {
+            KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> {
+                QuickSearchBridge.requestLaunchTop()
+                quickSearchConsumedKeys.add(event.keyCode)
+                return true
+            }
+            KeyEvent.KEYCODE_DEL -> {
+                QuickSearchBridge.backspace()
+                quickSearchConsumedKeys.add(event.keyCode)
+                return true
+            }
+            KeyEvent.KEYCODE_ESCAPE -> {
+                QuickSearchBridge.requestDismiss()
+                quickSearchConsumedKeys.add(event.keyCode)
+                return true
+            }
+        }
+        val ch = QuickLauncher.extractSearchChar(event.keyCode, event.unicodeChar, event.isShiftPressed) ?: return false
+        QuickSearchBridge.appendChar(ch)
+        quickSearchConsumedKeys.add(event.keyCode)
+        return true
+    }
+
+    private fun tryHomeTypeToSearch(event: KeyEvent): Boolean {
+        if (!homeTypeToSearch) return false
+        if (event.action != KeyEvent.ACTION_DOWN || event.repeatCount != 0) return false
+        if (event.isCtrlPressed || event.isAltPressed || event.isMetaPressed) return false
+        val ch = QuickLauncher.extractSearchChar(event.keyCode, event.unicodeChar, event.isShiftPressed) ?: return false
+        if (!isOnLauncherWithoutInputFocus()) return false
+        val launched = QuickSearchActivity.launch(this, ch)
+        if (launched) quickSearchConsumedKeys.add(event.keyCode)
+        return launched
     }
 
     private fun trySpeedKey(event: KeyEvent): Boolean {
@@ -117,13 +174,21 @@ class RemapAccessibilityService : AccessibilityService() {
         if (focused != null && focused.isEditable) return false
         val rootPkg = rootInActiveWindow?.packageName?.toString() ?: return false
         val homeIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
-        val launcherPkg = packageManager.resolveActivity(homeIntent, PackageManager.MATCH_DEFAULT_ONLY)?.activityInfo?.packageName
-        return launcherPkg != null && rootPkg == launcherPkg
+        val defaultPkg = packageManager.resolveActivity(homeIntent, PackageManager.MATCH_DEFAULT_ONLY)?.activityInfo?.packageName
+        if (!defaultPkg.isNullOrBlank() && defaultPkg != "android") {
+            return rootPkg == defaultPkg
+        }
+        val installedHomes = packageManager.queryIntentActivities(homeIntent, 0)
+            .mapNotNull { it.activityInfo?.packageName }
+            .toSet()
+        return QuickLauncher.isHomeLauncherPackage(rootPkg, defaultPkg, installedHomes)
     }
 
     override fun onKeyEvent(event: KeyEvent): Boolean {
-        if (event.deviceId != KeyCharacterMap.VIRTUAL_KEYBOARD && trySpeedKey(event)) {
-            return true
+        if (event.deviceId != KeyCharacterMap.VIRTUAL_KEYBOARD) {
+            if (tryQuickSearchHandoff(event)) return true
+            if (trySpeedKey(event)) return true
+            if (tryHomeTypeToSearch(event)) return true
         }
         if (!::injector.isInitialized || injectionFailed ||
             event.deviceId == KeyCharacterMap.VIRTUAL_KEYBOARD || !injector.available ||

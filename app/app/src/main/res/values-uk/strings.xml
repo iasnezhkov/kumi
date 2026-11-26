@@ -944,4 +944,11 @@
     <string name="kumi_key_hint_freq">Гц</string>
     <string name="kumi_key_hint_type">Фільтр</string>
     <string name="kumi_key_hint_zero">0 дБ</string>
+    <string name="home_search_title">Пошук з головного екрана</string>
+    <string name="home_search_desc">Почніть вводити текст на будь-якому головному екрані, щоб знайти й запустити застосунок. Enter відкриває перший результат. Працює через службу спеціальних можливостей без root.</string>
+    <string name="home_search_enable">Шукати застосунки під час введення на головному екрані</string>
+    <string name="home_search_try">Спробувати швидкий пошук</string>
+    <string name="home_search_placeholder">Пошук застосунків…</string>
+    <string name="home_search_empty">Відповідних застосунків немає</string>
+    <string name="home_search_footer_hint">Enter — відкрити · ↑↓ — вибір · Esc — закрити</string>
 </resources>

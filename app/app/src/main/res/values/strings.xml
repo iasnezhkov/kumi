@@ -957,4 +957,11 @@
     <string name="kumi_key_hint_freq">Hz</string>
     <string name="kumi_key_hint_type">Filter</string>
     <string name="kumi_key_hint_zero">0 dB</string>
+    <string name="home_search_title">Type to search on Home</string>
+    <string name="home_search_desc">Start typing on any Home screen to search and launch apps. Press Enter to open the top match. Uses the Accessibility service — no root needed.</string>
+    <string name="home_search_enable">Type on Home to search apps</string>
+    <string name="home_search_try">Try quick search</string>
+    <string name="home_search_placeholder">Search apps…</string>
+    <string name="home_search_empty">No matching apps</string>
+    <string name="home_search_footer_hint">Enter opens · ↑↓ select · Esc closes</string>
 </resources>

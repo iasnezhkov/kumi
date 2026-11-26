@@ -944,4 +944,11 @@
     <string name="kumi_key_hint_freq">Hz</string>
     <string name="kumi_key_hint_type">Filter</string>
     <string name="kumi_key_hint_zero">0 dB</string>
+    <string name="home_search_title">Tippen zum Suchen auf dem Startbildschirm</string>
+    <string name="home_search_desc">Beginne auf einem beliebigen Startbildschirm zu tippen, um Apps zu suchen und zu starten. Enter öffnet den ersten Treffer. Nutzt den Bedienungshilfen-Dienst — kein Root nötig.</string>
+    <string name="home_search_enable">Auf Startbildschirm tippen für App-Suche</string>
+    <string name="home_search_try">Schnellsuche testen</string>
+    <string name="home_search_placeholder">Apps suchen…</string>
+    <string name="home_search_empty">Keine passenden Apps</string>
+    <string name="home_search_footer_hint">Enter öffnet · ↑↓ wählen · Esc schließt</string>
 </resources>

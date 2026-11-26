@@ -944,4 +944,11 @@
     <string name="kumi_key_hint_freq">Hz</string>
     <string name="kumi_key_hint_type">フィルター</string>
     <string name="kumi_key_hint_zero">0 dB</string>
+    <string name="home_search_title">ホーム画面で入力して検索</string>
+    <string name="home_search_desc">任意のホーム画面で文字を入力すると、アプリを検索して起動できます。Enter で先頭の候補を開きます。ユーザー補助サービスを使用（root 不要）。</string>
+    <string name="home_search_enable">ホーム画面の入力でアプリを検索</string>
+    <string name="home_search_try">クイック検索を試す</string>
+    <string name="home_search_placeholder">アプリを検索…</string>
+    <string name="home_search_empty">一致するアプリがありません</string>
+    <string name="home_search_footer_hint">Enter 開く · ↑↓ 選択 · Esc 閉じる</string>
 </resources>

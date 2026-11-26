@@ -72,6 +72,7 @@ class AppPreferences(private val repository: SettingsRepository, private val sco
         updateImeSnippets { list -> list.filterNot { it.trigger.equals(trigger, ignoreCase = true) } }
     }
     fun setSpeedKeysEnabled(value: Boolean) = edit { setSpeedKeysEnabled(value) }
+    fun setHomeTypeToSearch(value: Boolean) = edit { setHomeTypeToSearch(value) }
     fun setSpeedKey(binding: SpeedKeyBinding) = edit {
         if (binding.valid) {
             updateSpeedKeys { list -> list.filterNot { it.keyCode == binding.keyCode } + binding }

@@ -34,8 +34,11 @@ and bit-for-bit return to stock through the immutable boot ROM service mode (`06
   `Ctrl+Space`, `Shift+Space`, `Alt+Shift`, or strip tap), accent-aware suggestions and
   language-specific quick extras and long-press variants, bundled offline MIT FrequencyWords
   dictionaries (EN/RU/UK) and BSD-3-Clause Google Mozc Japanese Romaji → Hiragana/Katakana/Kanji
-  converter (all refreshable on demand), emoji search, clipboard history, text snippets, and
-  Meta+letter Speed Keys.
+  converter (all refreshable on demand), emoji search, clipboard history, text snippets,
+  **Home screen type-to-search** app launcher (works on any launcher — type to search, press Enter
+  to launch the top match), and Meta+letter Speed Keys.
+- **Update channels** — Stable and Developer (RC) channels in Settings so release candidates
+  (`-rcN`) can be previewed and flashed before stable releases.
 - **App UI languages** — English, Russian, Spanish, Japanese, German, French, Portuguese, Italian,
   Ukrainian, Polish, Simplified Chinese and Korean, selectable per app in Android system settings.
   `python3 -I tools/check_l10n.py` verifies key and placeholder parity of every `values-*` file.
@@ -87,11 +90,11 @@ NDK `28.2.13676358`).
 | Package | Responsibility |
 |---|---|
 | `org.mindone.snapcase.kumi` | `KumiNative` JNI bridge, `KumiClient` typed RPCs, `KumiSession` state machine, `KumiEqPresets`, `KumiKeymapPresets`, `SnapLiveMirror` |
-| `org.mindone.snapcase.ime` | `SnapStripImeService`, `ImeKeyProcessor`, `PhysicalLayoutTranslator`, `RomajiKanaConverter`, `LocaleVariations`, `EmojiCatalog`, `ClipboardStore`, `QuickLauncher` |
+| `org.mindone.snapcase.ime` | `SnapStripImeService`, `ImeKeyProcessor`, `PhysicalLayoutTranslator`, `RomajiKanaConverter`, `LocaleVariations`, `EmojiCatalog`, `ClipboardStore`, `QuickLauncher`, `QuickSearchActivity`, `QuickSearchBridge` |
 | `org.mindone.snapcase.ime.dict` | `SnapDictBinary` (EN/RU/UK + downloadable languages), `JapaneseDict` (Mozc `SNAPJA01`), `SuggestionEngine`, `PersonalDictionary`, `DictionaryPackManager` |
 | `org.mindone.snapcase.transport` | Android USB Host transport (`UsbCasePort`, `ServiceMode`), optional stock hidraw transport |
 | `org.mindone.snapcase.ui` | Material 3 Compose screens (`KumiHome`, `KumiAudio`, `KumiEq`, `KumiKeys`, `KumiFirmware`, `KumiDeveloper`, `ImeSettingsScreen`, `SnapStripBar`) |
-| `org.mindone.snapcase.remap` | Accessibility service for Speed Keys and optional Android-side key remapping |
+| `org.mindone.snapcase.remap` | Accessibility service for Home screen type-to-search, Speed Keys, and optional Android-side key remapping |
 
 JSON models and enum contracts are pinned against `crates/kumi-jni/tests/fixtures/contract.json`
 and verified in both Rust and JVM unit tests (`ContractTest`).
