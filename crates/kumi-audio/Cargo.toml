@@ -1,0 +1,12 @@
+[package]
+name = "kumi-audio"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+kumi-chip = { path = "../kumi-chip" }
+kumi-icd = { path = "../kumi-icd" }
+heapless.workspace = true

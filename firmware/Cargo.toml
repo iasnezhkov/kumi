@@ -1,0 +1,30 @@
+[workspace]
+resolver = "3"
+members = ["probe", "stage0", "runtime"]
+
+[workspace.package]
+edition = "2024"
+license = "PolyForm-Noncommercial-1.0.0"
+version = "0.1.0"
+publish = false
+rust-version = "1.95"
+
+[workspace.dependencies]
+ed25519-dalek = { version = "3", default-features = false }
+embedded-storage = "0.3"
+heapless = { version = "0.8", default-features = false }
+postcard = { version = "1", default-features = false }
+postcard-rpc = { version = "0.12", default-features = false }
+serde = { version = "1", default-features = false }
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+debug = 2
+overflow-checks = false
+
+[profile.dev]
+panic = "abort"
+opt-level = "s"

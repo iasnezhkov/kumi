@@ -1,0 +1,24 @@
+[package]
+name = "kumi-cli"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "kumi"
+path = "src/main.rs"
+
+[dependencies]
+embedded-storage.workspace = true
+kumi-boot-core = { path = "../kumi-boot-core" }
+kumi-buxx = { path = "../kumi-buxx" }
+kumi-client = { path = "../kumi-client" }
+kumi-audio = { path = "../kumi-audio" }
+kumi-icd = { path = "../kumi-icd" }
+kumi-install = { path = "../kumi-install" }
+kumi-flasher = { path = "../kumi-flasher" }
+kumi-layout = { path = "../kumi-layout" }
+heapless.workspace = true
+serde_json = "1"

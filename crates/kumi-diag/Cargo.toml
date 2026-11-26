@@ -1,0 +1,12 @@
+[package]
+name = "kumi-diag"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+kumi-icd = { path = "../kumi-icd" }
+kumi-layout = { path = "../kumi-layout" }
+embedded-storage.workspace = true

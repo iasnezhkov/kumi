@@ -1,0 +1,21 @@
+[package]
+name = "kumi-runtime-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+embedded-storage.workspace = true
+kumi-boot-core = { path = "../kumi-boot-core" }
+kumi-diag = { path = "../kumi-diag" }
+kumi-icd = { path = "../kumi-icd" }
+kumi-layout = { path = "../kumi-layout" }
+kumi-settings = { path = "../kumi-settings" }
+sha2.workspace = true
+
+[dev-dependencies]
+ed25519-dalek.workspace = true
+kumi-install = { path = "../kumi-install" }
+kumi-client = { path = "../kumi-client" }

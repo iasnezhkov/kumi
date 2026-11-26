@@ -1,0 +1,17 @@
+[package]
+name = "kumi-dsp"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+
+[features]
+rv32f = []
+
+[dependencies]
+libm.workspace = true
+kumi-icd = { path = "../kumi-icd" }
+
+[dev-dependencies]
+heapless.workspace = true

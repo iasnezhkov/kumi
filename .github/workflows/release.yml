@@ -1,0 +1,368 @@
+# SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      firmware_version:
+        description: Firmware version (major.minor.patch)
+        required: true
+        type: string
+      firmware_generation:
+        description: Optional monotonic generation override (defaults to major*1000000+minor*1000+patch)
+        required: false
+        type: string
+        default: ""
+      tag:
+        description: Release tag (defaults to v<firmware_version>)
+        required: false
+        type: string
+        default: ""
+      prerelease:
+        description: Mark GitHub Release as prerelease
+        required: false
+        type: boolean
+        default: false
+      draft:
+        description: Create GitHub Release as draft
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+      fw_version: ${{ steps.meta.outputs.fw_version }}
+      fw_generation: ${{ steps.meta.outputs.fw_generation }}
+      app_version: ${{ steps.meta.outputs.app_version }}
+      build_name: ${{ steps.meta.outputs.build_name }}
+      prerelease: ${{ steps.meta.outputs.prerelease }}
+      draft: ${{ steps.meta.outputs.draft }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Tree hygiene check
+        run: python3 tools/tree-lint.py
+      - name: Resolve release metadata
+        id: meta
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+          IN_FW_VER: ${{ inputs.firmware_version }}
+          IN_FW_GEN: ${{ inputs.firmware_generation }}
+          IN_TAG: ${{ inputs.tag }}
+          IN_PRE: ${{ inputs.prerelease }}
+          IN_DRAFT: ${{ inputs.draft }}
+          SHA_SHORT: ${{ github.sha }}
+        run: |
+          python3 - <<'PY'
+          import os, re, sys
+          from pathlib import Path
+
+          gradle_text = Path("app/app/build.gradle.kts").read_text(encoding="utf-8")
+          m_app = re.search(r'versionName\s*=\s*"([^"]+)"', gradle_text)
+          if not m_app:
+              sys.exit("could not parse versionName from app/app/build.gradle.kts")
+          app_ver = m_app.group(1).strip()
+
+          event = os.environ["EVENT_NAME"]
+          if event == "workflow_dispatch":
+              fw_ver = os.environ["IN_FW_VER"].strip()
+              tag = os.environ["IN_TAG"].strip() or f"v{fw_ver}"
+              prerelease = os.environ["IN_PRE"].lower() == "true" or ("-" in tag)
+              draft = os.environ["IN_DRAFT"].lower() == "true"
+              gen_override = os.environ["IN_FW_GEN"].strip()
+          else:
+              tag = os.environ["REF_NAME"].strip()
+              prerelease = "-" in tag
+              draft = False
+              gen_override = ""
+              fw_raw = tag.removeprefix("v")
+              fw_ver = fw_raw.split("-", 1)[0]
+
+          m_fw = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)", fw_ver)
+          if not m_fw:
+              sys.exit(f"invalid firmware_version '{fw_ver}' (expected major.minor.patch)")
+          maj, min_, pat = (int(x) for x in m_fw.groups())
+          if not (0 <= maj <= 255 and 0 <= min_ <= 255 and 0 <= pat <= 255):
+              sys.exit("firmware version components must fit in u8 (0..255)")
+
+          if gen_override:
+              if not gen_override.isdigit() or int(gen_override) < 1:
+                  sys.exit(f"invalid firmware_generation '{gen_override}'")
+              fw_gen = int(gen_override)
+          else:
+              fw_gen = maj * 1_000_000 + min_ * 1_000 + pat
+
+          sha7 = os.environ["SHA_SHORT"][:7]
+          build_name = f"{fw_ver}-{sha7}"
+          if len(build_name.encode("utf-8")) > 24:
+              build_name = fw_ver
+          if len(build_name.encode("utf-8")) > 24:
+              sys.exit(f"build_name '{build_name}' exceeds 24-byte kumi-pack limit")
+
+          out = Path(os.environ["GITHUB_OUTPUT"])
+          with out.open("a", encoding="utf-8") as fh:
+              fh.write(f"tag={tag}\n")
+              fh.write(f"fw_version={fw_ver}\n")
+              fh.write(f"fw_generation={fw_gen}\n")
+              fh.write(f"app_version={app_ver}\n")
+              fh.write(f"build_name={build_name}\n")
+              fh.write(f"prerelease={'true' if prerelease else 'false'}\n")
+              fh.write(f"draft={'true' if draft else 'false'}\n")
+          print(f"Planned release tag={tag} fw={fw_ver} gen={fw_gen} app={app_ver} build={build_name} pre={prerelease} draft={draft}")
+          PY
+
+  firmware:
+    needs: plan
+    runs-on: ubuntu-latest
+    environment: release
+    outputs:
+      public_key: ${{ steps.key.outputs.public_key }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.95.0"
+          targets: riscv32imc-unknown-none-elf
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+            firmware -> firmware/target
+      - name: Prepare signing key and verify public key
+        id: key
+        env:
+          SIGNING_KEY_HEX: ${{ secrets.KUMI_SIGNING_KEY_HEX }}
+          EXPECTED_PUBLIC_KEY_HEX: ${{ vars.KUMI_PUBLIC_KEY_HEX }}
+        run: |
+          if [ -z "$SIGNING_KEY_HEX" ]; then
+            echo "Missing secret KUMI_SIGNING_KEY_HEX" >&2
+            exit 1
+          fi
+          umask 077
+          printf '%s\n' "$SIGNING_KEY_HEX" > "$RUNNER_TEMP/release.key"
+          PUB_KEY=$(cargo run --locked --release -p kumi-install --bin kumi-pack -- public "$RUNNER_TEMP/release.key" | tr -d '[:space:]')
+          if ! printf '%s' "$PUB_KEY" | grep -Eq '^[0-9a-fA-F]{64}$'; then
+            echo "Derived public key is not 64 hex chars" >&2
+            exit 1
+          fi
+          if [ -n "$EXPECTED_PUBLIC_KEY_HEX" ] && [ "${PUB_KEY,,}" != "${EXPECTED_PUBLIC_KEY_HEX,,}" ]; then
+            echo "Derived public key does not match vars.KUMI_PUBLIC_KEY_HEX" >&2
+            exit 1
+          fi
+          echo "public_key=${PUB_KEY,,}" >> "$GITHUB_OUTPUT"
+      - name: Build reproducible RV32 firmware and signed bundle
+        env:
+          KUMI_PUBLIC_KEY_HEX: ${{ steps.key.outputs.public_key }}
+          FW_VER: ${{ needs.plan.outputs.fw_version }}
+          FW_GEN: ${{ needs.plan.outputs.fw_generation }}
+          BUILD_NAME: ${{ needs.plan.outputs.build_name }}
+        run: |
+          export CARGO_TARGET_RISCV32IMC_UNKNOWN_NONE_ELF_RUSTFLAGS="--cfg sha2_backend_soft=\"compact\" -C target-feature=+f --remap-path-prefix=${CARGO_HOME:-$HOME/.cargo}=/cargo --remap-path-prefix=${GITHUB_WORKSPACE}=/kumi"
+          (cd firmware && cargo build --locked --release -p kumi-stage0 -p kumi-fw)
+          mkdir -p "$RUNNER_TEMP/dist"
+          cargo run --locked --release -p kumi-install --bin kumi-pack -- stage0 firmware/target/riscv32imc-unknown-none-elf/release/kumi-stage0 "$RUNNER_TEMP/stage0.bin" "$KUMI_PUBLIC_KEY_HEX"
+          cargo run --locked --release -p kumi-install --bin kumi-pack -- image firmware/target/riscv32imc-unknown-none-elf/release/kumi-fw "$RUNNER_TEMP/runtime.bin" "$RUNNER_TEMP/release.key" "$FW_VER" "$FW_GEN"
+          BUNDLE="$RUNNER_TEMP/dist/kumi-${FW_VER}.kumi"
+          cargo run --locked --release -p kumi-install --bin kumi-pack -- bundle "$RUNNER_TEMP/stage0.bin" "$RUNNER_TEMP/runtime.bin" "$RUNNER_TEMP/release.key" "$BUILD_NAME" "$BUNDLE"
+          cargo run --locked --release -p kumi-install --bin kumi-pack -- inspect "$BUNDLE" "$KUMI_PUBLIC_KEY_HEX"
+          if strings "$BUNDLE" | grep -Eq '/(home|Users|root)/'; then
+            echo "Host path leaked into $BUNDLE" >&2
+            exit 1
+          fi
+      - name: Scrub signing key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/release.key"
+      - name: Upload firmware bundle artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: kumi-firmware
+          path: ${{ runner.temp }}/dist/kumi-${{ needs.plan.outputs.fw_version }}.kumi
+          if-no-files-found: error
+
+  android:
+    needs: [plan, firmware]
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - uses: actions/checkout@v7
+      - name: Download signed firmware bundle
+        uses: actions/download-artifact@v8
+        with:
+          name: kumi-firmware
+          path: ${{ runner.temp }}/kumi-packages
+      - name: Set up Rust for Android JNI
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.95.0"
+          targets: aarch64-linux-android
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: android-jni-release
+      - name: Set up JDK 21
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+      - name: Ensure Android SDK and NDK
+        env:
+          NDK_VERSION: "28.2.13676358"
+        run: |
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -d "$SDK_ROOT/ndk/$NDK_VERSION" ]; then
+            yes | "$SDKMANAGER" "ndk;$NDK_VERSION" >/dev/null
+          fi
+          if ! ls -d "$SDK_ROOT"/platforms/android-37* >/dev/null 2>&1; then
+            yes | "$SDKMANAGER" "platforms;android-37" >/dev/null || yes | "$SDKMANAGER" "platforms;android-37.0" >/dev/null
+          fi
+      - name: Decode Android release keystore
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE_B64" ]; then
+            echo "Missing secret ANDROID_KEYSTORE_BASE64" >&2
+            exit 1
+          fi
+          umask 077
+          printf '%s' "$KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/release.keystore"
+      - name: Build and verify signed release APK
+        working-directory: app
+        env:
+          KUMI_KEYSTORE_FILE: ${{ runner.temp }}/release.keystore
+          KUMI_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KUMI_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KUMI_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          PUB_KEY: ${{ needs.firmware.outputs.public_key }}
+          APP_VER: ${{ needs.plan.outputs.app_version }}
+          REPO: ${{ github.repository }}
+        run: |
+          ./gradlew --console=plain --no-daemon \
+            -Pkumi.releaseKey="$PUB_KEY" \
+            -Pkumi.packagesDir="$RUNNER_TEMP/kumi-packages" \
+            -Pkumi.releasesRepo="$REPO" \
+            testDebugUnitTest lintRelease assembleRelease
+          mkdir -p "$RUNNER_TEMP/dist"
+          cp app/build/outputs/apk/release/app-release.apk "$RUNNER_TEMP/dist/kumi-app-${APP_VER}.apk"
+      - name: Scrub Android keystore
+        if: always()
+        run: rm -f "$RUNNER_TEMP/release.keystore"
+      - name: Upload release APK artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: kumi-app
+          path: ${{ runner.temp }}/dist/kumi-app-${{ needs.plan.outputs.app_version }}.apk
+          if-no-files-found: error
+
+  verify:
+    needs: [plan, firmware, android]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.95.0"
+      - uses: Swatinem/rust-cache@v2
+      - name: Download release artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: ${{ runner.temp }}/artifacts
+      - name: Verify signatures, bundle integrity, 16KB ELF alignment, and checksums
+        env:
+          FW_VER: ${{ needs.plan.outputs.fw_version }}
+          APP_VER: ${{ needs.plan.outputs.app_version }}
+          PUB_KEY: ${{ needs.firmware.outputs.public_key }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/release"
+          KUMI="$RUNNER_TEMP/release/kumi-${FW_VER}.kumi"
+          APK="$RUNNER_TEMP/release/kumi-app-${APP_VER}.apk"
+          cp "$RUNNER_TEMP/artifacts/kumi-firmware/kumi-${FW_VER}.kumi" "$KUMI"
+          cp "$RUNNER_TEMP/artifacts/kumi-app/kumi-app-${APP_VER}.apk" "$APK"
+
+          cargo run --locked --release -p kumi-install --bin kumi-pack -- inspect "$KUMI" "$PUB_KEY"
+
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          APKSIGNER=$(find "$SDK_ROOT/build-tools" -name apksigner | sort -V | tail -n 1)
+          "$APKSIGNER" verify --verbose --print-certs "$APK"
+
+          mkdir -p "$RUNNER_TEMP/apk-extract"
+          unzip -q "$APK" "assets/kumi/kumi-${FW_VER}.kumi" "lib/arm64-v8a/libkumi_jni.so" -d "$RUNNER_TEMP/apk-extract"
+          cmp -s "$KUMI" "$RUNNER_TEMP/apk-extract/assets/kumi/kumi-${FW_VER}.kumi"
+          python3 - "$RUNNER_TEMP/apk-extract/lib/arm64-v8a/libkumi_jni.so" <<'PY'
+          import subprocess, sys
+          out = subprocess.check_output(["readelf", "-lW", sys.argv[1]], text=True)
+          loads = [line.split()[-1] for line in out.splitlines() if line.strip().startswith("LOAD")]
+          assert loads, "no PT_LOAD segments found"
+          for align_s in loads:
+              align = int(align_s, 16)
+              assert align >= 0x4000 and align % 0x4000 == 0, f"unaligned PT_LOAD: {align_s}"
+          print("ELF 16KB alignment OK:", loads)
+          PY
+          if strings "$RUNNER_TEMP/apk-extract/lib/arm64-v8a/libkumi_jni.so" | grep -Eq '/(home|Users|root)/'; then
+            echo "Host path leaked into libkumi_jni.so" >&2
+            exit 1
+          fi
+
+          (cd "$RUNNER_TEMP/release" && sha256sum "kumi-${FW_VER}.kumi" "kumi-app-${APP_VER}.apk" > SHA256SUMS.txt)
+          cat "$RUNNER_TEMP/release/SHA256SUMS.txt"
+      - name: Upload verified release bundle
+        uses: actions/upload-artifact@v7
+        with:
+          name: kumi-release-verified
+          path: ${{ runner.temp }}/release/
+          if-no-files-found: error
+
+  publish:
+    needs: [plan, verify]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download verified release bundle
+        uses: actions/download-artifact@v8
+        with:
+          name: kumi-release-verified
+          path: ${{ runner.temp }}/release
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
+          TARGET_SHA: ${{ github.sha }}
+          TAG: ${{ needs.plan.outputs.tag }}
+          FW_VER: ${{ needs.plan.outputs.fw_version }}
+          APP_VER: ${{ needs.plan.outputs.app_version }}
+          PRERELEASE: ${{ needs.plan.outputs.prerelease }}
+          DRAFT: ${{ needs.plan.outputs.draft }}
+        run: |
+          if [ "$FW_VER" = "$APP_VER" ]; then
+            TITLE="Kumi ${FW_VER}"
+          else
+            TITLE="Kumi ${FW_VER} / App ${APP_VER}"
+          fi
+          FLAGS=(--repo "$REPO" --title "$TITLE" --generate-notes)
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then FLAGS+=(--target "$TARGET_SHA"); fi
+          if [ "$PRERELEASE" = "true" ]; then FLAGS+=(--prerelease); fi
+          if [ "$DRAFT" = "true" ]; then FLAGS+=(--draft); fi
+          gh release create "$TAG" \
+            "$RUNNER_TEMP/release/kumi-${FW_VER}.kumi" \
+            "$RUNNER_TEMP/release/kumi-app-${APP_VER}.apk" \
+            "$RUNNER_TEMP/release/SHA256SUMS.txt" \
+            "${FLAGS[@]}"

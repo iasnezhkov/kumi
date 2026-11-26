@@ -1,0 +1,2 @@
+[alias]
+target-build = ["build", "--workspace", "--exclude", "kumi-install", "--exclude", "kumi-buxx", "--exclude", "kumi-client", "--exclude", "kumi-flasher", "--exclude", "kumi-cli", "--exclude", "kumi-jni", "--target", "riscv32imc-unknown-none-elf", "--release", "--config", "target.riscv32imc-unknown-none-elf.rustflags=[\"--cfg\", \"sha2_backend_soft=\\\"compact\\\"\", \"-C\", \"target-feature=+f\"]"]

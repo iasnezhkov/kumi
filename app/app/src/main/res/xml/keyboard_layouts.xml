@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0 -->
+<keyboard-layouts xmlns:android="http://schemas.android.com/apk/res/android">
+    <keyboard-layout
+        android:name="keyboard_layout_snap_en_us"
+        android:label="@string/layout_en_us"
+        android:keyboardLayout="@raw/keyboard_layout_snap_en_us"
+        android:keyboardLocale="en-Latn,en-Latn-US"
+        android:keyboardLayoutType="qwerty" />
+
+    <keyboard-layout
+        android:name="keyboard_layout_snap_ru"
+        android:label="@string/layout_ru"
+        android:keyboardLayout="@raw/keyboard_layout_snap_ru"
+        android:keyboardLocale="ru-Cyrl" />
+
+    <keyboard-layout
+        android:name="keyboard_layout_snap_uk"
+        android:label="@string/layout_uk"
+        android:keyboardLayout="@raw/keyboard_layout_snap_uk"
+        android:keyboardLocale="uk-Cyrl" />
+
+    <keyboard-layout
+        android:name="keyboard_layout_snap_en_us_caps_ctrl"
+        android:label="@string/layout_en_us_caps_ctrl"
+        android:keyboardLayout="@raw/keyboard_layout_snap_en_us_caps_ctrl"
+        android:keyboardLocale="en-Latn,en-Latn-US"
+        android:keyboardLayoutType="qwerty" />
+
+    <keyboard-layout
+        android:name="keyboard_layout_snap_ru_caps_ctrl"
+        android:label="@string/layout_ru_caps_ctrl"
+        android:keyboardLayout="@raw/keyboard_layout_snap_ru_caps_ctrl"
+        android:keyboardLocale="ru-Cyrl" />
+
+    <keyboard-layout
+        android:name="keyboard_layout_snap_uk_caps_ctrl"
+        android:label="@string/layout_uk_caps_ctrl"
+        android:keyboardLayout="@raw/keyboard_layout_snap_uk_caps_ctrl"
+        android:keyboardLocale="uk-Cyrl" />
+
+    <keyboard-layout
+        android:name="keyboard_layout_snap_en_us_swap_alt_meta"
+        android:label="@string/layout_en_us_swap_alt_meta"
+        android:keyboardLayout="@raw/keyboard_layout_snap_en_us_swap_alt_meta"
+        android:keyboardLocale="en-Latn,en-Latn-US"
+        android:keyboardLayoutType="qwerty" />
+
+    <keyboard-layout
+        android:name="keyboard_layout_snap_ru_swap_alt_meta"
+        android:label="@string/layout_ru_swap_alt_meta"
+        android:keyboardLayout="@raw/keyboard_layout_snap_ru_swap_alt_meta"
+        android:keyboardLocale="ru-Cyrl" />
+
+    <keyboard-layout
+        android:name="keyboard_layout_snap_uk_swap_alt_meta"
+        android:label="@string/layout_uk_swap_alt_meta"
+        android:keyboardLayout="@raw/keyboard_layout_snap_uk_swap_alt_meta"
+        android:keyboardLocale="uk-Cyrl" />
+</keyboard-layouts>

@@ -1,0 +1,37 @@
+[package]
+name = "kumi-jni"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["host-transports"]
+host-transports = ["kumi-client/adb", "kumi-client/usb", "kumi-flasher/host-transports"]
+
+[dependencies]
+kumi-icd = { path = "../kumi-icd" }
+kumi-layout = { path = "../kumi-layout" }
+kumi-install = { path = "../kumi-install" }
+kumi-buxx = { path = "../kumi-buxx" }
+kumi-flasher = { path = "../kumi-flasher", default-features = false }
+kumi-boot-core = { path = "../kumi-boot-core" }
+kumi-diag = { path = "../kumi-diag" }
+kumi-dsp = { path = "../kumi-dsp" }
+kumi-runtime-core = { path = "../kumi-runtime-core" }
+embedded-storage.workspace = true
+kumi-client = { path = "../kumi-client", default-features = false }
+kumi-control = { path = "../kumi-control" }
+kumi-service = { path = "../kumi-service" }
+kumi-settings = { path = "../kumi-settings" }
+postcard = { version = "1", default-features = false, features = ["use-std"] }
+postcard-rpc.workspace = true
+serde.workspace = true
+serde_json = "1"
+heapless.workspace = true
+ed25519-dalek.workspace = true
+jni = "0.21"

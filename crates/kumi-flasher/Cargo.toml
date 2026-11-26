@@ -1,0 +1,17 @@
+[package]
+name = "kumi-flasher"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+
+[features]
+default = ["host-transports"]
+host-transports = ["dep:kumi-client"]
+
+[dependencies]
+kumi-layout = { path = "../kumi-layout" }
+kumi-install = { path = "../kumi-install" }
+kumi-buxx = { path = "../kumi-buxx" }
+kumi-client = { path = "../kumi-client", default-features = false, features = ["adb", "usb"], optional = true }

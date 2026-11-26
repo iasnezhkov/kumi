@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FFF4F0E8"
+        android:pathData="M37,29h4c3.3,0 6,2.7 6,6v38c0,3.3 -2.7,6 -6,6h-4c-3.3,0 -6,-2.7 -6,-6V35c0,-3.3 2.7,-6 6,-6z" />
+    <path
+        android:pathData="M53.8,51.2L67.6,31.4c1.8,-2.6 5.4,-3.2 8,-1.4c2.6,1.8 3.2,5.4 1.4,8L64.9,54l12.1,16c1.8,2.6 1.2,6.2 -1.4,8c-2.6,1.8 -6.2,1.2 -8,-1.4L53.8,56.8c-1.1,-1.6 -1.1,-4 0,-5.6z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="54"
+                android:startY="29"
+                android:endX="78"
+                android:endY="79"
+                android:type="linear">
+                <item android:offset="0.0" android:color="#FFF5A962" />
+                <item android:offset="0.55" android:color="#FFEC7C43" />
+                <item android:offset="1.0" android:color="#FFD85832" />
+            </gradient>
+        </aapt:attr>
+    </path>
+</vector>

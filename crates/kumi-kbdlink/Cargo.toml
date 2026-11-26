@@ -1,0 +1,12 @@
+[package]
+name = "kumi-kbdlink"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+kumi-icd = { path = "../kumi-icd" }
+heapless.workspace = true
+kumi-keymap = { path = "../kumi-keymap" }

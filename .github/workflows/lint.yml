@@ -1,0 +1,111 @@
+# SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  hygiene:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Tree hygiene check
+        run: python3 tools/tree-lint.py
+
+  rust:
+    runs-on: ubuntu-latest
+    env:
+      KUMI_PUBLIC_KEY_HEX: d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a
+      RFC8032_TEST_SECRET: 9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60
+    steps:
+      - uses: actions/checkout@v7
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.95.0"
+          components: rustfmt, clippy
+          targets: riscv32imc-unknown-none-elf
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+            firmware -> firmware/target
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: tools/requirements-emu.txt
+      - name: Install emulator dependencies
+        run: python -m pip install -r tools/requirements-emu.txt
+      - name: Format check
+        run: cargo fmt --all --check && (cd firmware && cargo fmt --all --check)
+      - name: Clippy check
+        run: |
+          cargo clippy --locked --workspace --all-targets -- -D warnings
+          cargo clippy --locked -p kumi-jni --no-default-features -- -D warnings
+          (cd firmware && cargo clippy --locked --release -- -D warnings)
+          (cd firmware && cargo clippy --locked --release -p kumi-fw --features lab -- -D warnings)
+      - name: Host tests, firmware builds, and emulator suite
+        run: |
+          cargo test --locked --workspace --release
+          cargo run --locked --release -p kumi-client --example emulator-vectors > "$RUNNER_TEMP/rpc-vectors.json"
+          (cd firmware && cargo build --locked --release && cp target/riscv32imc-unknown-none-elf/release/kumi-fw "$RUNNER_TEMP/kumi-fw.elf" && cp target/riscv32imc-unknown-none-elf/release/kumi-stage0 "$RUNNER_TEMP/kumi-stage0.elf")
+          (cd firmware && cargo build --locked --release -p kumi-fw --features lab && cp target/riscv32imc-unknown-none-elf/release/kumi-fw "$RUNNER_TEMP/kumi-fw-lab.elf")
+          KUMI_RUNTIME_ELF="$RUNNER_TEMP/kumi-fw.elf" KUMI_LAB_RUNTIME_ELF="$RUNNER_TEMP/kumi-fw-lab.elf" KUMI_RPC_VECTORS="$RUNNER_TEMP/rpc-vectors.json" python tools/run_tests.py tools
+      - name: RV32 target builds and package smoke test
+        run: |
+          cargo target-build --locked
+          printf '%s\n' "$RFC8032_TEST_SECRET" > "$RUNNER_TEMP/test.key"
+          chmod 600 "$RUNNER_TEMP/test.key"
+          cargo run --locked --release -p kumi-install --bin kumi-pack -- stage0 "$RUNNER_TEMP/kumi-stage0.elf" "$RUNNER_TEMP/stage0.bin" "$KUMI_PUBLIC_KEY_HEX"
+          cargo run --locked --release -p kumi-install --bin kumi-pack -- image "$RUNNER_TEMP/kumi-fw.elf" "$RUNNER_TEMP/runtime.bin" "$RUNNER_TEMP/test.key" 0.1.0 1000
+          cargo run --locked --release -p kumi-install --bin kumi-pack -- bundle "$RUNNER_TEMP/stage0.bin" "$RUNNER_TEMP/runtime.bin" "$RUNNER_TEMP/test.key" ci-smoke "$RUNNER_TEMP/kumi-0.1.0.kumi"
+          cargo run --locked --release -p kumi-install --bin kumi-pack -- inspect "$RUNNER_TEMP/kumi-0.1.0.kumi" "$KUMI_PUBLIC_KEY_HEX"
+
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Set up Rust for Android JNI
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.95.0"
+          targets: aarch64-linux-android
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: android-jni
+      - name: Set up JDK 21
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+      - name: Ensure Android SDK, NDK, and helper C compile
+        env:
+          NDK_VERSION: "28.2.13676358"
+        run: |
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -d "$SDK_ROOT/ndk/$NDK_VERSION" ]; then
+            yes | "$SDKMANAGER" "ndk;$NDK_VERSION" >/dev/null
+          fi
+          if ! ls -d "$SDK_ROOT"/platforms/android-37* >/dev/null 2>&1; then
+            yes | "$SDKMANAGER" "platforms;android-37" >/dev/null || yes | "$SDKMANAGER" "platforms;android-37.0" >/dev/null
+          fi
+          CLANG="$SDK_ROOT/ndk/$NDK_VERSION/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android35-clang"
+          "$CLANG" -O2 -Wall -Wextra -Werror -o "$RUNNER_TEMP/spv40-usb" tools/android/spv40-usb.c
+      - name: Android unit tests, lint, and debug APK with native JNI
+        if: hashFiles('app/gradlew') != ''
+        working-directory: app
+        run: ./gradlew --console=plain --no-daemon testDebugUnitTest lintDebug assembleDebug

@@ -1,0 +1,24 @@
+[package]
+name = "kumi-stage0"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "kumi-stage0"
+path = "src/main.rs"
+test = false
+bench = false
+
+[dependencies]
+kumi-boot-core = { path = "../../crates/kumi-boot-core" }
+kumi-chip = { path = "../../crates/kumi-chip" }
+kumi-diag = { path = "../../crates/kumi-diag" }
+kumi-layout = { path = "../../crates/kumi-layout" }
+ed25519-dalek.workspace = true
+embedded-storage.workspace = true
+
+[build-dependencies]
+kumi-layout = { path = "../../crates/kumi-layout" }

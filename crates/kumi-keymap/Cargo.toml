@@ -1,0 +1,11 @@
+[package]
+name = "kumi-keymap"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+heapless.workspace = true
+kumi-icd = { path = "../kumi-icd" }

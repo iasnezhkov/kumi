@@ -1,0 +1,32 @@
+[package]
+name = "kumi-client"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+
+[features]
+default = ["virtual-case", "adb", "usb"]
+virtual-case = ["dep:kumi-control", "dep:kumi-keymap", "dep:kumi-service", "dep:kumi-settings"]
+adb = []
+usb = ["adb"]
+
+[dependencies]
+kumi-icd = { path = "../kumi-icd" }
+kumi-layout = { path = "../kumi-layout" }
+kumi-control = { path = "../kumi-control", optional = true }
+kumi-keymap = { path = "../kumi-keymap", optional = true }
+kumi-service = { path = "../kumi-service", optional = true }
+kumi-settings = { path = "../kumi-settings", optional = true }
+heapless.workspace = true
+sha2.workspace = true
+postcard = { version = "1", default-features = false, features = ["use-std"] }
+postcard-rpc.workspace = true
+serde.workspace = true
+
+[dev-dependencies]
+serde_json = "1"
+kumi-chip = { path = "../kumi-chip" }
+kumi-install = { path = "../kumi-install" }
+ed25519-dalek.workspace = true

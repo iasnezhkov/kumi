@@ -1,0 +1,6 @@
+target/
+*.key
+*.bin
+*.kumi
+.venv/
+__pycache__/

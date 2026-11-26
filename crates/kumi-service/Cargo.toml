@@ -1,0 +1,19 @@
+[package]
+name = "kumi-service"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+kumi-icd = { path = "../kumi-icd" }
+kumi-control = { path = "../kumi-control" }
+kumi-settings = { path = "../kumi-settings" }
+postcard.workspace = true
+postcard-rpc.workspace = true
+postcard-schema.workspace = true
+serde.workspace = true
+
+[dev-dependencies]
+heapless.workspace = true

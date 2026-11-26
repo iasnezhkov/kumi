@@ -1,0 +1,1400 @@
+{
+  "ack_err": {
+    "Err": "NotUnlocked"
+  },
+  "ack_err_unknown_code": {
+    "Err": 42
+  },
+  "ack_ok": {
+    "Ok": null
+  },
+  "audio_bench_failed": {
+    "Ok": {
+      "calibration": {
+        "core_pll": 76804,
+        "counts": [
+          [
+            48000,
+            44100
+          ],
+          [
+            48010,
+            44090
+          ]
+        ],
+        "cycles": 14400000,
+        "decoded_cpu_hz": 144000000,
+        "fault": null,
+        "frame_clock_hz": 1000,
+        "pll": [
+          17,
+          34,
+          51
+        ],
+        "system_clock": 259,
+        "timers_quiesced": true,
+        "trims": [
+          17,
+          22
+        ],
+        "windows": [
+          3,
+          4
+        ]
+      },
+      "cpu_hz": 144000000,
+      "failure": {
+        "fault": {
+          "Dac": {
+            "Bus": {
+              "address": 49,
+              "error": "Nack",
+              "register": 65537
+            }
+          }
+        },
+        "phase": "Dac"
+      },
+      "halt": {
+        "cycles": 1200,
+        "enable": 0,
+        "remaining": [
+          0,
+          0
+        ]
+      },
+      "state": "Failed",
+      "stream": null
+    }
+  },
+  "audio_bench_requests": [
+    "Calibrate",
+    {
+      "Start": {
+        "channel": "Left",
+        "level_centi_dbfs": -2000,
+        "rate_hz": 48000,
+        "tone_hz": 1000
+      }
+    },
+    "Stop",
+    "Status"
+  ],
+  "audio_bench_running": {
+    "Ok": {
+      "calibration": {
+        "core_pll": 76804,
+        "counts": [
+          [
+            48000,
+            44100
+          ],
+          [
+            48010,
+            44090
+          ]
+        ],
+        "cycles": 14400000,
+        "decoded_cpu_hz": 144000000,
+        "fault": null,
+        "frame_clock_hz": 1000,
+        "pll": [
+          17,
+          34,
+          51
+        ],
+        "system_clock": 259,
+        "timers_quiesced": true,
+        "trims": [
+          17,
+          22
+        ],
+        "windows": [
+          3,
+          4
+        ]
+      },
+      "cpu_hz": 144000000,
+      "failure": null,
+      "halt": null,
+      "state": "Running",
+      "stream": {
+        "amplitude": 3276,
+        "cursor": {
+          "enable": 537067544,
+          "i2s_status": 537133056,
+          "monitor": 1269760,
+          "remaining": 537067536,
+          "status": 537067540
+        },
+        "dacs": 1,
+        "periods": 48,
+        "ring_address": 1114112,
+        "ring_bytes": 4608,
+        "start": {
+          "channel": "Left",
+          "level_centi_dbfs": -2000,
+          "rate_hz": 48000,
+          "tone_hz": 1000
+        },
+        "started_us": 1250
+      }
+    }
+  },
+  "audio_bench_states": [
+    "Idle",
+    "Starting",
+    "Running",
+    "Failed"
+  ],
+  "audio_channels": [
+    "Left",
+    "Right",
+    "Both"
+  ],
+  "audio_meters": {
+    "active": true,
+    "clipped_samples": 0,
+    "limiter_hits": 3,
+    "peak_left_centi_db": -620,
+    "peak_right_centi_db": -640,
+    "rms_left_centi_db": -1250,
+    "rms_right_centi_db": -1280
+  },
+  "audio_phases": [
+    "Calibrate",
+    "Setup",
+    "Clock",
+    "ResetLow",
+    "ResetHigh",
+    "Dac",
+    "Dma",
+    "Unmute",
+    "Stop"
+  ],
+  "audio_status": {
+    "counters": {
+      "dac_faults": 0,
+      "feedback_corrections": 12,
+      "overruns": 0,
+      "underruns": 1
+    },
+    "eq_active": 1,
+    "host_muted": false,
+    "host_volume_centi_db": [
+      -600,
+      -650
+    ],
+    "jack": "Headset",
+    "stream": {
+      "bits": 24,
+      "channels": 2,
+      "kind": "Dop",
+      "rate_hz": 176400
+    },
+    "usb_audio_present": true
+  },
+  "audio_status_idle": {
+    "counters": {
+      "dac_faults": 0,
+      "feedback_corrections": 0,
+      "overruns": 0,
+      "underruns": 0
+    },
+    "eq_active": null,
+    "host_muted": true,
+    "host_volume_centi_db": [
+      0,
+      0
+    ],
+    "jack": "Empty",
+    "stream": null,
+    "usb_audio_present": false
+  },
+  "bridge": {
+    "bridge": 1,
+    "crate": "0.1.0",
+    "interface": [
+      255,
+      75,
+      1
+    ],
+    "packageExtension": "kumi",
+    "productId": 1,
+    "protocol": 1,
+    "serviceProductId": 2184,
+    "serviceVendorId": 1638,
+    "vendorId": 4617
+  },
+  "bridge_replies": {
+    "backup": {
+      "ok": {
+        "sha256": "272e33c7faee54cf94a85d2dfeb8028a82da412edebbb25810378ff51d732999",
+        "size": 4194304,
+        "stock": "Head"
+      }
+    },
+    "call_failed": {
+      "err": {
+        "kind": "UnknownPath"
+      }
+    },
+    "call_ok": {
+      "ok": {
+        "Ok": null
+      }
+    },
+    "call_with_topics": {
+      "ok": {
+        "Ok": {
+          "audio": false,
+          "keys": true,
+          "log": true,
+          "uart": false
+        }
+      },
+      "topics": [
+        {
+          "data": {
+            "level": "Info",
+            "module": "runtime",
+            "text": "Event stream started",
+            "uptime_ms": 20
+          },
+          "path": "log"
+        }
+      ]
+    },
+    "eq_auto_preamp": {
+      "ok": {
+        "peak_db": 6.0,
+        "preamp_centi_db": -600
+      }
+    },
+    "eq_invalid_profile": {
+      "err": {
+        "kind": "InvalidProfile"
+      }
+    },
+    "eq_response": {
+      "ok": {
+        "frequencies_hz": [
+          20.0,
+          112.46826503806983,
+          632.4555320336758,
+          3556.5588200778457,
+          20000.0
+        ],
+        "gain_db": [
+          -5.99935254722368,
+          -5.979097057133913,
+          -4.6549599170684814,
+          -5.8585788160562515,
+          -5.999499404977541
+        ],
+        "preamp_db": -6.0
+      }
+    },
+    "identify": {
+      "ok": {
+        "capacity": 4194304,
+        "chip": 1224819840,
+        "chipMatches": true,
+        "jedec": "c86516",
+        "protect": 0
+      }
+    },
+    "info": {
+      "bridge": 1,
+      "crate": "0.1.0",
+      "interface": [
+        255,
+        75,
+        1
+      ],
+      "packageExtension": "kumi",
+      "productId": 1,
+      "protocol": 1,
+      "serviceProductId": 2184,
+      "serviceVendorId": 1638,
+      "vendorId": 4617
+    },
+    "install": {
+      "ok": {
+        "boots": "Kumi",
+        "steps": 906
+      }
+    },
+    "install_failed": {
+      "err": {
+        "boots": [
+          "Stock",
+          "Stock"
+        ],
+        "kind": "Target { step: 1, error: Transport }",
+        "label": "stock copy: erase",
+        "resume": 0,
+        "step": 1
+      }
+    },
+    "install_gates_complete": {
+      "ok": {
+        "missing": null
+      }
+    },
+    "install_gates_missing": {
+      "ok": {
+        "missing": "G2bWritePath"
+      }
+    },
+    "install_gates_recorded": {
+      "ok": {
+        "missing": null
+      }
+    },
+    "open_package": {
+      "ok": {
+        "build": "demo-0.1.0",
+        "generation": 1,
+        "image": 37120,
+        "sha256": "073b81c8bc9ac5fed253abcb572ff481b8167b37da0046fad1fc8cb3f192cef6",
+        "stage0": 25600,
+        "version": "0.1.0"
+      }
+    },
+    "open_package_failed": {
+      "err": {
+        "kind": "Truncated"
+      }
+    },
+    "poll_topics": {
+      "ok": []
+    },
+    "reboot_from_service": {
+      "ok": null
+    },
+    "update": {
+      "ok": {
+        "size": 37120,
+        "slot": "B",
+        "state": "Trial",
+        "version": {
+          "major": 0,
+          "minor": 2,
+          "patch": 0
+        }
+      }
+    },
+    "update_refused": {
+      "err": {
+        "kind": "NoFreeSlot"
+      }
+    }
+  },
+  "capability_names": [
+    "audio_out",
+    "audio_in",
+    "dsd",
+    "parametric_eq",
+    "keymap",
+    "layers",
+    "battery",
+    "persistent_settings",
+    "firmware_update",
+    "developer",
+    "lab"
+  ],
+  "case_errors": [
+    "Unsupported",
+    "InvalidArgument",
+    "Busy",
+    "NotUnlocked",
+    "HardwareFault",
+    "StorageFull",
+    "VerifyFailed",
+    "WrongState"
+  ],
+  "case_hotkeys": [
+    "CycleEq",
+    "CycleFilter",
+    "CycleCrossfeed",
+    "ToggleLimiter",
+    "ToggleMono",
+    "ToggleMute",
+    "ToggleLineOut",
+    "ToggleLoudness",
+    "ToggleCapsWord"
+  ],
+  "class_h_modes": [
+    "AdaptiveHv",
+    "LowPowerLv",
+    "FixedHv"
+  ],
+  "combo_result_empty": {
+    "Ok": null
+  },
+  "combo_result_ok": {
+    "Ok": {
+      "action": {
+        "Key": 41
+      },
+      "key_a": 13,
+      "key_b": 14
+    }
+  },
+  "combo_slot_update": {
+    "combo": {
+      "action": {
+        "Key": 41
+      },
+      "key_a": 13,
+      "key_b": 14
+    },
+    "slot": 0
+  },
+  "count_result": {
+    "Ok": 421
+  },
+  "crash_reasons": [
+    "Panic",
+    "Trap"
+  ],
+  "crossfeed_modes": [
+    "Off",
+    "Subtle",
+    "Natural",
+    "Strong"
+  ],
+  "dac_extras": {
+    "auto_uac_on_jack": true,
+    "class_h": "LowPowerLv",
+    "de_emphasis": false,
+    "high_pass_filter": true,
+    "line_out": false,
+    "stay_awake_while_active": true
+  },
+  "dac_filters": [
+    "FastLowLatency",
+    "FastPhaseCompensated",
+    "SlowLowLatency",
+    "SlowPhaseCompensated",
+    "NonOversampling"
+  ],
+  "device_info": {
+    "build": "ci-17",
+    "capabilities": {
+      "audio_in": false,
+      "audio_out": true,
+      "battery": false,
+      "developer": false,
+      "dsd": false,
+      "firmware_update": true,
+      "keymap": true,
+      "lab": false,
+      "layers": false,
+      "parametric_eq": true,
+      "persistent_settings": false
+    },
+    "chip_id": 1224819840,
+    "firmware": {
+      "major": 0,
+      "minor": 1,
+      "patch": 2
+    },
+    "flash_jedec": [
+      200,
+      101,
+      22
+    ],
+    "protocol": 1,
+    "running_from_ram": false,
+    "serial": [
+      83,
+      78,
+      48,
+      48,
+      48,
+      48,
+      48,
+      49
+    ]
+  },
+  "device_info_unset_serial": {
+    "build": "ci-17",
+    "capabilities": {
+      "audio_in": false,
+      "audio_out": false,
+      "battery": false,
+      "developer": false,
+      "dsd": false,
+      "firmware_update": false,
+      "keymap": true,
+      "lab": false,
+      "layers": true,
+      "parametric_eq": false,
+      "persistent_settings": false
+    },
+    "chip_id": 1224819840,
+    "firmware": {
+      "major": 0,
+      "minor": 1,
+      "patch": 2
+    },
+    "flash_jedec": [
+      200,
+      101,
+      22
+    ],
+    "protocol": 1,
+    "running_from_ram": true,
+    "serial": null
+  },
+  "diagnostics": {
+    "Ok": {
+      "boot_count": 7,
+      "dropped_events": 3,
+      "last_crash": {
+        "boot_count": 6,
+        "mcause": 2,
+        "mepc": 8000,
+        "message": "runtime fault",
+        "mtval": 4294967295,
+        "ra": 7680,
+        "reason": "Trap",
+        "sp": 1212160,
+        "stage": 496,
+        "uptime_ms": 5120
+      },
+      "safe_mode": true,
+      "stage": 512,
+      "uptime_ms": 830,
+      "watchdog_armed": false
+    }
+  },
+  "diagnostics_clean": {
+    "Ok": {
+      "boot_count": 1,
+      "dropped_events": 0,
+      "last_crash": null,
+      "safe_mode": false,
+      "stage": 496,
+      "uptime_ms": 0,
+      "watchdog_armed": false
+    }
+  },
+  "dsp": {
+    "crossfeed": "Natural",
+    "invert_phase": false,
+    "limiter": true,
+    "loudness": true,
+    "mono": false,
+    "swap_channels": false
+  },
+  "endpoints": [
+    "postcard-rpc/ping",
+    "device/info",
+    "system/diagnostics",
+    "system/telemetry",
+    "events/subscribe",
+    "audio/status",
+    "audio/output/get",
+    "audio/output/set",
+    "audio/dsp/get",
+    "audio/dsp/set",
+    "audio/dac-extras/get",
+    "audio/dac-extras/set",
+    "audio/impedance",
+    "audio/meters",
+    "audio/test-tone",
+    "audio/eq/get",
+    "audio/eq/set",
+    "audio/eq/select",
+    "audio/mic/get",
+    "audio/mic/set",
+    "keys/map/get",
+    "keys/map/set",
+    "keys/map/clear",
+    "keys/macro/get",
+    "keys/macro/set",
+    "keys/combo/get",
+    "keys/combo/set",
+    "keys/config/get",
+    "keys/config/set",
+    "keys/status",
+    "settings/save",
+    "settings/reset",
+    "system/slots",
+    "system/reboot",
+    "system/confirm",
+    "dev/unlock",
+    "dev/peek",
+    "dev/poke",
+    "dev/i2c",
+    "dev/uart/send",
+    "dev/fault",
+    "dev/flash/test",
+    "dev/audio"
+  ],
+  "eq_profile": {
+    "bands": [
+      {
+        "frequency_hz": 90,
+        "gain_centi_db": 450,
+        "kind": "LowShelf",
+        "q_milli": 707
+      },
+      {
+        "frequency_hz": 20,
+        "gain_centi_db": 0,
+        "kind": "HighPass",
+        "q_milli": 500
+      }
+    ],
+    "preamp_centi_db": -450
+  },
+  "eq_result_empty": {
+    "Ok": null
+  },
+  "eq_result_err": {
+    "Err": "InvalidArgument"
+  },
+  "eq_result_ok": {
+    "Ok": {
+      "bands": [
+        {
+          "frequency_hz": 90,
+          "gain_centi_db": 450,
+          "kind": "LowShelf",
+          "q_milli": 707
+        },
+        {
+          "frequency_hz": 20,
+          "gain_centi_db": 0,
+          "kind": "HighPass",
+          "q_milli": 500
+        }
+      ],
+      "preamp_centi_db": -450
+    }
+  },
+  "eq_selection_none": null,
+  "eq_selection_some": 3,
+  "eq_update": {
+    "profile": {
+      "bands": [
+        {
+          "frequency_hz": 90,
+          "gain_centi_db": 450,
+          "kind": "LowShelf",
+          "q_milli": 707
+        },
+        {
+          "frequency_hz": 20,
+          "gain_centi_db": 0,
+          "kind": "HighPass",
+          "q_milli": 500
+        }
+      ],
+      "preamp_centi_db": -450
+    },
+    "slot": 2
+  },
+  "event_mask": {
+    "audio": false,
+    "keys": true,
+    "log": true,
+    "uart": false
+  },
+  "event_names": [
+    "keys",
+    "log",
+    "audio",
+    "uart"
+  ],
+  "events_result": {
+    "Ok": {
+      "audio": false,
+      "keys": true,
+      "log": false,
+      "uart": false
+    }
+  },
+  "filter_kinds": [
+    "Peak",
+    "LowShelf",
+    "HighShelf",
+    "LowPass",
+    "HighPass"
+  ],
+  "i2c_nack": {
+    "Ok": {
+      "acked": false,
+      "data": []
+    }
+  },
+  "i2c_reply": {
+    "Ok": {
+      "acked": true,
+      "data": [
+        3,
+        65
+      ]
+    }
+  },
+  "i2c_request": {
+    "address": 51,
+    "bus": 0,
+    "read": 2,
+    "write": [
+      1
+    ]
+  },
+  "impedance_report": {
+    "Ok": {
+      "hp_status": 2,
+      "left_ac_ohms": 53,
+      "left_ohms": 49,
+      "left_status": 13,
+      "load_stat": 0,
+      "right_ac_ohms": 53,
+      "right_ohms": 49,
+      "right_status": 13
+    }
+  },
+  "jacks": [
+    "Empty",
+    "Headphones",
+    "Headset",
+    "Unknown"
+  ],
+  "key_config": {
+    "combo_term_ms": 50,
+    "one_shot_timeout_ms": 3000,
+    "tapping_term_ms": 200
+  },
+  "key_event": {
+    "action": {
+      "Key": 4
+    },
+    "layer": 0,
+    "pressed": true,
+    "source": 4
+  },
+  "keyboard_status": {
+    "active_layer": 0,
+    "bad_frames": 1,
+    "caps_word": true,
+    "controller_commands": 2,
+    "frames": 10,
+    "host_leds": 2,
+    "link_up": true
+  },
+  "keymap_chunk": {
+    "entries": [
+      {
+        "action": "Transparent",
+        "layer": 0,
+        "source": 4
+      },
+      {
+        "action": "Disabled",
+        "layer": 0,
+        "source": 5
+      },
+      {
+        "action": {
+          "Key": 4
+        },
+        "layer": 0,
+        "source": 6
+      },
+      {
+        "action": {
+          "Modifiers": 34
+        },
+        "layer": 0,
+        "source": 7
+      },
+      {
+        "action": {
+          "KeyWithModifiers": {
+            "modifiers": 1,
+            "usage": 5
+          }
+        },
+        "layer": 0,
+        "source": 8
+      },
+      {
+        "action": {
+          "Consumer": 233
+        },
+        "layer": 0,
+        "source": 9
+      },
+      {
+        "action": {
+          "LayerHold": 1
+        },
+        "layer": 0,
+        "source": 10
+      },
+      {
+        "action": {
+          "LayerToggle": 3
+        },
+        "layer": 0,
+        "source": 11
+      },
+      {
+        "action": {
+          "TapHoldMod": {
+            "hold_mods": 1,
+            "tap": 41
+          }
+        },
+        "layer": 0,
+        "source": 12
+      },
+      {
+        "action": {
+          "TapHoldLayer": {
+            "hold_layer": 1,
+            "tap": 44
+          }
+        },
+        "layer": 0,
+        "source": 13
+      },
+      {
+        "action": {
+          "OneShotMod": 2
+        },
+        "layer": 0,
+        "source": 14
+      },
+      {
+        "action": {
+          "Macro": 0
+        },
+        "layer": 0,
+        "source": 15
+      },
+      {
+        "action": {
+          "CaseControl": "CycleEq"
+        },
+        "layer": 0,
+        "source": 16
+      },
+      {
+        "action": "CapsWord",
+        "layer": 0,
+        "source": 17
+      },
+      {
+        "action": {
+          "Mouse": "LeftClick"
+        },
+        "layer": 0,
+        "source": 18
+      }
+    ],
+    "more": true
+  },
+  "keymap_page": {
+    "layer": 1,
+    "start": 0
+  },
+  "keys": {
+    "endpoints": {
+      "audio/dac-extras/get": {
+        "request": "a249624d753f427d",
+        "response": "d824a5129d703e5d"
+      },
+      "audio/dac-extras/set": {
+        "request": "3c177c41b9c166c9",
+        "response": "387090264b76a2b8"
+      },
+      "audio/dsp/get": {
+        "request": "ab56ef1f0467efee",
+        "response": "891b5e4d1e12f8ef"
+      },
+      "audio/dsp/set": {
+        "request": "9580d87bb96bbd5b",
+        "response": "c9788cb60c09f753"
+      },
+      "audio/eq/get": {
+        "request": "22d9eded2f7a0e5d",
+        "response": "a6a0e63c993b4edb"
+      },
+      "audio/eq/select": {
+        "request": "0b200becceb06458",
+        "response": "f41f9be0c6974207"
+      },
+      "audio/eq/set": {
+        "request": "fe650bd30068dbee",
+        "response": "3ef645f1333fc182"
+      },
+      "audio/impedance": {
+        "request": "e35293b8ac1c609a",
+        "response": "961e67fbc42db50e"
+      },
+      "audio/meters": {
+        "request": "150e3b78ec9f7bb1",
+        "response": "dee6bd05080d0f4a"
+      },
+      "audio/mic/get": {
+        "request": "ff766f64e31e156a",
+        "response": "0eb943c11d136d68"
+      },
+      "audio/mic/set": {
+        "request": "6019033a4f4ee489",
+        "response": "8da98b07ae414510"
+      },
+      "audio/output/get": {
+        "request": "052208f02b08bb01",
+        "response": "7db407db886c9d01"
+      },
+      "audio/output/set": {
+        "request": "0153be669b921984",
+        "response": "7f8acf6a070050b8"
+      },
+      "audio/status": {
+        "request": "31d7818016195545",
+        "response": "56748b5b0c198131"
+      },
+      "audio/test-tone": {
+        "request": "49a572077d992f62",
+        "response": "cc60d7caa8664e8c"
+      },
+      "dev/audio": {
+        "request": "4e6163d6329b0903",
+        "response": "a7447b748e4b79ac"
+      },
+      "dev/fault": {
+        "request": "a161750cf2ec2be0",
+        "response": "a225f4f741f4f5d4"
+      },
+      "dev/flash/test": {
+        "request": "534c62ec72cc389f",
+        "response": "49c162f0c9ec9d41"
+      },
+      "dev/i2c": {
+        "request": "8c366ba7513b7bca",
+        "response": "15d86f209c951533"
+      },
+      "dev/peek": {
+        "request": "06483c0a3add8d24",
+        "response": "cb2a787d2cdb3cf8"
+      },
+      "dev/poke": {
+        "request": "b7ea9d1a95b77985",
+        "response": "8fcb816f986a1436"
+      },
+      "dev/uart/send": {
+        "request": "40abc8d3b12fe292",
+        "response": "6b2b06e643e27fc3"
+      },
+      "dev/unlock": {
+        "request": "ac3e51b28ca35d12",
+        "response": "1c6732994790ffc7"
+      },
+      "device/info": {
+        "request": "3d5a1266f1947c1a",
+        "response": "09a94c8e0adea019"
+      },
+      "events/subscribe": {
+        "request": "b7f6e7c4b648df40",
+        "response": "9579dd7fc494abf3"
+      },
+      "keys/combo/get": {
+        "request": "f62e9dd1620d76db",
+        "response": "5aa240174ea7804f"
+      },
+      "keys/combo/set": {
+        "request": "f0e4033b4abb4b70",
+        "response": "c2f8ca6bfa8c71ad"
+      },
+      "keys/config/get": {
+        "request": "0807cc4f5e11c4ff",
+        "response": "967e8b24b863d2b9"
+      },
+      "keys/config/set": {
+        "request": "7ab9fdb5c535832e",
+        "response": "32846dc0d4c1adbd"
+      },
+      "keys/macro/get": {
+        "request": "aca7641819b487b3",
+        "response": "3f1152ddbbd0a9e3"
+      },
+      "keys/macro/set": {
+        "request": "5a42082862868d07",
+        "response": "70d0122d8d30409b"
+      },
+      "keys/map/clear": {
+        "request": "e733799aa31bdb6d",
+        "response": "e15cf7b6cf4da1e4"
+      },
+      "keys/map/get": {
+        "request": "2b9e53fabeb3175f",
+        "response": "546706eed071415d"
+      },
+      "keys/map/set": {
+        "request": "a03ca4c46487c421",
+        "response": "f29a18f3eac3f765"
+      },
+      "keys/status": {
+        "request": "bda21bca79c00feb",
+        "response": "42a8ca33e16b509f"
+      },
+      "postcard-rpc/ping": {
+        "request": "917c6cf224efede8",
+        "response": "917c6cf224efede8"
+      },
+      "postcard-rpc/schemas/get": {
+        "request": "20e82b18595f297a",
+        "response": "468f4e6d3ad19c23"
+      },
+      "settings/reset": {
+        "request": "ee564b7361deb0d0",
+        "response": "0b479e310691cd25"
+      },
+      "settings/save": {
+        "request": "9dc24a627f08fced",
+        "response": "434b354935abb807"
+      },
+      "system/confirm": {
+        "request": "a46df0824ee18aea",
+        "response": "f2a759bdb01a9634"
+      },
+      "system/diagnostics": {
+        "request": "a4596e12f2d6f74b",
+        "response": "7e6c1e8f6c74fac6"
+      },
+      "system/reboot": {
+        "request": "a709888021f171cc",
+        "response": "1f7ab377c087d9cb"
+      },
+      "system/slots": {
+        "request": "a7d9a1e33cbf5fcf",
+        "response": "f94fad241e4dd305"
+      },
+      "system/telemetry": {
+        "request": "992348f60bdfac89",
+        "response": "b1d82c38ee5173f7"
+      },
+      "update/begin": {
+        "request": "8668f79a0c34af3e",
+        "response": "d1eb7b4e482bd191"
+      },
+      "update/chunk": {
+        "request": "1117db5b992969b6",
+        "response": "f14a22d2de4858f7"
+      },
+      "update/finish": {
+        "request": "6b0f68a1716c0e5a",
+        "response": "2fbdd4922443076c"
+      }
+    },
+    "error": "35b333d568af659b",
+    "topics": {
+      "audio/status/changed": "0b7c0347e271b7f1",
+      "dev/uart/mirror": "4d0d3621b288b0a0",
+      "keys/events": "2b1a766bab313ee4",
+      "log": "b74a1b4ef5d4dc2b",
+      "postcard-rpc/logging": "14c77a72f04987a3",
+      "postcard-rpc/schema/data": "c6752c27435c6be7"
+    }
+  },
+  "limits": {
+    "audio_max_tone_hz": 20000,
+    "audio_min_level_centi_dbfs": -9600,
+    "audio_min_tone_hz": 20,
+    "byte_block": 64,
+    "combo_slots": 8,
+    "consumer_max_usage": 1023,
+    "crash_message_len": 96,
+    "eq_max_bands": 10,
+    "eq_max_gain_centi_db": 1800,
+    "eq_max_hz": 40000,
+    "eq_max_q_milli": 20000,
+    "eq_min_hz": 10,
+    "eq_min_preamp_centi_db": -2400,
+    "eq_min_q_milli": 100,
+    "eq_response_max_points": 2048,
+    "eq_slots": 4,
+    "i2c_max_address": 127,
+    "key_max_combo_term_ms": 200,
+    "key_max_one_shot_ms": 10000,
+    "key_max_tapping_term_ms": 1000,
+    "key_max_usage": 223,
+    "key_min_combo_term_ms": 15,
+    "key_min_one_shot_ms": 250,
+    "key_min_tapping_term_ms": 80,
+    "key_min_usage": 4,
+    "keymap_chunk": 32,
+    "layers": 4,
+    "log_line_len": 96,
+    "macro_max_steps": 16,
+    "macro_slots": 8,
+    "max_payload": 512,
+    "max_unlock_seconds": 600,
+    "meter_floor_centi_db": -9600,
+    "mic_max_gain_centi_db": 3000,
+    "output_max_balance_centi_db": 600,
+    "output_min_volume_limit_centi_db": -6000,
+    "protocol": 1,
+    "test_tone_max_hz": 12000,
+    "test_tone_max_ms": 5000,
+    "test_tone_min_hz": 100,
+    "test_tone_min_ms": 100,
+    "update_block": 256,
+    "word_block": 32
+  },
+  "log_levels": [
+    "Trace",
+    "Debug",
+    "Info",
+    "Warn",
+    "Error"
+  ],
+  "log_line": {
+    "level": "Warn",
+    "module": "usb",
+    "text": "reset",
+    "uptime_ms": 1234
+  },
+  "macro_result_empty": {
+    "Ok": null
+  },
+  "macro_result_ok": {
+    "Ok": {
+      "steps": [
+        {
+          "modifiers": 2,
+          "usage": 4
+        },
+        {
+          "modifiers": 0,
+          "usage": 5
+        }
+      ]
+    }
+  },
+  "macro_slot_update": {
+    "program": {
+      "steps": [
+        {
+          "modifiers": 2,
+          "usage": 4
+        },
+        {
+          "modifiers": 0,
+          "usage": 5
+        }
+      ]
+    },
+    "slot": 0
+  },
+  "mic": {
+    "gain_centi_db": 1200
+  },
+  "mouse_actions": [
+    "MoveUp",
+    "MoveDown",
+    "MoveLeft",
+    "MoveRight",
+    "LeftClick",
+    "RightClick",
+    "MiddleClick",
+    "WheelUp",
+    "WheelDown"
+  ],
+  "output": {
+    "balance_centi_db": 50,
+    "dsd_direct": true,
+    "filter": "SlowPhaseCompensated",
+    "volume_limit_centi_db": -300
+  },
+  "peek": {
+    "address": 1056768,
+    "words": 4
+  },
+  "poke": {
+    "address": 537985312,
+    "mask": 255,
+    "value": 165
+  },
+  "reboot_targets": [
+    "Normal",
+    "OtherSlot",
+    "BootRom"
+  ],
+  "settings_scopes": [
+    "All",
+    "Audio",
+    "Keymap"
+  ],
+  "slot_names": [
+    "A",
+    "B"
+  ],
+  "slot_states": [
+    "Empty",
+    "Trial",
+    "Confirmed",
+    "Invalid"
+  ],
+  "slots": {
+    "booted": "A",
+    "slots": [
+      {
+        "size": 40000,
+        "slot": "A",
+        "state": "Confirmed",
+        "version": {
+          "major": 0,
+          "minor": 1,
+          "patch": 2
+        }
+      },
+      {
+        "size": 0,
+        "slot": "B",
+        "state": "Empty",
+        "version": null
+      }
+    ]
+  },
+  "stages": [
+    {
+      "code": 0,
+      "name": "unknown"
+    },
+    {
+      "code": 1,
+      "name": "reset"
+    },
+    {
+      "code": 17,
+      "name": "stage0 journal"
+    },
+    {
+      "code": 18,
+      "name": "stage0 verified"
+    },
+    {
+      "code": 19,
+      "name": "stage0 loaded"
+    },
+    {
+      "code": 20,
+      "name": "stage0 jump"
+    },
+    {
+      "code": 21,
+      "name": "stage0 boot ROM"
+    },
+    {
+      "code": 22,
+      "name": "stage0 disarmed"
+    },
+    {
+      "code": 256,
+      "name": "firmware entry"
+    },
+    {
+      "code": 257,
+      "name": "firmware clocks"
+    },
+    {
+      "code": 260,
+      "name": "firmware UART"
+    },
+    {
+      "code": 261,
+      "name": "firmware USB"
+    },
+    {
+      "code": 263,
+      "name": "firmware storage"
+    },
+    {
+      "code": 496,
+      "name": "firmware running"
+    },
+    {
+      "code": 497,
+      "name": "firmware healthy"
+    },
+    {
+      "code": 512,
+      "name": "firmware safe mode"
+    }
+  ],
+  "stream_kinds": [
+    "Pcm",
+    "Dop",
+    "NativeDsd"
+  ],
+  "system_telemetry": {
+    "Ok": {
+      "analog_rails_on": false,
+      "audio_pll_enabled": false,
+      "cpu_mhz": 90,
+      "dcdc_active": true,
+      "dvdd_mv": 1400,
+      "jack_adc": 202,
+      "uptime_ms": 8400,
+      "wfi_percent_tenths": 998,
+      "wfi_wakeups": 420
+    }
+  },
+  "test_tone_request": {
+    "channel": "Both",
+    "duration_ms": 1500,
+    "frequency_hz": 1000,
+    "invert_right": true
+  },
+  "topic_messages": [
+    {
+      "data": {
+        "action": {
+          "Key": 4
+        },
+        "layer": 0,
+        "pressed": true,
+        "source": 4
+      },
+      "path": "keys/events"
+    },
+    {
+      "data": {
+        "level": "Warn",
+        "module": "usb",
+        "text": "reset",
+        "uptime_ms": 1234
+      },
+      "path": "log"
+    },
+    {
+      "data": {
+        "bytes": [
+          75,
+          1
+        ]
+      },
+      "path": "dev/uart/mirror"
+    }
+  ],
+  "topic_paths": [
+    "audio/status/changed",
+    "keys/events",
+    "log",
+    "dev/uart/mirror"
+  ],
+  "unlock": {
+    "seconds": 300
+  }
+}

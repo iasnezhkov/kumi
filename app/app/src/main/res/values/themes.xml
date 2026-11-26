@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0 -->
+<resources>
+    <style name="Theme.SnapCase" parent="android:Theme.Material.NoActionBar" />
+</resources>

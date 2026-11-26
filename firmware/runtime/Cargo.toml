@@ -1,0 +1,42 @@
+[package]
+name = "kumi-fw"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "kumi-fw"
+path = "src/main.rs"
+test = false
+bench = false
+
+[features]
+lab = []
+
+[dependencies]
+embassy-usb = { version = "0.6", default-features = false }
+embassy-usb-driver = "0.2.2"
+kumi-control = { path = "../../crates/kumi-control" }
+kumi-service = { path = "../../crates/kumi-service" }
+kumi-settings = { path = "../../crates/kumi-settings" }
+kumi-icd = { path = "../../crates/kumi-icd" }
+kumi-kbdlink = { path = "../../crates/kumi-kbdlink" }
+kumi-keymap = { path = "../../crates/kumi-keymap" }
+kumi-layout = { path = "../../crates/kumi-layout" }
+kumi-chip = { path = "../../crates/kumi-chip" }
+kumi-audio = { path = "../../crates/kumi-audio" }
+kumi-dsp = { path = "../../crates/kumi-dsp", features = ["rv32f"] }
+kumi-boot-core = { path = "../../crates/kumi-boot-core" }
+kumi-runtime-core = { path = "../../crates/kumi-runtime-core" }
+kumi-diag = { path = "../../crates/kumi-diag" }
+postcard.workspace = true
+postcard-rpc.workspace = true
+serde.workspace = true
+embedded-storage.workspace = true
+critical-section = { version = "1", features = ["restore-state-bool"] }
+heapless.workspace = true
+
+[build-dependencies]
+kumi-layout = { path = "../../crates/kumi-layout" }

@@ -1,0 +1,15 @@
+[package]
+name = "kumi-buxx"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+kumi-layout = { path = "../kumi-layout" }
+
+[dev-dependencies]
+ed25519-dalek.workspace = true
+kumi-boot-core = { path = "../kumi-boot-core" }
+kumi-install = { path = "../kumi-install" }
