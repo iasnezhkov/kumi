@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0 -->
+<locale-config xmlns:android="http://schemas.android.com/apk/res/android">
+    <locale android:name="en" />
+    <locale android:name="ru" />
+    <locale android:name="es" />
+    <locale android:name="ja" />
+    <locale android:name="de" />
+    <locale android:name="fr" />
+    <locale android:name="pt" />
+    <locale android:name="it" />
+    <locale android:name="uk" />
+    <locale android:name="pl" />
+    <locale android:name="zh-CN" />
+    <locale android:name="ko" />
+</locale-config>

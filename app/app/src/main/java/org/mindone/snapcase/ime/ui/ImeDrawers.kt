@@ -42,7 +42,6 @@ import org.mindone.snapcase.ime.EmojiCatalog
 import org.mindone.snapcase.ime.ImeUiState
 import org.mindone.snapcase.ime.LocaleVariations
 import org.mindone.snapcase.ime.StripDrawer
-import org.mindone.snapcase.ime.StripLang
 
 @Composable
 fun ImeDrawerPanel(
@@ -178,11 +177,7 @@ private fun SymbolsDrawer(state: ImeUiState, onInsertText: (String) -> Unit) {
         verticalArrangement = Arrangement.spacedBy(3.dp),
     ) {
         items(allSymbols) { symbol ->
-            val display = if (state.effectiveUpper && (state.lang == StripLang.RU || state.lang == StripLang.UK) && symbol.length == 1 && symbol[0].isLetter()) {
-                symbol.uppercase(java.util.Locale.ROOT)
-            } else {
-                symbol
-            }
+            val display = LocaleVariations.shiftExtra(symbol, state.effectiveUpper)
             Box(
                 modifier = Modifier
                     .height(30.dp)

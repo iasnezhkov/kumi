@@ -472,7 +472,12 @@
     <string name="settings_updates_title">Обновления прошивки</string>
     <string name="settings_check_releases">Проверять релизы GitHub</string>
     <string name="settings_check_releases_text">Искать новые релизы Kumi при запуске. Прошивка из приложения работает и без этого.</string>
-    <string name="settings_prereleases">Включая предварительные</string>
+    <string name="settings_update_channel">Канал обновлений</string>
+    <string name="settings_channel_stable">Стабильный</string>
+    <string name="settings_channel_dev">Для разработчиков (RC)</string>
+    <string name="settings_channel_stable_desc">Показываются только финальные релизы.</string>
+    <string name="settings_channel_dev_desc">Показывает кандидаты в релиз (-rc) с GitHub для проверки приложения и прошивки до выпуска.</string>
+    <string name="kumi_flash_action">Прошить</string>
     <string name="settings_repository">Репозиторий релизов (owner/name)</string>
     <string name="settings_demo_title">Демо</string>
     <string name="settings_demo_text">Все экраны без кейса: штатные экраны используют заготовленные ответы, Kumi — имитацию кейса.</string>
@@ -890,7 +895,8 @@
     <string name="ime_long_press_upper">Заглавная</string>
     <string name="ime_default_lang_label">Словарь по умолчанию</string>
     <string name="ime_dicts_title">Офлайн-словари</string>
-    <string name="ime_dicts_desc">Английский, русский, украинский (MIT FrequencyWords) и японский ромадзи→кана/кандзи (BSD-3-Clause Google Mozc) уже встроены офлайн. Остальные языки скачиваются и собираются на телефоне за секунду.</string>
+    <string name="ime_dicts_desc">Английский, русский, украинский (MIT FrequencyWords) и японский ромадзи→кана/кандзи (BSD-3-Clause Google Mozc) уже встроены офлайн. Испанский, немецкий, французский, итальянский, португальский, польский, нидерландский, турецкий, чешский, шведский, финский, румынский и венгерский скачиваются и собираются на устройстве (по 25 тыс. слов) за секунду.</string>
+    <string name="ime_langs_download_hint">Языки с пометкой ↓ скачивают словарь при включении.</string>
     <string name="ime_dict_bundled">Встроен (15 тыс. слов, офлайн)</string>
     <string name="ime_dict_downloaded">Скачан (25 тыс. слов, офлайн)</string>
     <string name="ime_dict_available">Доступен для загрузки (~25 тыс. слов)</string>

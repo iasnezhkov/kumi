@@ -114,6 +114,49 @@ class LogicTest {
     }
 
     @Test
+    fun devChannelOrdersAndUpgradesAcrossReleaseCandidatesToStable() {
+        assertTrue(ReleaseVersion.parse("1.0.1")!! < ReleaseVersion.parse("1.1.0-rc1")!!)
+        assertTrue(ReleaseVersion.parse("1.1.0-rc1")!! < ReleaseVersion.parse("1.1.0-rc2")!!)
+        assertTrue(ReleaseVersion.parse("1.1.0-rc2")!! < ReleaseVersion.parse("1.1.0-rc10")!!)
+        assertTrue(ReleaseVersion.parse("1.1.0-rc10")!! < ReleaseVersion.parse("1.1.0")!!)
+
+        val json = """
+            [
+              {"tag_name":"v1.1.0-rc2","name":"Kumi 1.1.0-rc2","body":"rc2","draft":false,"prerelease":true,"published_at":"2026-11-27T02:00:00Z",
+               "assets":[{"name":"kumi-1.1.0-rc2.kumi","size":82000,"browser_download_url":"https://github.com/iasnezhkov/kumi/releases/download/v1.1.0-rc2/kumi-1.1.0-rc2.kumi"},
+                         {"name":"kumi-app-1.1.0-rc2.apk","size":19000000,"browser_download_url":"https://github.com/iasnezhkov/kumi/releases/download/v1.1.0-rc2/kumi-app-1.1.0-rc2.apk"}]},
+              {"tag_name":"v1.1.0-rc1","name":"Kumi 1.1.0-rc1","body":"rc1","draft":false,"prerelease":true,"published_at":"2026-11-27T01:00:00Z",
+               "assets":[{"name":"kumi-1.1.0-rc1.kumi","size":81000,"browser_download_url":"https://github.com/iasnezhkov/kumi/releases/download/v1.1.0-rc1/kumi-1.1.0-rc1.kumi"},
+                         {"name":"kumi-app-1.1.0-rc1.apk","size":18900000,"browser_download_url":"https://github.com/iasnezhkov/kumi/releases/download/v1.1.0-rc1/kumi-app-1.1.0-rc1.apk"}]},
+              {"tag_name":"v1.0.1","name":"Kumi 1.0.1","body":"stable","draft":false,"prerelease":false,"published_at":"2026-11-26T12:00:00Z",
+               "assets":[{"name":"kumi-1.0.1.kumi","size":80000,"browser_download_url":"https://github.com/iasnezhkov/kumi/releases/download/v1.0.1/kumi-1.0.1.kumi"},
+                         {"name":"kumi-app-1.0.1.apk","size":18000000,"browser_download_url":"https://github.com/iasnezhkov/kumi/releases/download/v1.0.1/kumi-app-1.0.1.apk"}]}
+            ]
+        """.trimIndent()
+
+        val stableApps = AppReleaseAsset.parseReleases(json, includePrereleases = false)
+        assertEquals(listOf("1.0.1"), stableApps.map { it.displayVersion })
+        assertNull(FirmwareCatalog.appUpdateFor("1.0.1", stableApps))
+
+        val devApps = AppReleaseAsset.parseReleases(json, includePrereleases = true)
+        assertEquals(listOf("1.1.0-rc2", "1.1.0-rc1", "1.0.1"), devApps.map { it.displayVersion })
+        assertEquals("1.1.0-rc2", FirmwareCatalog.appUpdateFor("1.0.1", devApps)?.displayVersion)
+        assertEquals("1.1.0-rc2", FirmwareCatalog.appUpdateFor("1.1.0-rc1", devApps)?.displayVersion)
+        assertNull(FirmwareCatalog.appUpdateFor("1.1.0-rc2", devApps))
+        assertNull(FirmwareCatalog.appUpdateFor("1.1.0", devApps))
+
+        val rc1Pkg = FirmwarePackage(FirmwareSource.RELEASE, "kumi-1.1.0-rc1.kumi", PackageInfo(KumiVersion(1, 1, 0), 100100001, "1.1.0-rc1-aaa1111", 1, 1, "01"), File("rc1.kumi"))
+        val rc2Pkg = FirmwarePackage(FirmwareSource.RELEASE, "kumi-1.1.0-rc2.kumi", PackageInfo(KumiVersion(1, 1, 0), 100100002, "1.1.0-rc2-bbb2222", 1, 1, "02"), File("rc2.kumi"))
+        val finalPkg = FirmwarePackage(FirmwareSource.RELEASE, "kumi-1.1.0.kumi", PackageInfo(KumiVersion(1, 1, 0), 100100099, "1.1.0-ccc3333", 1, 1, "03"), File("final.kumi"))
+        assertEquals("1.1.0-rc1", rc1Pkg.displayVersion)
+        assertEquals("1.1.0", finalPkg.displayVersion)
+        assertTrue(FirmwareCatalog.isPackageNewerThan(rc2Pkg, KumiVersion(1, 1, 0), "1.1.0-rc1-aaa1111"))
+        assertTrue(FirmwareCatalog.isPackageNewerThan(finalPkg, KumiVersion(1, 1, 0), "1.1.0-rc2-bbb2222"))
+        assertFalse(FirmwareCatalog.isPackageNewerThan(rc2Pkg, KumiVersion(1, 1, 0), "1.1.0-ccc3333"))
+        assertFalse(FirmwareCatalog.isPackageNewerThan(rc1Pkg, KumiVersion(1, 1, 0), "1.1.0-rc1-aaa1111"))
+    }
+
+    @Test
     fun combinedReleaseParsesDistinctFirmwareAndAppAssetVersions() {
         assertEquals(KumiVersion(0, 1, 28), KumiVersion.extractFromFilename("kumi-0.1.28.kumi"))
         assertEquals(KumiVersion(0, 2, 1), KumiVersion.extractFromFilename("kumi-app-0.2.1-release.apk"))

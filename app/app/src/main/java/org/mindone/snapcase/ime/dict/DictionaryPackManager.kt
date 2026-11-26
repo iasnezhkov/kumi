@@ -147,6 +147,19 @@ class DictionaryPackManager(private val context: Context) {
             LanguagePackInfo("ru", "Русский", cyrillic = true, bundled = true),
             LanguagePackInfo("uk", "Українська", cyrillic = true, bundled = true),
             LanguagePackInfo("ja", "日本語", bundled = true, japanese = true),
+            LanguagePackInfo("es", "Español"),
+            LanguagePackInfo("de", "Deutsch"),
+            LanguagePackInfo("fr", "Français"),
+            LanguagePackInfo("it", "Italiano"),
+            LanguagePackInfo("pt", "Português"),
+            LanguagePackInfo("pl", "Polski"),
+            LanguagePackInfo("nl", "Nederlands"),
+            LanguagePackInfo("tr", "Türkçe"),
+            LanguagePackInfo("cs", "Čeština"),
+            LanguagePackInfo("sv", "Svenska"),
+            LanguagePackInfo("fi", "Suomi"),
+            LanguagePackInfo("ro", "Română"),
+            LanguagePackInfo("hu", "Magyar"),
         )
     }
 }

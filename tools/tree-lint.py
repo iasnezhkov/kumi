@@ -18,7 +18,7 @@ ALLOWED_BINARIES = {
     "app/app/src/main/assets/dict/ja.snapja",
 }
 CYRILLIC_ALLOWED_PREFIXES = (
-    "app/app/src/main/res/values-ru/",
+    "app/app/src/main/res/values-",
     "app/app/src/main/java/org/mindone/snapcase/ime/",
     "app/app/src/test/java/org/mindone/snapcase/ime/",
     "app/app/src/main/assets/dict/",

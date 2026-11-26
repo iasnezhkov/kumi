@@ -2,13 +2,32 @@
 package org.mindone.snapcase.ime
 
 import android.view.KeyEvent
+import java.util.Locale
 
-enum class StripLang(val code: String, val label: String) {
+enum class StripScript { LATIN, CYRILLIC, KANA }
+
+enum class StripLang(val code: String, val label: String, val script: StripScript = StripScript.LATIN) {
     EN("en", "EN"),
-    RU("ru", "RU"),
-    UK("uk", "UK"),
-    JA("ja", "JA"),
+    RU("ru", "RU", StripScript.CYRILLIC),
+    UK("uk", "UK", StripScript.CYRILLIC),
+    JA("ja", "JA", StripScript.KANA),
+    ES("es", "ES"),
+    DE("de", "DE"),
+    FR("fr", "FR"),
+    IT("it", "IT"),
+    PT("pt", "PT"),
+    PL("pl", "PL"),
+    NL("nl", "NL"),
+    TR("tr", "TR"),
+    CS("cs", "CS"),
+    SV("sv", "SV"),
+    FI("fi", "FI"),
+    RO("ro", "RO"),
+    HU("hu", "HU"),
     ;
+
+    val isLatin: Boolean get() = script == StripScript.LATIN
+    val isCyrillic: Boolean get() = script == StripScript.CYRILLIC
 
     fun next(): StripLang = entries[(ordinal + 1) % entries.size]
 
@@ -60,6 +79,81 @@ object LocaleVariations {
         '-' to listOf("—", "–", "_"),
     )
 
+    private val perLang: Map<StripLang, Map<Char, List<String>>> = mapOf(
+        StripLang.ES to mapOf(
+            'a' to listOf("á"), 'e' to listOf("é", "€"), 'i' to listOf("í"), 'o' to listOf("ó"),
+            'u' to listOf("ú", "ü"), 'n' to listOf("ñ"),
+            '.' to listOf(",", "?", "¿", "!", "¡", "…", "«", "»"),
+            '?' to listOf("¿"), '!' to listOf("¡"),
+        ),
+        StripLang.DE to mapOf(
+            'a' to listOf("ä"), 'o' to listOf("ö"), 'u' to listOf("ü"), 's' to listOf("ß"),
+            'e' to listOf("€", "é"),
+            '.' to listOf(",", "?", "!", "…", "—", "„", "“", "§"),
+        ),
+        StripLang.FR to mapOf(
+            'e' to listOf("é", "è", "ê", "ë", "€"), 'a' to listOf("à", "â", "æ"), 'c' to listOf("ç"),
+            'i' to listOf("î", "ï"), 'o' to listOf("ô", "œ"), 'u' to listOf("ù", "û", "ü"), 'y' to listOf("ÿ"),
+            '.' to listOf(",", "?", "!", "…", "«", "»", ";", ":"),
+        ),
+        StripLang.IT to mapOf(
+            'a' to listOf("à"), 'e' to listOf("è", "é", "€"), 'i' to listOf("ì"), 'o' to listOf("ò", "ó"),
+            'u' to listOf("ù"),
+            '.' to listOf(",", "?", "!", "…", "«", "»", ";", ":"),
+        ),
+        StripLang.PT to mapOf(
+            'a' to listOf("ã", "á", "â", "à"), 'o' to listOf("õ", "ó", "ô"), 'c' to listOf("ç"),
+            'e' to listOf("é", "ê", "€"), 'i' to listOf("í"), 'u' to listOf("ú", "ü"),
+        ),
+        StripLang.PL to mapOf(
+            'a' to listOf("ą"), 'c' to listOf("ć"), 'e' to listOf("ę", "€"), 'l' to listOf("ł"),
+            'n' to listOf("ń"), 'o' to listOf("ó"), 's' to listOf("ś"), 'z' to listOf("ż", "ź"),
+        ),
+        StripLang.NL to mapOf(
+            'e' to listOf("é", "ë", "è", "€"), 'i' to listOf("ï", "í"), 'o' to listOf("ö", "ó"),
+            'a' to listOf("ä", "á"), 'u' to listOf("ü", "ú"),
+        ),
+        StripLang.TR to mapOf(
+            'c' to listOf("ç"), 'g' to listOf("ğ"), 'i' to listOf("ı", "İ"), 'o' to listOf("ö"),
+            's' to listOf("ş"), 'u' to listOf("ü"),
+        ),
+        StripLang.CS to mapOf(
+            'a' to listOf("á"), 'c' to listOf("č"), 'd' to listOf("ď"), 'e' to listOf("é", "ě"),
+            'i' to listOf("í"), 'n' to listOf("ň"), 'o' to listOf("ó"), 'r' to listOf("ř"),
+            's' to listOf("š"), 't' to listOf("ť"), 'u' to listOf("ú", "ů"), 'y' to listOf("ý"),
+            'z' to listOf("ž"),
+        ),
+        StripLang.SV to mapOf(
+            'a' to listOf("å", "ä"), 'o' to listOf("ö"), 'e' to listOf("é", "€"),
+        ),
+        StripLang.FI to mapOf(
+            'a' to listOf("ä", "å"), 'o' to listOf("ö"), 's' to listOf("š"), 'z' to listOf("ž"),
+        ),
+        StripLang.RO to mapOf(
+            'a' to listOf("ă", "â"), 'i' to listOf("î"), 's' to listOf("ș", "ş"), 't' to listOf("ț", "ţ"),
+        ),
+        StripLang.HU to mapOf(
+            'a' to listOf("á"), 'e' to listOf("é"), 'i' to listOf("í"), 'o' to listOf("ó", "ö", "ő"),
+            'u' to listOf("ú", "ü", "ű"),
+        ),
+    )
+
+    private val extraRows: Map<StripLang, List<String>> = mapOf(
+        StripLang.ES to listOf("ñ", "á", "é", "í", "ó", "ú", "ü", "¡", "¿", "«", "»", "€"),
+        StripLang.DE to listOf("ä", "ö", "ü", "ß", "„", "“", "€", "§", "—", "…"),
+        StripLang.FR to listOf("é", "è", "ê", "ë", "à", "â", "ç", "ù", "û", "ô", "œ", "«", "»"),
+        StripLang.IT to listOf("à", "è", "é", "ì", "ò", "ó", "ù", "€", "«", "»"),
+        StripLang.PT to listOf("ã", "õ", "ç", "á", "é", "í", "ó", "ú", "â", "ê", "ô", "à"),
+        StripLang.PL to listOf("ą", "ć", "ę", "ł", "ń", "ó", "ś", "ź", "ż"),
+        StripLang.NL to listOf("é", "è", "ë", "ï", "ó", "ö", "ü", "€", "—", "…"),
+        StripLang.TR to listOf("ç", "ğ", "ı", "İ", "ö", "ş", "ü", "₺", "€"),
+        StripLang.CS to listOf("á", "č", "ď", "é", "ě", "í", "ň", "ó", "ř", "š", "ť", "ú", "ů", "ý", "ž"),
+        StripLang.SV to listOf("å", "ä", "ö", "é", "€", "—", "…"),
+        StripLang.FI to listOf("ä", "ö", "å", "š", "ž", "€", "—", "…"),
+        StripLang.RO to listOf("ă", "â", "î", "ș", "ț", "„", "”", "€", "—", "…"),
+        StripLang.HU to listOf("á", "é", "í", "ó", "ö", "ő", "ú", "ü", "ű", "„", "”", "€"),
+    )
+
     val ruExtraRow: List<String> = listOf("ё", "ъ", "э", "х", "ж", "б", "ю", "№", "«", "»", "—", "…")
     val ukExtraRow: List<String> = listOf("ґ", "є", "і", "ї", "х", "ж", "б", "ю", "'", "«", "»", "—")
     val jaExtraRow: List<String> = listOf("。", "、", "ー", "「", "」", "・", "？", "！", "〜", "（", "）", "…")
@@ -108,8 +202,13 @@ object LocaleVariations {
             StripLang.RU -> russian[lower] ?: latin[lower]
             StripLang.UK -> ukrainian[lower] ?: russian[lower] ?: latin[lower]
             StripLang.EN, StripLang.JA -> latin[lower]
+            else -> {
+                val specific = perLang[lang]?.get(lower).orEmpty()
+                val generic = latin[lower].orEmpty()
+                (specific + generic).distinct().ifEmpty { null }
+            }
         } ?: return emptyList()
-        return if (upper) base.map { it.uppercase() } else base
+        return if (upper) base.map { shiftExtra(it, true) } else base
     }
 
     fun extrasFor(lang: StripLang): List<String> = when (lang) {
@@ -117,5 +216,11 @@ object LocaleVariations {
         StripLang.UK -> ukExtraRow
         StripLang.JA -> jaExtraRow
         StripLang.EN -> commonSymbols.take(12)
+        else -> extraRows[lang] ?: commonSymbols.take(12)
+    }
+
+    fun shiftExtra(symbol: String, upper: Boolean): String {
+        if (!upper || symbol.length != 1 || !symbol[0].isLetter() || symbol[0] == 'ß') return symbol
+        return symbol.uppercase(Locale.ROOT)
     }
 }

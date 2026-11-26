@@ -29,10 +29,16 @@ and bit-for-bit return to stock through the immutable boot ROM service mode (`06
   and Stay-awake toggle.
 - **Kumi Strip IME** — compact 46 dp bottom autocomplete bar for physical keyboard typing (works on
   Android 15–17 without shifting the app viewport), built-in physical layout translator
-  (`EN` / `RU` / `UK` / `JA` via `Ctrl+Space`, `Shift+Space`, `Alt+Shift`, or strip tap), bundled
-  offline MIT FrequencyWords dictionaries (EN/RU/UK) and BSD-3-Clause Google Mozc Japanese
-  Romaji → Hiragana/Katakana/Kanji converter (all refreshable on demand), emoji search, clipboard
-  history, text snippets, and Meta+letter Speed Keys.
+  (`EN` / `RU` / `UK` / `JA` built in, plus `ES` / `DE` / `FR` / `IT` / `PT` / `PL` / `NL` / `TR` /
+  `CS` / `SV` / `FI` / `RO` / `HU` with on-device downloadable 25k-word dictionaries, switched via
+  `Ctrl+Space`, `Shift+Space`, `Alt+Shift`, or strip tap), accent-aware suggestions and
+  language-specific quick extras and long-press variants, bundled offline MIT FrequencyWords
+  dictionaries (EN/RU/UK) and BSD-3-Clause Google Mozc Japanese Romaji → Hiragana/Katakana/Kanji
+  converter (all refreshable on demand), emoji search, clipboard history, text snippets, and
+  Meta+letter Speed Keys.
+- **App UI languages** — English, Russian, Spanish, Japanese, German, French, Portuguese, Italian,
+  Ukrainian, Polish, Simplified Chinese and Korean, selectable per app in Android system settings.
+  `python3 -I tools/check_l10n.py` verifies key and placeholder parity of every `values-*` file.
 - **Simulated demo mode** — runs the full install, update, audio, EQ, keymap, and return-to-stock
   code paths in-process without a physical case attached.
 

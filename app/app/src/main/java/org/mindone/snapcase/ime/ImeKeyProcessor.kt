@@ -998,8 +998,8 @@ class ImeKeyProcessor(
         val lower = ch.lowercaseChar()
         when {
             lower in UKRAINIAN_ONLY -> lang = StripLang.UK
-            lower in '\u0400'..'\u04FF' && lang == StripLang.EN -> lang = StripLang.RU
-            lower in 'a'..'z' && lang != StripLang.EN -> lang = StripLang.EN
+            lower in '\u0400'..'\u04FF' && lang.isLatin -> lang = StripLang.RU
+            lower in 'a'..'z' && lang.isCyrillic -> lang = config.enabledLangs.firstOrNull { it.isLatin } ?: StripLang.EN
         }
     }
 

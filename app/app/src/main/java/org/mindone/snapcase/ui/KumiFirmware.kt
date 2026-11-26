@@ -139,15 +139,17 @@ fun KumiFirmwareScreen(
     val blocked by installBlocked.collectAsStateWithLifecycle()
     val settings by prefs.settings.collectAsStateWithLifecycle()
     val installed = state.device?.firmware
+    val installedBuild = state.device?.build
+    val devChannel = settings.includePrereleases
     val appUpdate = remember(firmware.appReleases) { firmware.appUpdate(BuildConfig.VERSION_NAME) }
-    val fwUpdateVersion = remember(installed, firmware.packages, firmware.releases, state.ramOnly) {
+    val fwUpdate = remember(installed, installedBuild, firmware.packages, firmware.releases, state.ramOnly) {
         if (installed != null && !state.ramOnly) {
-            FirmwareCatalog.latestFirmwareUpdateVersion(installed, firmware.packages, firmware.releases)
+            FirmwareCatalog.latestFirmwareUpdate(installed, firmware.packages, firmware.releases, installedBuild)
         } else {
             null
         }
     }
-    val hasUpdateBadge = appUpdate != null || fwUpdateVersion != null
+    val hasUpdateBadge = appUpdate != null || fwUpdate != null
     var confirmInstall by remember { mutableStateOf<FirmwarePackage?>(null) }
     var confirmRestore by remember { mutableStateOf(false) }
     var changelog by remember { mutableStateOf<ChangelogPreview?>(null) }
@@ -317,6 +319,8 @@ fun KumiFirmwareScreen(
                             catalog = catalog,
                             kind = kind,
                             installed = installed,
+                            installedBuild = installedBuild,
+                            devChannel = devChannel,
                             ramOnly = state.ramOnly,
                             busy = false,
                             blocked = blocked,
@@ -397,6 +401,8 @@ fun KumiFirmwareScreen(
                             catalog = catalog,
                             kind = kind,
                             installed = installed,
+                            installedBuild = installedBuild,
+                            devChannel = devChannel,
                             ramOnly = state.ramOnly,
                             busy = false,
                             blocked = blocked,
@@ -515,6 +521,8 @@ fun KumiFirmwareScreen(
                                 catalog = catalog,
                                 kind = kind,
                                 installed = installed,
+                                installedBuild = installedBuild,
+                                devChannel = devChannel,
                                 ramOnly = state.ramOnly,
                                 busy = false,
                                 blocked = blocked,
@@ -615,6 +623,8 @@ private fun UpdatesCenterCard(
     catalog: ReleaseCatalog,
     kind: CaseKind,
     installed: KumiVersion?,
+    installedBuild: String?,
+    devChannel: Boolean,
     ramOnly: Boolean,
     busy: Boolean,
     blocked: Boolean,
@@ -630,11 +640,19 @@ private fun UpdatesCenterCard(
     val resources = LocalResources.current
     val appUpdate = remember(firmware.appReleases) { firmware.appUpdate(BuildConfig.VERSION_NAME) }
     val latestApp = firmware.appReleases.firstOrNull()
+    val otherAppReleases = remember(firmware.appReleases, appUpdate, devChannel) {
+        if (!devChannel) emptyList()
+        else firmware.appReleases.filter { it.asset != appUpdate?.asset }
+    }
     val downloadableFw = remember(firmware.packages, firmware.releases) {
         val downloadedNames = firmware.packages.map { it.name }.toSet()
         firmware.releases.filter { it.asset !in downloadedNames }
     }
-    val sortedPackages = remember(firmware.packages) { firmware.packages.sortedByDescending { it.version } }
+    val sortedPackages = remember(firmware.packages) {
+        firmware.packages.sortedWith(
+            compareByDescending<FirmwarePackage> { it.releaseVersion }.thenByDescending { it.info.generation },
+        )
+    }
     val installable = kind == CaseKind.STOCK || kind == CaseKind.SERVICE || (kind == CaseKind.KUMI && ramOnly)
 
     SectionCard(
@@ -648,7 +666,23 @@ private fun UpdatesCenterCard(
         },
     ) {
         if (!demo) {
-            Note(stringResource(R.string.kumi_releases_repo, repository.ifBlank { BuildConfig.KUMI_RELEASES_REPO }))
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Note(
+                    stringResource(R.string.kumi_releases_repo, repository.ifBlank { BuildConfig.KUMI_RELEASES_REPO }),
+                    modifier = Modifier.weight(1f),
+                )
+                if (devChannel) {
+                    StatusPill(
+                        text = stringResource(R.string.settings_channel_dev),
+                        containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+                    )
+                }
+            }
         }
         if (firmware.checking) LinearProgressIndicator(Modifier.fillMaxWidth())
         firmware.releaseError?.let { Note(it, MaterialTheme.colorScheme.error) }
@@ -710,6 +744,34 @@ private fun UpdatesCenterCard(
                     }
                 }
             }
+            if (otherAppReleases.isNotEmpty()) {
+                otherAppReleases.forEach { asset ->
+                    DevAppReleaseRow(
+                        asset = asset,
+                        downloaded = firmware.downloadedApks[asset.asset],
+                        downloading = firmware.downloadingApp == asset.asset,
+                        progress = firmware.appDownloadProgress,
+                        anyDownloading = firmware.downloadingApp != null,
+                        onDownload = { catalog.downloadApp(asset, onReady = onInstallApk) },
+                        onInstall = onInstallApk,
+                        onShowChangelogWithCta = { label ->
+                            val cached = firmware.downloadedApks[asset.asset]
+                            onShowChangelog(
+                                ChangelogPreview(
+                                    title = asset.title,
+                                    subtitle = releaseSubtitle(resources, asset.published, asset.size, asset.prerelease),
+                                    notes = asset.notes,
+                                    primaryLabel = label,
+                                    onPrimary = {
+                                        if (cached != null) onInstallApk(cached)
+                                        else catalog.downloadApp(asset, onReady = onInstallApk)
+                                    },
+                                ),
+                            )
+                        },
+                    )
+                }
+            }
             HorizontalDivider()
         }
 
@@ -725,6 +787,8 @@ private fun UpdatesCenterCard(
                 pkg = pkg,
                 kind = kind,
                 installed = installed,
+                installedBuild = installedBuild,
+                devChannel = devChannel,
                 installable = installable,
                 busy = busy,
                 blocked = blocked,
@@ -734,7 +798,7 @@ private fun UpdatesCenterCard(
                     {
                         onShowChangelog(
                             ChangelogPreview(
-                                title = "Kumi ${pkg.version}",
+                                title = "Kumi ${pkg.displayVersion}",
                                 subtitle = pkg.info.build,
                                 notes = notes,
                             ),
@@ -768,6 +832,58 @@ private fun UpdatesCenterCard(
 }
 
 @Composable
+private fun DevAppReleaseRow(
+    asset: AppReleaseAsset,
+    downloaded: File?,
+    downloading: Boolean,
+    progress: Float?,
+    anyDownloading: Boolean,
+    onDownload: () -> Unit,
+    onInstall: (File) -> Unit,
+    onShowChangelogWithCta: (String) -> Unit,
+) {
+    val ctaLabel = stringResource(if (downloaded != null) R.string.kumi_updates_install_now else R.string.kumi_updates_download_install)
+    val isCurrent = asset.displayVersion.equals(BuildConfig.VERSION_NAME, ignoreCase = true)
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(asset.title, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+            if (asset.prerelease) {
+                EvidenceLabel(stringResource(R.string.kumi_prerelease))
+            }
+        }
+        Note(
+            listOfNotNull(
+                asset.displayVersion,
+                stringResource(R.string.kumi_updates_size_mb, asset.size / (1024.0 * 1024.0)),
+                asset.published.take(10).takeIf { it.isNotBlank() },
+            ).joinToString(" · "),
+        )
+        if (downloading) {
+            val pct = ((progress ?: 0f) * 100f).toInt().coerceIn(0, 100)
+            Text(stringResource(R.string.kumi_updates_downloading, pct), style = MaterialTheme.typography.bodySmall)
+            if (progress != null) LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
+            else LinearProgressIndicator(Modifier.fillMaxWidth())
+        } else {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (isCurrent) {
+                    Note(stringResource(R.string.kumi_installed_now))
+                } else {
+                    FilledTonalButton(
+                        onClick = { if (downloaded != null) onInstall(downloaded) else onDownload() },
+                        enabled = !anyDownloading,
+                    ) { Text(ctaLabel) }
+                }
+                if (asset.notes.isNotBlank()) {
+                    OutlinedButton(onClick = { onShowChangelogWithCta(ctaLabel) }) {
+                        Text(stringResource(R.string.kumi_updates_changelog))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun AppReleaseRow(
     asset: AppReleaseAsset,
     downloaded: File?,
@@ -779,7 +895,7 @@ private fun AppReleaseRow(
     onShowChangelogWithCta: (String) -> Unit,
 ) {
     val ctaLabel = stringResource(if (downloaded != null) R.string.kumi_updates_install_now else R.string.kumi_updates_download_install)
-    val targetVersion = asset.version?.toString() ?: asset.tag
+    val targetVersion = asset.displayVersion
     Surface(
         color = MaterialTheme.colorScheme.primaryContainer,
         contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -831,6 +947,8 @@ private fun FirmwarePackageRow(
     pkg: FirmwarePackage,
     kind: CaseKind,
     installed: KumiVersion?,
+    installedBuild: String?,
+    devChannel: Boolean,
     installable: Boolean,
     busy: Boolean,
     blocked: Boolean,
@@ -838,11 +956,13 @@ private fun FirmwarePackageRow(
     onUpdate: () -> Unit,
     onChangelog: (() -> Unit)?,
 ) {
-    val isNewer = kind == CaseKind.KUMI && installed != null && pkg.version > installed
+    val isNewer = kind == CaseKind.KUMI && installed != null && FirmwareCatalog.isPackageNewerThan(pkg, installed, installedBuild)
+    val isSameRunning = kind == CaseKind.KUMI && installed == pkg.version &&
+        (installedBuild.isNullOrBlank() || installedBuild == pkg.info.build)
     val content: @Composable () -> Unit = {
         Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(stringResource(R.string.kumi_name_version, pkg.version.toString()), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+                Text(stringResource(R.string.kumi_name_version, pkg.displayVersion), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
                 if (isNewer) {
                     StatusPill(
                         text = stringResource(R.string.kumi_updates_badge_new),
@@ -852,15 +972,24 @@ private fun FirmwarePackageRow(
                 }
                 EvidenceLabel(stringResource(sourceName(pkg.source)))
             }
-            Note(listOf(stringResource(R.string.kumi_package_size, (pkg.info.stage0 + pkg.info.image) / 1024), stringResource(R.string.kumi_verified)).joinToString(" · "))
+            Note(
+                listOfNotNull(
+                    stringResource(R.string.kumi_package_size, (pkg.info.stage0 + pkg.info.image) / 1024),
+                    stringResource(R.string.kumi_verified),
+                    pkg.info.build.takeIf { devChannel && it.isNotBlank() },
+                ).joinToString(" · "),
+            )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 when {
                     installable && blocked -> Note(stringResource(R.string.kumi_install_not_enabled), MaterialTheme.colorScheme.error)
                     installable -> Button(onClick = onInstall, enabled = !busy) { Text(stringResource(R.string.kumi_install_action)) }
                     isNewer -> Button(onClick = onUpdate, enabled = !busy) {
-                        Text(stringResource(R.string.kumi_update_to, pkg.version.toString()))
+                        Text(stringResource(R.string.kumi_update_to, pkg.displayVersion))
                     }
-                    kind == CaseKind.KUMI && installed == pkg.version -> Note(stringResource(R.string.kumi_installed_now))
+                    isSameRunning -> Note(stringResource(R.string.kumi_installed_now))
+                    devChannel && kind == CaseKind.KUMI -> FilledTonalButton(onClick = onUpdate, enabled = !busy) {
+                        Text(stringResource(R.string.kumi_flash_action))
+                    }
                     else -> Unit
                 }
                 if (onChangelog != null) {

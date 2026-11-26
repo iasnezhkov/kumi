@@ -209,7 +209,7 @@ private fun AppUpdateBannerCard(asset: AppReleaseAsset, onOpen: () -> Unit) {
             Icon(painterResource(R.drawable.ic_bolt), contentDescription = null, modifier = Modifier.size(22.dp))
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
-                    stringResource(R.string.kumi_updates_app_available, asset.version?.toString() ?: asset.tag),
+                    stringResource(R.string.kumi_updates_app_available, asset.displayVersion),
                     style = MaterialTheme.typography.titleSmall,
                 )
                 Text(

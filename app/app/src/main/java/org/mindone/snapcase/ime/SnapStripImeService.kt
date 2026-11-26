@@ -424,12 +424,8 @@ class SnapStripImeService : InputMethodService() {
     override fun onCurrentInputMethodSubtypeChanged(newSubtype: InputMethodSubtype?) {
         super.onCurrentInputMethodSubtypeChanged(newSubtype)
         val locale = newSubtype?.locale.orEmpty()
-        when {
-            locale.startsWith("ru", ignoreCase = true) -> processor.setLanguage(StripLang.RU, inputTarget)
-            locale.startsWith("uk", ignoreCase = true) -> processor.setLanguage(StripLang.UK, inputTarget)
-            locale.startsWith("ja", ignoreCase = true) -> processor.setLanguage(StripLang.JA, inputTarget)
-            locale.startsWith("en", ignoreCase = true) -> processor.setLanguage(StripLang.EN, inputTarget)
-        }
+        StripLang.entries.firstOrNull { locale.startsWith(it.code, ignoreCase = true) }
+            ?.let { processor.setLanguage(it, inputTarget) }
         publishState()
     }
 

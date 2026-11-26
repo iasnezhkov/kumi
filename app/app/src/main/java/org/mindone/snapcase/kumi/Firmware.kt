@@ -9,6 +9,78 @@ import org.json.JSONArray
 
 enum class FirmwareSource { BUNDLED, RELEASE, DEMO }
 
+data class ReleaseVersion(val core: KumiVersion, val prerelease: String? = null) : Comparable<ReleaseVersion> {
+    val isPrerelease: Boolean get() = !prerelease.isNullOrBlank()
+
+    override fun toString(): String = if (isPrerelease) "$core-$prerelease" else core.toString()
+
+    override fun compareTo(other: ReleaseVersion): Int {
+        val coreCmp = core.compareTo(other.core)
+        if (coreCmp != 0) return coreCmp
+        val a = prerelease?.takeIf { it.isNotBlank() }
+        val b = other.prerelease?.takeIf { it.isNotBlank() }
+        if (a == null && b == null) return 0
+        if (a == null) return 1
+        if (b == null) return -1
+        val ta = tokenize(a)
+        val tb = tokenize(b)
+        val n = minOf(ta.size, tb.size)
+        for (i in 0 until n) {
+            val sa = ta[i]
+            val sb = tb[i]
+            val ia = sa.toIntOrNull()
+            val ib = sb.toIntOrNull()
+            val cmp = when {
+                ia != null && ib != null -> ia.compareTo(ib)
+                ia != null -> -1
+                ib != null -> 1
+                else -> sa.lowercase().compareTo(sb.lowercase())
+            }
+            if (cmp != 0) return cmp
+        }
+        return ta.size.compareTo(tb.size)
+    }
+
+    companion object {
+        private val FULL = Regex("""^v?(\d{1,3})\.(\d{1,3})\.(\d{1,3})(?:-([0-9A-Za-z._-]+))?(?:\+.*)?$""")
+        private val SHA_TAIL = Regex("""-[0-9a-fA-F]{7,40}$""")
+        private val PRE_FROM_NAME = Regex("""-(\d{1,3}\.\d{1,3}\.\d{1,3})-((?:rc|alpha|beta|dev|pre)[0-9A-Za-z._-]*)""", RegexOption.IGNORE_CASE)
+        private val TOKEN = Regex("""[0-9]+|[A-Za-z]+""")
+
+        private fun tokenize(label: String): List<String> = TOKEN.findAll(label).map { it.value }.toList()
+
+        fun parse(text: String): ReleaseVersion? {
+            val match = FULL.matchEntire(text.trim()) ?: return null
+            val core = KumiVersion(match.groupValues[1].toInt(), match.groupValues[2].toInt(), match.groupValues[3].toInt())
+            val pre = match.groupValues[4].takeIf { it.isNotBlank() && !it.equals("release", ignoreCase = true) }
+            return ReleaseVersion(core, pre)
+        }
+
+        fun fromBuild(version: KumiVersion, build: String?, filename: String? = null): ReleaseVersion {
+            val cleanBuild = build?.trim()?.replace(SHA_TAIL, "")
+            val parsedBuild = cleanBuild?.let { parse(it) }
+            if (parsedBuild != null && parsedBuild.core == version) return parsedBuild
+            val fromName = filename?.substringBeforeLast('.')?.let { base ->
+                PRE_FROM_NAME.find(base)?.let { m ->
+                    val parsedCore = KumiVersion.parse(m.groupValues[1])
+                    if (parsedCore == version) ReleaseVersion(version, m.groupValues[2]) else null
+                }
+            }
+            return fromName ?: ReleaseVersion(version, null)
+        }
+
+        fun fromRelease(core: KumiVersion?, tag: String, asset: String, prerelease: Boolean): ReleaseVersion? {
+            val v = core ?: return null
+            if (!prerelease) return ReleaseVersion(v, null)
+            val fromTag = tag.trim().removePrefix("app-").substringAfter('-', "").takeIf { it.isNotBlank() && tag.contains('-') }
+            val fromAsset = asset.substringBeforeLast('.').let { base ->
+                PRE_FROM_NAME.find(base)?.groupValues?.getOrNull(2)
+            }
+            return ReleaseVersion(v, fromTag ?: fromAsset ?: "pre")
+        }
+    }
+}
+
 data class FirmwarePackage(
     val source: FirmwareSource,
     val name: String,
@@ -17,6 +89,8 @@ data class FirmwarePackage(
     val notes: String? = null,
 ) {
     val version: KumiVersion get() = info.version
+    val releaseVersion: ReleaseVersion get() = ReleaseVersion.fromBuild(info.version, info.build, name)
+    val displayVersion: String get() = releaseVersion.toString()
     fun bytes(): ByteArray = file.readBytes()
 }
 
@@ -31,6 +105,8 @@ data class ReleaseAsset(
     val size: Long,
 ) {
     val version: KumiVersion? get() = KumiVersion.extractFromFilename(asset) ?: KumiVersion.parse(tag)
+    val releaseVersion: ReleaseVersion? get() = ReleaseVersion.fromRelease(version, tag, asset, prerelease)
+    val displayVersion: String get() = releaseVersion?.toString() ?: tag.removePrefix("v")
 
     companion object {
         const val EXTENSION = "kumi"
@@ -61,7 +137,7 @@ data class ReleaseAsset(
                 }
             }
             return out.filter { ReleaseHosts.download(it.url) }
-                .sortedWith(compareByDescending<ReleaseAsset> { it.version }.thenBy { it.prerelease }.thenByDescending { it.published })
+                .sortedWith(compareByDescending<ReleaseAsset> { it.releaseVersion }.thenByDescending { it.published })
         }
     }
 }
@@ -80,6 +156,8 @@ data class AppReleaseAsset(
         get() = KumiVersion.extractFromFilename(asset)
             ?: KumiVersion.parse(tag)
             ?: KumiVersion.parse(tag.removePrefix("app-"))
+    val releaseVersion: ReleaseVersion? get() = ReleaseVersion.fromRelease(version, tag, asset, prerelease)
+    val displayVersion: String get() = releaseVersion?.toString() ?: tag.removePrefix("v")
 
     companion object {
         const val EXTENSION = "apk"
@@ -110,7 +188,7 @@ data class AppReleaseAsset(
                 }
             }
             return out.filter { ReleaseHosts.download(it.url) }
-                .sortedWith(compareByDescending<AppReleaseAsset> { it.version }.thenBy { it.prerelease }.thenByDescending { it.published })
+                .sortedWith(compareByDescending<AppReleaseAsset> { it.releaseVersion }.thenByDescending { it.published })
         }
     }
 }
@@ -319,32 +397,53 @@ class FirmwareCatalog(
         fun isValidRepository(repository: String): Boolean = REPOSITORY.matches(repository)
 
         fun newest(packages: List<FirmwarePackage>): FirmwarePackage? =
-            packages.maxWithOrNull(compareBy<FirmwarePackage> { it.version }.thenBy { it.info.generation }.thenBy { it.source != FirmwareSource.BUNDLED })
+            packages.maxWithOrNull(
+                compareBy<FirmwarePackage> { it.releaseVersion }
+                    .thenBy { it.info.generation }
+                    .thenBy { it.source != FirmwareSource.BUNDLED },
+            )
 
-        fun updateFor(installed: KumiVersion?, packages: List<FirmwarePackage>): FirmwarePackage? =
-            newest(packages)?.takeIf { installed == null || it.version > installed }
+        fun isPackageNewerThan(pkg: FirmwarePackage, installed: KumiVersion?, installedBuild: String? = null): Boolean {
+            if (installed == null) return true
+            if (pkg.version != installed) return pkg.version > installed
+            if (installedBuild.isNullOrBlank()) return false
+            return pkg.releaseVersion > ReleaseVersion.fromBuild(installed, installedBuild)
+        }
 
-        fun releaseUpdateFor(installed: KumiVersion?, releases: List<ReleaseAsset>): ReleaseAsset? =
-            releases.firstOrNull { asset ->
-                val v = asset.version ?: return@firstOrNull false
-                installed == null || v > installed
-            }
+        fun isReleaseNewerThan(asset: ReleaseAsset, installed: KumiVersion?, installedBuild: String? = null): Boolean {
+            val candidate = asset.releaseVersion ?: return false
+            if (installed == null) return true
+            return candidate > ReleaseVersion.fromBuild(installed, installedBuild)
+        }
+
+        fun updateFor(installed: KumiVersion?, packages: List<FirmwarePackage>, installedBuild: String? = null): FirmwarePackage? =
+            newest(packages)?.takeIf { isPackageNewerThan(it, installed, installedBuild) }
+
+        fun releaseUpdateFor(installed: KumiVersion?, releases: List<ReleaseAsset>, installedBuild: String? = null): ReleaseAsset? =
+            releases.firstOrNull { asset -> isReleaseNewerThan(asset, installed, installedBuild) }
+
+        fun latestFirmwareUpdate(
+            installed: KumiVersion?,
+            packages: List<FirmwarePackage>,
+            releases: List<ReleaseAsset>,
+            installedBuild: String? = null,
+        ): ReleaseVersion? = listOfNotNull(
+            updateFor(installed, packages, installedBuild)?.releaseVersion,
+            releaseUpdateFor(installed, releases, installedBuild)?.releaseVersion,
+        ).maxOrNull()
 
         fun latestFirmwareUpdateVersion(
             installed: KumiVersion?,
             packages: List<FirmwarePackage>,
             releases: List<ReleaseAsset>,
-        ): KumiVersion? = listOfNotNull(
-            updateFor(installed, packages)?.version,
-            releaseUpdateFor(installed, releases)?.version,
-        ).maxOrNull()
+            installedBuild: String? = null,
+        ): KumiVersion? = latestFirmwareUpdate(installed, packages, releases, installedBuild)?.core
 
         fun appUpdateFor(currentVersion: String, releases: List<AppReleaseAsset>): AppReleaseAsset? {
-            val installed = KumiVersion.parse(currentVersion) ?: return null
-            val installedPre = currentVersion.contains('-')
+            val installed = ReleaseVersion.parse(currentVersion) ?: return null
             return releases.firstOrNull { asset ->
-                val v = asset.version ?: return@firstOrNull false
-                v > installed || (v == installed && installedPre && !asset.prerelease)
+                val v = asset.releaseVersion ?: return@firstOrNull false
+                v > installed
             }
         }
     }

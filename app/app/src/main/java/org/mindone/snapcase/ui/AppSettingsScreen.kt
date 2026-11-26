@@ -58,10 +58,19 @@ fun AppSettingsScreen(prefs: AppPreferences) {
                     checked = settings.checkReleases,
                     onCheckedChange = { prefs.setCheckReleases(it) },
                 )
-                ToggleRow(
-                    title = stringResource(R.string.settings_prereleases),
-                    checked = settings.includePrereleases,
-                    onCheckedChange = { prefs.setIncludePrereleases(it) },
+                Text(stringResource(R.string.settings_update_channel), style = androidx.compose.material3.MaterialTheme.typography.labelLarge)
+                CompactPageTabs(
+                    labels = listOf(
+                        stringResource(R.string.settings_channel_stable),
+                        stringResource(R.string.settings_channel_dev),
+                    ),
+                    selectedIndex = if (settings.includePrereleases) 1 else 0,
+                    onSelect = { prefs.setIncludePrereleases(it == 1) },
+                )
+                Note(
+                    stringResource(
+                        if (settings.includePrereleases) R.string.settings_channel_dev_desc else R.string.settings_channel_stable_desc,
+                    ),
                 )
                 OutlinedTextField(
                     value = repository,
