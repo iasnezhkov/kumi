@@ -472,7 +472,12 @@
     <string name="settings_updates_title">Firmware updates</string>
     <string name="settings_check_releases">Check GitHub releases</string>
     <string name="settings_check_releases_text">Look for newer Kumi releases when the app starts. Firmware bundled with the app works without this.</string>
-    <string name="settings_prereleases">Include pre-releases</string>
+    <string name="settings_update_channel">Update channel</string>
+    <string name="settings_channel_stable">Stable</string>
+    <string name="settings_channel_dev">Developer (RC)</string>
+    <string name="settings_channel_stable_desc">Only final releases are shown.</string>
+    <string name="settings_channel_dev_desc">Shows GitHub release candidates (-rc) for testing app and case firmware before release.</string>
+    <string name="kumi_flash_action">Flash</string>
     <string name="settings_repository">Release repository (owner/name)</string>
     <string name="settings_demo_title">Demo</string>
     <string name="settings_demo_text">Try every screen without a case: the stock screens use scripted replies, Kumi runs a simulated case.</string>
@@ -890,7 +895,21 @@
     <string name="ime_long_press_upper">Capitalize</string>
     <string name="ime_default_lang_label">Default dictionary</string>
     <string name="ime_dicts_title">Offline dictionaries</string>
-    <string name="ime_dicts_desc">English, Russian, Ukrainian (MIT FrequencyWords) and Japanese Romaji→Kana/Kanji (BSD-3-Clause Google Mozc) are built in offline. Download more languages on-device in under a second.</string>
+    <string name="ime_dicts_desc">English, Russian, Ukrainian (MIT FrequencyWords) and Japanese Romaji→Kana/Kanji (BSD-3-Clause Google Mozc) are built in offline. Spanish, German, French, Italian, Portuguese, Polish, Dutch, Turkish, Czech, Swedish, Finnish, Romanian and Hungarian download on-device (25k words each) in under a second.</string>
+    <string name="ime_langs_download_hint">Languages marked ↓ download their dictionary when enabled.</string>
+    <string name="ime_subtype_es" translatable="false">Español (Kumi Strip)</string>
+    <string name="ime_subtype_de" translatable="false">Deutsch (Kumi Strip)</string>
+    <string name="ime_subtype_fr" translatable="false">Français (Kumi Strip)</string>
+    <string name="ime_subtype_it" translatable="false">Italiano (Kumi Strip)</string>
+    <string name="ime_subtype_pt" translatable="false">Português (Kumi Strip)</string>
+    <string name="ime_subtype_pl" translatable="false">Polski (Kumi Strip)</string>
+    <string name="ime_subtype_nl" translatable="false">Nederlands (Kumi Strip)</string>
+    <string name="ime_subtype_tr" translatable="false">Türkçe (Kumi Strip)</string>
+    <string name="ime_subtype_cs" translatable="false">Čeština (Kumi Strip)</string>
+    <string name="ime_subtype_sv" translatable="false">Svenska (Kumi Strip)</string>
+    <string name="ime_subtype_fi" translatable="false">Suomi (Kumi Strip)</string>
+    <string name="ime_subtype_ro" translatable="false">Română (Kumi Strip)</string>
+    <string name="ime_subtype_hu" translatable="false">Magyar (Kumi Strip)</string>
     <string name="ime_dict_bundled">Built in (15k words, offline)</string>
     <string name="ime_dict_downloaded">Downloaded (25k words, offline)</string>
     <string name="ime_dict_available">Available to download (~25k words)</string>

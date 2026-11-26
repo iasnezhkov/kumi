@@ -78,13 +78,14 @@ object PhysicalLayoutTranslator {
         if (!compactCaseKeyboard && (lang == StripLang.RU || lang == StripLang.UK) && keyCode == KeyEvent.KEYCODE_SLASH) {
             return if (shifted) ',' else '.'
         }
-        if (lang == StripLang.EN && keyCode == KeyEvent.KEYCODE_PERIOD) {
+        if (lang.isLatin && keyCode == KeyEvent.KEYCODE_PERIOD) {
             return if (rawUnicode != 0) rawUnicode.toChar() else if (shifted) '>' else '.'
         }
         val mapped = when (lang) {
             StripLang.RU -> if (compactCaseKeyboard) ruBaseLetters[keyCode] else ruLower[keyCode]
             StripLang.UK -> if (compactCaseKeyboard) ukBaseLetters[keyCode] else ukLower[keyCode]
-            StripLang.EN, StripLang.JA -> enLower[keyCode]
+            StripLang.JA -> enLower[keyCode]
+            else -> enLower[keyCode]
         }
         if (mapped != null) {
             return if (letterUpper) mapped.uppercaseChar() else mapped

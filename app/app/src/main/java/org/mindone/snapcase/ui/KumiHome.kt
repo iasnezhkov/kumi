@@ -97,13 +97,14 @@ fun KumiHomeScreen(
     val kind by kumi.kind.collectAsStateWithLifecycle()
     val state by kumi.state.collectAsStateWithLifecycle()
     val firmware by catalog.collectAsStateWithLifecycle()
-    val fwUpdateVersion = FirmwareCatalog.latestFirmwareUpdateVersion(
+    val fwUpdate = FirmwareCatalog.latestFirmwareUpdate(
         state.device?.firmware,
         firmware.packages,
         firmware.releases,
+        state.device?.build,
     )?.takeIf { state.device != null && !state.ramOnly }
     val appUpdate = firmware.appUpdate(BuildConfig.VERSION_NAME)
-    val hasAnyUpdate = fwUpdateVersion != null || appUpdate != null
+    val hasAnyUpdate = fwUpdate != null || appUpdate != null
     val caseOpenTarget: () -> Unit = if (hasAnyUpdate) onOpenUpdates else onOpenFirmware
     var lastEqSlot by rememberSaveable { mutableIntStateOf(0) }
     val activeEq = state.audio?.eqActive
@@ -262,7 +263,7 @@ fun KumiHomeScreen(
                 }
                 if (hasAnyUpdate && state.diagnostics?.safeMode != true) {
                     HomeUpdateCard(
-                        fwVersion = fwUpdateVersion,
+                        fwVersion = fwUpdate?.toString(),
                         appUpdate = appUpdate,
                         onOpenUpdates = onOpenUpdates,
                     )
@@ -321,7 +322,7 @@ fun KumiHomeScreen(
                             onClick = onOpenKeys,
                             modifier = Modifier.weight(1f),
                         )
-                        val updateTag = fwUpdateVersion?.toString() ?: appUpdate?.version?.toString() ?: appUpdate?.tag
+                        val updateTag = fwUpdate?.toString() ?: appUpdate?.displayVersion
                         HomeNavTile(
                             icon = R.drawable.ic_memory,
                             title = stringResource(R.string.kumi_tab_case),
@@ -446,18 +447,18 @@ private fun HomeAlertBanner(
 
 @Composable
 private fun HomeUpdateCard(
-    fwVersion: KumiVersion?,
+    fwVersion: String?,
     appUpdate: AppReleaseAsset?,
     onOpenUpdates: () -> Unit,
 ) {
-    val appVer = appUpdate?.version?.toString() ?: appUpdate?.tag
+    val appVer = appUpdate?.displayVersion
     val title = when {
         appVer != null && fwVersion != null -> {
-            val shown = if (appVer == fwVersion.toString()) appVer else "$appVer / $fwVersion"
+            val shown = if (appVer == fwVersion) appVer else "$appVer / $fwVersion"
             stringResource(R.string.kumi_updates_both_available, shown)
         }
         appVer != null -> stringResource(R.string.kumi_updates_app_available, appVer)
-        fwVersion != null -> stringResource(R.string.kumi_update_available, fwVersion.toString())
+        fwVersion != null -> stringResource(R.string.kumi_update_available, fwVersion)
         else -> stringResource(R.string.kumi_updates_title)
     }
     val subtitle = when {

@@ -6,6 +6,7 @@ import java.io.InputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.text.Normalizer
+import java.util.Locale
 import kotlin.math.ln
 import kotlin.math.roundToInt
 
@@ -97,22 +98,27 @@ class SnapDictBinary(
 
         fun foldKey(text: String): String {
             val sb = StringBuilder(text.length)
-            val normalized = Normalizer.normalize(text.lowercase(), Normalizer.Form.NFD)
+            val normalized = Normalizer.normalize(text.lowercase(Locale.ROOT), Normalizer.Form.NFD)
             for (ch in normalized) {
                 val type = Character.getType(ch)
                 if (type == Character.NON_SPACING_MARK.toInt()) continue
-                val mapped = when (ch) {
-                    'ё' -> 'е'
-                    'ъ' -> 'ь'
-                    'й' -> 'и'
-                    'ґ' -> 'г'
-                    'є' -> 'е'
-                    'ї' -> 'и'
-                    'і' -> 'и'
-                    'ß' -> 's'
-                    else -> ch
+                when (ch) {
+                    'ё' -> sb.append('е')
+                    'ъ' -> sb.append('ь')
+                    'й' -> sb.append('и')
+                    'ґ' -> sb.append('г')
+                    'є' -> sb.append('е')
+                    'ї' -> sb.append('и')
+                    'і' -> sb.append('и')
+                    'ß' -> sb.append("ss")
+                    'ł' -> sb.append('l')
+                    'ı' -> sb.append('i')
+                    'ø' -> sb.append('o')
+                    'đ' -> sb.append('d')
+                    'æ' -> sb.append("ae")
+                    'œ' -> sb.append("oe")
+                    else -> sb.append(ch)
                 }
-                sb.append(mapped)
             }
             return sb.toString()
         }

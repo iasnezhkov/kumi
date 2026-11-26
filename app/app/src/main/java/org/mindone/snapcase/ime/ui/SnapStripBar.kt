@@ -36,7 +36,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import java.util.Locale
 import org.mindone.snapcase.R
 import org.mindone.snapcase.ime.EmojiCatalog
 import org.mindone.snapcase.ime.ImeUiState
@@ -186,11 +185,7 @@ fun SnapStripRoot(
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 LocaleVariations.extrasFor(state.lang).forEach { ch ->
-                                    val display = if (state.effectiveUpper && (state.lang == StripLang.RU || state.lang == StripLang.UK)) {
-                                        ch.uppercase(Locale.ROOT)
-                                    } else {
-                                        ch
-                                    }
+                                    val display = LocaleVariations.shiftExtra(ch, state.effectiveUpper)
                                     StripActionChip(
                                         text = display,
                                         highlighted = state.effectiveUpper && display != ch,

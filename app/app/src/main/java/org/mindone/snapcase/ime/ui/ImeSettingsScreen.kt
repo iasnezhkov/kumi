@@ -11,6 +11,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -87,6 +89,7 @@ import org.mindone.snapcase.ui.SectionCard
 import org.mindone.snapcase.ui.StatusPill
 import org.mindone.snapcase.ui.ToggleRow
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ImeSettingsScreen(prefs: AppPreferences) {
     val context = LocalContext.current
@@ -146,6 +149,23 @@ fun ImeSettingsScreen(prefs: AppPreferences) {
         }
         installedDicts = inst
         downloadedDicts = dl
+    }
+
+    val startDownload: (LanguagePackInfo) -> Unit = { pack ->
+        if (downloading[pack.code] != true) {
+            dictError = null
+            downloading[pack.code] = true
+            scope.launch {
+                val res = dictManager.downloadPack(pack)
+                downloading.remove(pack.code)
+                val (inst, dl) = withContext(Dispatchers.IO) {
+                    dictManager.installedCodes() to DictionaryPackManager.CATALOG.filter { dictManager.isDownloaded(it.code) }.map { it.code }.toSet()
+                }
+                installedDicts = inst
+                downloadedDicts = dl
+                res.onFailure { err -> dictError = err.message ?: err.toString() }
+            }
+        }
     }
 
     Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
@@ -260,9 +280,16 @@ fun ImeSettingsScreen(prefs: AppPreferences) {
                     item {
                         SectionCard(stringResource(R.string.ime_langs_title)) {
                             Note(stringResource(R.string.ime_langs_hint))
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            FlowRow(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalArrangement = Arrangement.spacedBy(2.dp),
+                            ) {
                                 StripLang.entries.forEach { lang ->
                                     val enabled = settings.imeEnabledLangs.any { it.equals(lang.code, ignoreCase = true) }
+                                    val pack = DictionaryPackManager.CATALOG.firstOrNull { it.code == lang.code }
+                                    val needsDict = pack != null && lang.code !in installedDicts
+                                    val busy = downloading[lang.code] == true
                                     FilterChip(
                                         selected = enabled,
                                         onClick = {
@@ -272,10 +299,22 @@ fun ImeSettingsScreen(prefs: AppPreferences) {
                                                 settings.imeEnabledLangs + lang.code
                                             }
                                             if (next.isNotEmpty()) prefs.setImeEnabledLangs(next)
+                                            if (!enabled && needsDict && pack != null) startDownload(pack)
                                         },
-                                        label = { Text(lang.label) },
+                                        label = {
+                                            Text(
+                                                when {
+                                                    busy -> "${lang.label} …"
+                                                    needsDict -> "${lang.label} ↓"
+                                                    else -> lang.label
+                                                },
+                                            )
+                                        },
                                     )
                                 }
+                            }
+                            if (StripLang.entries.any { it.code !in installedDicts }) {
+                                Note(stringResource(R.string.ime_langs_download_hint))
                             }
                             ToggleRow(
                                 title = stringResource(R.string.ime_toggle_shift_space),
@@ -300,20 +339,7 @@ fun ImeSettingsScreen(prefs: AppPreferences) {
                                     available = available,
                                     downloaded = downloaded,
                                     busy = busy,
-                                    onDownload = {
-                                        dictError = null
-                                        downloading[pack.code] = true
-                                        scope.launch {
-                                            val res = dictManager.downloadPack(pack)
-                                            downloading.remove(pack.code)
-                                            val (inst, dl) = withContext(Dispatchers.IO) {
-                                                dictManager.installedCodes() to DictionaryPackManager.CATALOG.filter { dictManager.isDownloaded(it.code) }.map { it.code }.toSet()
-                                            }
-                                            installedDicts = inst
-                                            downloadedDicts = dl
-                                            res.onFailure { err -> dictError = err.message ?: err.toString() }
-                                        }
-                                    },
+                                    onDownload = { startDownload(pack) },
                                     onRemove = {
                                         scope.launch {
                                             val (inst, dl) = withContext(Dispatchers.IO) {

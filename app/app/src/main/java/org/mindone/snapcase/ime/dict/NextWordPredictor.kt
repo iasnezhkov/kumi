@@ -18,12 +18,7 @@ class NextWordPredictor(
         personal?.nextWords(lang.code, key, limit = limit + 2)?.forEach { word ->
             if (out.size < limit) out.add(formatCase(word, capitalize))
         }
-        val table = when (lang) {
-            StripLang.RU -> RU_BIGRAMS
-            StripLang.EN -> EN_BIGRAMS
-            StripLang.UK -> UK_BIGRAMS
-            StripLang.JA -> JA_BIGRAMS
-        }
+        val table = bigramsFor(lang)
         table[key]?.forEach { word ->
             if (out.size < limit) out.add(formatCase(word, capitalize))
         }
@@ -35,14 +30,17 @@ class NextWordPredictor(
         if (key.isEmpty()) return emptySet()
         val out = LinkedHashSet<String>(8)
         personal?.nextWords(lang.code, key, limit = 6)?.forEach { out.add(SnapDictBinary.foldKey(it)) }
-        val table = when (lang) {
-            StripLang.RU -> RU_BIGRAMS
-            StripLang.EN -> EN_BIGRAMS
-            StripLang.UK -> UK_BIGRAMS
-            StripLang.JA -> JA_BIGRAMS
-        }
+        val table = bigramsFor(lang)
         table[key]?.forEach { out.add(SnapDictBinary.foldKey(it)) }
         return out
+    }
+
+    private fun bigramsFor(lang: StripLang): Map<String, List<String>> = when (lang) {
+        StripLang.RU -> RU_BIGRAMS
+        StripLang.EN -> EN_BIGRAMS
+        StripLang.UK -> UK_BIGRAMS
+        StripLang.JA -> JA_BIGRAMS
+        else -> LatinBigrams.forLang(lang)
     }
 
     private fun normalizeKey(word: String, lang: StripLang): String {
