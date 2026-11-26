@@ -60,6 +60,7 @@ data class AppSettings(
     val imeSnippets: List<TextSnippet> = ClipboardStore.DEFAULT_SNIPPETS,
     val speedKeysEnabled: Boolean = true,
     val speedKeys: List<SpeedKeyBinding> = emptyList(),
+    val homeTypeToSearch: Boolean = true,
 )
 
 class SettingsRepository(private val store: DataStore<Preferences>) {
@@ -104,6 +105,7 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
             imeSnippets = ClipboardStore.parseSnippets(prefs[IME_SNIPPETS]),
             speedKeysEnabled = prefs[SPEED_KEYS_ENABLED] ?: true,
             speedKeys = QuickLauncher.parseBindings(prefs[SPEED_KEYS]),
+            homeTypeToSearch = prefs[HOME_TYPE_TO_SEARCH] ?: true,
         )
     }
 
@@ -168,6 +170,7 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         prefs[IME_SNIPPETS] = ClipboardStore.serializeSnippets(transform(ClipboardStore.parseSnippets(prefs[IME_SNIPPETS])))
     }
     suspend fun setSpeedKeysEnabled(value: Boolean) = store.edit { it[SPEED_KEYS_ENABLED] = value }
+    suspend fun setHomeTypeToSearch(value: Boolean) = store.edit { it[HOME_TYPE_TO_SEARCH] = value }
     suspend fun updateSpeedKeys(transform: (List<SpeedKeyBinding>) -> List<SpeedKeyBinding>) = store.edit { prefs ->
         prefs[SPEED_KEYS] = QuickLauncher.serializeBindings(transform(QuickLauncher.parseBindings(prefs[SPEED_KEYS])))
     }
@@ -207,6 +210,7 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         private val IME_SNIPPETS = stringPreferencesKey("ime_snippets")
         private val SPEED_KEYS_ENABLED = booleanPreferencesKey("speed_keys_enabled")
         private val SPEED_KEYS = stringPreferencesKey("speed_keys")
+        private val HOME_TYPE_TO_SEARCH = booleanPreferencesKey("home_type_to_search")
 
         private fun parseLangList(raw: String?): List<String> {
             if (raw.isNullOrBlank()) return listOf("en", "ru")

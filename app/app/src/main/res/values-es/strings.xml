@@ -944,4 +944,11 @@
     <string name="kumi_key_hint_freq">Hz</string>
     <string name="kumi_key_hint_type">Filtro</string>
     <string name="kumi_key_hint_zero">0 dB</string>
+    <string name="home_search_title">Escribir para buscar en inicio</string>
+    <string name="home_search_desc">Empieza a escribir en cualquier pantalla de inicio para buscar y abrir aplicaciones. Pulsa Intro para abrir el primer resultado. Usa el servicio de accesibilidad — sin root.</string>
+    <string name="home_search_enable">Escribir en inicio para buscar apps</string>
+    <string name="home_search_try">Probar búsqueda rápida</string>
+    <string name="home_search_placeholder">Buscar aplicaciones…</string>
+    <string name="home_search_empty">No hay aplicaciones coincidentes</string>
+    <string name="home_search_footer_hint">Intro abre · ↑↓ selecciona · Esc cierra</string>
 </resources>

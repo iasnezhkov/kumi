@@ -944,4 +944,11 @@
     <string name="kumi_key_hint_freq">Hz</string>
     <string name="kumi_key_hint_type">Filtro</string>
     <string name="kumi_key_hint_zero">0 dB</string>
+    <string name="home_search_title">Digitar para buscar na tela inicial</string>
+    <string name="home_search_desc">Comece a digitar em qualquer tela inicial para buscar e abrir apps. Pressione Enter para abrir o primeiro resultado. Usa o serviço de acessibilidade — sem root.</string>
+    <string name="home_search_enable">Digitar na tela inicial para buscar apps</string>
+    <string name="home_search_try">Testar busca rápida</string>
+    <string name="home_search_placeholder">Buscar apps…</string>
+    <string name="home_search_empty">Nenhum app correspondente</string>
+    <string name="home_search_footer_hint">Enter abre · ↑↓ seleciona · Esc fecha</string>
 </resources>

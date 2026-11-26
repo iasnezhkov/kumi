@@ -944,4 +944,11 @@
     <string name="kumi_key_hint_freq">Hz</string>
     <string name="kumi_key_hint_type">Filtre</string>
     <string name="kumi_key_hint_zero">0 dB</string>
+    <string name="home_search_title">Taper pour rechercher sur l’accueil</string>
+    <string name="home_search_desc">Commencez à taper sur n’importe quel écran d’accueil pour rechercher et lancer une appli. Entrée ouvre le premier résultat. Utilise le service d’accessibilité — sans root.</string>
+    <string name="home_search_enable">Taper sur l’accueil pour chercher des applis</string>
+    <string name="home_search_try">Essayer la recherche rapide</string>
+    <string name="home_search_placeholder">Rechercher des applis…</string>
+    <string name="home_search_empty">Aucune application correspondante</string>
+    <string name="home_search_footer_hint">Entrée ouvre · ↑↓ choisir · Échap ferme</string>
 </resources>

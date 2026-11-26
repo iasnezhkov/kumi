@@ -944,4 +944,11 @@
     <string name="kumi_key_hint_freq">Гц</string>
     <string name="kumi_key_hint_type">Фильтр</string>
     <string name="kumi_key_hint_zero">0 дБ</string>
+    <string name="home_search_title">Поиск с домашнего экрана</string>
+    <string name="home_search_desc">Начните вводить текст на любом домашнем экране, чтобы найти и запустить приложение. Enter открывает первое совпадение. Работает через службу специальных возможностей без root.</string>
+    <string name="home_search_enable">Искать приложения при наборе на главном экране</string>
+    <string name="home_search_try">Попробовать быстрый поиск</string>
+    <string name="home_search_placeholder">Поиск приложений…</string>
+    <string name="home_search_empty">Подходящих приложений нет</string>
+    <string name="home_search_footer_hint">Enter — открыть · ↑↓ — выбор · Esc — закрыть</string>
 </resources>

@@ -78,6 +78,7 @@ import org.mindone.snapcase.ime.HapticMode
 import org.mindone.snapcase.ime.LaunchableApp
 import org.mindone.snapcase.ime.LongPressBehavior
 import org.mindone.snapcase.ime.QuickLauncher
+import org.mindone.snapcase.ime.QuickSearchActivity
 import org.mindone.snapcase.ime.SpeedKeyBinding
 import org.mindone.snapcase.ime.StripLang
 import org.mindone.snapcase.ime.dict.DictionaryPackManager
@@ -357,6 +358,30 @@ fun ImeSettingsScreen(prefs: AppPreferences) {
                 }
                 else -> {
                     item {
+                        SectionCard(title = stringResource(R.string.home_search_title)) {
+                            Note(stringResource(R.string.home_search_desc))
+                            ToggleRow(
+                                title = stringResource(R.string.home_search_enable),
+                                checked = settings.homeTypeToSearch,
+                                onCheckedChange = prefs::setHomeTypeToSearch,
+                            )
+                            if (!RemapAccessibilityService.active) {
+                                FilledTonalButton(
+                                    onClick = { context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) },
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    Text(stringResource(R.string.action_open_accessibility))
+                                }
+                            }
+                            OutlinedButton(
+                                onClick = { QuickSearchActivity.launch(context, null) },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text(stringResource(R.string.home_search_try))
+                            }
+                        }
+                    }
+                    item {
                         SectionCard(
                             title = stringResource(R.string.ime_speed_keys_title),
                             trailing = { Note(stringResource(R.string.ime_speed_keys_summary, settings.speedKeys.size)) },
@@ -367,14 +392,6 @@ fun ImeSettingsScreen(prefs: AppPreferences) {
                                 checked = settings.speedKeysEnabled,
                                 onCheckedChange = prefs::setSpeedKeysEnabled,
                             )
-                            if (!RemapAccessibilityService.active) {
-                                FilledTonalButton(
-                                    onClick = { context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) },
-                                    modifier = Modifier.fillMaxWidth(),
-                                ) {
-                                    Text(stringResource(R.string.action_open_accessibility))
-                                }
-                            }
                             if (settings.speedKeys.isEmpty()) {
                                 Note(stringResource(R.string.ime_speed_keys_empty))
                             } else {

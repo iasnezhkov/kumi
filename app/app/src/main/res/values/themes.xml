@@ -2,4 +2,14 @@
 <!-- SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0 -->
 <resources>
     <style name="Theme.SnapCase" parent="android:Theme.Material.NoActionBar" />
+
+    <style name="Theme.SnapCase.QuickSearch" parent="Theme.SnapCase">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:backgroundDimEnabled">true</item>
+        <item name="android:backgroundDimAmount">0.45</item>
+        <item name="android:windowAnimationStyle">@null</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:colorBackgroundCacheHint">@null</item>
+    </style>
 </resources>

@@ -944,4 +944,11 @@
     <string name="kumi_key_hint_freq">Hz</string>
     <string name="kumi_key_hint_type">滤波器</string>
     <string name="kumi_key_hint_zero">0 dB</string>
+    <string name="home_search_title">在主屏幕直接输入搜索</string>
+    <string name="home_search_desc">在任意主屏幕直接打字即可搜索并启动应用，按 Enter 打开第一项结果。通过无障碍服务运行，无需 root。</string>
+    <string name="home_search_enable">在主屏幕打字搜索应用</string>
+    <string name="home_search_try">试用快速搜索</string>
+    <string name="home_search_placeholder">搜索应用…</string>
+    <string name="home_search_empty">没有匹配的应用</string>
+    <string name="home_search_footer_hint">Enter 打开 · ↑↓ 选择 · Esc 关闭</string>
 </resources>
