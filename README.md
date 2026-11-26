@@ -41,7 +41,7 @@ layer can be tested on the host and reused on other SpaceTouch SPV5048 devices.
 5. **No vendor code or firmware images.** This repository contains our own code, hardware notes,
    and checksums — never vendor binaries, flash dumps, or signing keys.
 
-## Status (`1.0.0`)
+## Status (`1.0.1`)
 
 Prebuilt signed firmware bundles (`kumi-<ver>.kumi`), signed Android APKs (`kumi-app-<ver>.apk`),
 and checksums are published on [GitHub Releases](https://github.com/iasnezhkov/kumi/releases).

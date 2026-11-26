@@ -68,6 +68,14 @@ class LogicTest {
         assertEquals(KumiVersion(0, 2, 0), FirmwareCatalog.updateFor(KumiVersion(0, 1, 0), packages)?.version)
         assertNull(FirmwareCatalog.updateFor(KumiVersion(0, 2, 0), packages))
         assertEquals(KumiVersion(0, 2, 0), FirmwareCatalog.updateFor(null, packages)?.version)
+        val remote = listOf(
+            ReleaseAsset("v0.3.0", "0.3.0", "", false, "2026-11-26T00:00:00Z", "kumi-0.3.0.kumi", "https://github.com/o/kumi/0.3.0.kumi", 80_000),
+            ReleaseAsset("v0.2.0", "0.2.0", "", false, "2026-11-25T00:00:00Z", "kumi-0.2.0.kumi", "https://github.com/o/kumi/0.2.0.kumi", 80_000),
+        )
+        assertEquals(KumiVersion(0, 3, 0), FirmwareCatalog.releaseUpdateFor(KumiVersion(0, 2, 0), remote)?.version)
+        assertNull(FirmwareCatalog.releaseUpdateFor(KumiVersion(0, 3, 0), remote))
+        assertEquals(KumiVersion(0, 3, 0), FirmwareCatalog.latestFirmwareUpdateVersion(KumiVersion(0, 2, 0), packages, remote))
+        assertNull(FirmwareCatalog.latestFirmwareUpdateVersion(KumiVersion(0, 3, 0), packages, remote))
     }
 
     @Test

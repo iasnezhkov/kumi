@@ -324,6 +324,21 @@ class FirmwareCatalog(
         fun updateFor(installed: KumiVersion?, packages: List<FirmwarePackage>): FirmwarePackage? =
             newest(packages)?.takeIf { installed == null || it.version > installed }
 
+        fun releaseUpdateFor(installed: KumiVersion?, releases: List<ReleaseAsset>): ReleaseAsset? =
+            releases.firstOrNull { asset ->
+                val v = asset.version ?: return@firstOrNull false
+                installed == null || v > installed
+            }
+
+        fun latestFirmwareUpdateVersion(
+            installed: KumiVersion?,
+            packages: List<FirmwarePackage>,
+            releases: List<ReleaseAsset>,
+        ): KumiVersion? = listOfNotNull(
+            updateFor(installed, packages)?.version,
+            releaseUpdateFor(installed, releases)?.version,
+        ).maxOrNull()
+
         fun appUpdateFor(currentVersion: String, releases: List<AppReleaseAsset>): AppReleaseAsset? {
             val installed = KumiVersion.parse(currentVersion) ?: return null
             val installedPre = currentVersion.contains('-')

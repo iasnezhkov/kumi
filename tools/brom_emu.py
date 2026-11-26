@@ -348,6 +348,9 @@ class Emulator(andes.Machine):
         self.skip_initial_stop = False
         self.uc.mem_map(0, ILM_SIZE)
         self.uc.mem_map(DLM_BASE, DLM_SIZE)
+        if ram is None:
+            self.uc.mem_write(0, bytes(ILM_SIZE))
+            self.uc.mem_write(DLM_BASE, bytes(DLM_SIZE))
         self.uc.mem_map(BROM_BASE, BROM_SIZE, u.UC_PROT_READ | u.UC_PROT_EXEC)
         self.uc.mem_write(BROM_BASE, bytes(brom))
         self.flash_view = (ctypes.c_char * FLASH_SIZE).from_buffer(self.flash.image)

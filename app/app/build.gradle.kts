@@ -152,8 +152,8 @@ android {
         applicationId = "org.mindone.snapcase"
         minSdk = 35
         targetSdk = 36
-        versionCode = 6
-        versionName = "1.0.0"
+        versionCode = 7
+        versionName = "1.0.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("boolean", "SYSTEM_BUILD", "false")
         buildConfigField("String", "KUMI_RELEASE_KEY", "\"$releaseKeyProp\"")

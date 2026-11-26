@@ -373,10 +373,16 @@ where
             let _ = shared.note_changes();
             let _ = shared.persist_settings(SaveTrigger::LinkDown, false);
             if !shared.autosave_pending() {
+                let _ = shared.storage.borrow_mut().mark_healthy_if_confirmed();
                 board::reset(RebootTarget::Normal);
             }
         }
-        if health.due(shared.configured.get(), shared.milliseconds.get()) {
+        let health_after = if !shared.safe_mode() && shared.storage.borrow().is_confirmed() {
+            kumi_runtime_core::CONFIRMED_HEALTHY_MS
+        } else {
+            kumi_runtime_core::HEALTHY_AFTER_MS
+        };
+        if health.due_for(shared.configured.get(), mono_ms, health_after) {
             board::kick_watchdog();
             let mut storage = shared.storage.borrow_mut();
             if storage.reached_health() != Err(kumi_icd::CaseError::Busy) {

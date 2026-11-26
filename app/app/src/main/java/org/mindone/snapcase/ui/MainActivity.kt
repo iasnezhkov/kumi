@@ -142,7 +142,12 @@ fun SnapApp(viewModel: AppViewModel = viewModel(), keyBus: ScreenKeyBus = rememb
     var eqReturn by rememberSaveable { mutableStateOf(Screen.HOME) }
     var imeReturn by rememberSaveable { mutableStateOf(Screen.HOME) }
     var eqSlot by rememberSaveable { mutableIntStateOf(0) }
+    var firmwareTab by rememberSaveable { mutableIntStateOf(0) }
     var menu by remember { mutableStateOf(false) }
+    val openFirmware: (Int) -> Unit = { tab ->
+        firmwareTab = tab
+        screen = Screen.KUMI_FIRMWARE
+    }
     val settings by viewModel.prefs.settings.collectAsStateWithLifecycle()
     val offer by viewModel.installOffer.collectAsStateWithLifecycle()
     val catalogState by viewModel.catalog.state.collectAsStateWithLifecycle()
@@ -251,7 +256,7 @@ fun SnapApp(viewModel: AppViewModel = viewModel(), keyBus: ScreenKeyBus = rememb
                             text = { Text(stringResource(R.string.kumi_firmware_title)) },
                             onClick = {
                                 menu = false
-                                screen = Screen.KUMI_FIRMWARE
+                                openFirmware(0)
                             },
                         )
                     }
@@ -331,7 +336,8 @@ fun SnapApp(viewModel: AppViewModel = viewModel(), keyBus: ScreenKeyBus = rememb
                             testerReturn = screen
                             screen = Screen.TESTER
                         },
-                        onOpenFirmware = { screen = Screen.KUMI_FIRMWARE },
+                        onOpenFirmware = { openFirmware(0) },
+                        onOpenUpdates = { openFirmware(1) },
                         showHeader = screen == Screen.HOME,
                         overflowMenu = overflowMenu,
                     )
@@ -357,7 +363,8 @@ fun SnapApp(viewModel: AppViewModel = viewModel(), keyBus: ScreenKeyBus = rememb
                                 testerReturn = screen
                                 screen = Screen.TESTER
                             },
-                            onOpenFirmware = { screen = Screen.KUMI_FIRMWARE },
+                            onOpenFirmware = { openFirmware(0) },
+                            onOpenUpdates = { openFirmware(1) },
                             overflowMenu = overflowMenu,
                         )
                     } else {
@@ -404,6 +411,7 @@ fun SnapApp(viewModel: AppViewModel = viewModel(), keyBus: ScreenKeyBus = rememb
                         flows = viewModel.flows,
                         prefs = viewModel.prefs,
                         installBlocked = viewModel.installBlocked,
+                        initialPage = firmwareTab,
                         onBack = { screen = Screen.HOME },
                         onOpenDetails = { screen = Screen.KUMI_DETAILS },
                         onOpenHome = { screen = Screen.HOME },

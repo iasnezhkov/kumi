@@ -8,7 +8,7 @@ use kumi_client::update::manifest_for;
 use kumi_diag::{AREA_SIZE, Diag, Reason, Registers};
 use kumi_icd::{CaseError, RebootTarget, Slot, SlotState, UpdateBlock, UpdateManifest, Version};
 use kumi_layout::{BOOT_JOURNAL, CRASH_LOG, FLASH_SIZE, SECTOR, SLOT_A, SlotId, WriteGuard, Writer, region_for_write};
-use kumi_runtime_core::{HEALTHY_AFTER_MS, Health, Storage};
+use kumi_runtime_core::{CONFIRMED_HEALTHY_MS, HEALTHY_AFTER_MS, Health, Storage};
 use kumi_settings::StoredSettings;
 
 #[derive(Debug, Clone, Copy)]
@@ -458,4 +458,29 @@ fn health_needs_a_configured_bus_for_the_whole_interval() {
     health.finish();
     assert!(health.reached());
     assert!(!health.due(true, 0));
+}
+
+#[test]
+fn intentional_normal_reboot_clears_unhealthy_starts_on_confirmed_slot_without_confirming_trial() {
+    let (flash, info) = fixture(false);
+    let mut storage = Storage::open(flash, Some(info));
+    assert!(storage.is_confirmed());
+    assert_eq!(storage.request_reboot(RebootTarget::Normal, verify), Ok(()));
+    let mut flash = storage.into_flash();
+    let state = Journal::new(&mut flash, BOOT_JOURNAL).unwrap().load().unwrap().unwrap();
+    assert_eq!(state.unhealthy_starts, 0);
+
+    let (flash, info) = fixture(true);
+    let mut storage = Storage::open(flash, Some(info));
+    assert!(!storage.is_confirmed());
+    assert_eq!(storage.mark_healthy_if_confirmed(), Ok(()));
+    assert_eq!(storage.request_reboot(RebootTarget::Normal, verify), Ok(()));
+    let mut flash = storage.into_flash();
+    let state = Journal::new(&mut flash, BOOT_JOURNAL).unwrap().load().unwrap().unwrap();
+    assert_eq!(state.slot(SlotId::A).status, SlotStatus::Trial);
+
+    let mut health = Health::default();
+    assert!(!health.due_for(true, 50, CONFIRMED_HEALTHY_MS));
+    assert!(!health.due_for(true, 50 + CONFIRMED_HEALTHY_MS - 1, CONFIRMED_HEALTHY_MS));
+    assert!(health.due_for(true, 50 + CONFIRMED_HEALTHY_MS, CONFIRMED_HEALTHY_MS));
 }

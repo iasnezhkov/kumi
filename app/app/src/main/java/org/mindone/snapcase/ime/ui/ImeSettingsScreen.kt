@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 package org.mindone.snapcase.ime.ui
 
+import android.content.Context
 import android.content.Intent
 import android.provider.Settings
 import android.view.KeyEvent
 import android.view.inputmethod.InputMethodManager
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -14,9 +17,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -25,6 +30,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
@@ -36,6 +42,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -47,13 +54,20 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.mindone.snapcase.R
@@ -80,7 +94,8 @@ fun ImeSettingsScreen(prefs: AppPreferences) {
     val settings by prefs.settings.collectAsStateWithLifecycle()
     val imm = remember { context.getSystemService(InputMethodManager::class.java) }
     val dictManager = remember { DictionaryPackManager.shared(context.applicationContext) }
-    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val windowFocused = LocalWindowInfo.current.isWindowFocused
 
     var page by rememberSaveable { mutableIntStateOf(0) }
     var installedDicts by remember { mutableStateOf<Set<String>>(emptySet()) }
@@ -89,18 +104,40 @@ fun ImeSettingsScreen(prefs: AppPreferences) {
     var dictError by remember { mutableStateOf<String?>(null) }
     var addingSnippet by remember { mutableStateOf(false) }
     var addingSpeedKey by remember { mutableStateOf(false) }
-    var imeEnabled by remember {
-        mutableStateOf(imm?.enabledInputMethodList?.any { it.packageName == context.packageName } == true)
+    var waitingForEnable by rememberSaveable { mutableStateOf(false) }
+    var autoOpenPicker by remember { mutableStateOf(false) }
+    var imeEnabled by remember { mutableStateOf(isKumiImeEnabled(context, imm)) }
+    var imeSelected by remember { mutableStateOf(isKumiImeSelected(context, imm)) }
+
+    val refreshImeStatus: () -> Unit = {
+        val enabled = isKumiImeEnabled(context, imm)
+        val selected = enabled && isKumiImeSelected(context, imm)
+        imeEnabled = enabled
+        imeSelected = selected
+        if (waitingForEnable && enabled) {
+            waitingForEnable = false
+            if (!selected) autoOpenPicker = true
+        }
     }
 
-    androidx.compose.runtime.DisposableEffect(lifecycleOwner, imm, context) {
-        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
-            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
-                imeEnabled = imm?.enabledInputMethodList?.any { it.packageName == context.packageName } == true
-            }
+    DisposableEffect(lifecycleOwner, imm, context) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) refreshImeStatus()
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    LaunchedEffect(windowFocused) {
+        if (windowFocused) refreshImeStatus()
+    }
+
+    LaunchedEffect(autoOpenPicker) {
+        if (autoOpenPicker) {
+            autoOpenPicker = false
+            delay(250L)
+            imm?.showInputMethodPicker()
+        }
     }
 
     LaunchedEffect(Unit) {
@@ -130,50 +167,15 @@ fun ImeSettingsScreen(prefs: AppPreferences) {
             when (page) {
                 0 -> {
                     item {
-                        if (!imeEnabled) {
-                            Card(
-                                Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(18.dp),
-                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
-                            ) {
-                                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        Text(stringResource(R.string.ime_setup_title), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                                        StatusPill(stringResource(R.string.ime_status_disabled))
-                                    }
-                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        Button(onClick = { context.startActivity(Intent(Settings.ACTION_INPUT_METHOD_SETTINGS)) }) {
-                                            Text(stringResource(R.string.ime_open_settings))
-                                        }
-                                        FilledTonalButton(onClick = { imm?.showInputMethodPicker() }) {
-                                            Text(stringResource(R.string.ime_choose_ime))
-                                        }
-                                    }
-                                }
-                            }
-                        } else {
-                            Surface(
-                                Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(16.dp),
-                                color = MaterialTheme.colorScheme.primaryContainer,
-                            ) {
-                                Row(
-                                    Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                ) {
-                                    Text(
-                                        stringResource(R.string.ime_setup_title),
-                                        style = MaterialTheme.typography.titleSmall,
-                                        color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                        modifier = Modifier.weight(1f),
-                                    )
-                                    TextButton(onClick = { imm?.showInputMethodPicker() }) {
-                                        Text(stringResource(R.string.ime_choose_ime))
-                                    }
-                                }
-                            }
-                        }
+                        ImeSetupCard(
+                            enabled = imeEnabled,
+                            selected = imeSelected,
+                            onOpenSettings = {
+                                waitingForEnable = true
+                                context.startActivity(Intent(Settings.ACTION_INPUT_METHOD_SETTINGS))
+                            },
+                            onChooseKeyboard = { imm?.showInputMethodPicker() },
+                        )
                     }
                     item {
                         SectionCard(stringResource(R.string.ime_long_press_label)) {
@@ -413,6 +415,170 @@ fun ImeSettingsScreen(prefs: AppPreferences) {
             },
         )
     }
+}
+
+@Composable
+private fun ImeSetupCard(
+    enabled: Boolean,
+    selected: Boolean,
+    onOpenSettings: () -> Unit,
+    onChooseKeyboard: () -> Unit,
+) {
+    if (enabled && selected) {
+        Surface(
+            Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.primaryContainer,
+            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+        ) {
+            Row(
+                Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(
+                    painterResource(R.drawable.ic_check),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(18.dp),
+                )
+                Column(Modifier.weight(1f)) {
+                    Text(stringResource(R.string.ime_setup_title), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        stringResource(R.string.ime_status_active),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.85f),
+                    )
+                }
+                TextButton(onClick = onChooseKeyboard) {
+                    Text(stringResource(R.string.ime_switch_ime))
+                }
+            }
+        }
+        return
+    }
+
+    val container = if (enabled) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondaryContainer
+    val content = if (enabled) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSecondaryContainer
+    val stepPill = stringResource(if (enabled) R.string.ime_step_2_of_2 else R.string.ime_step_1_of_2)
+
+    Card(
+        Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = container, contentColor = content),
+    ) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    stringResource(R.string.ime_setup_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f),
+                )
+                StatusPill(
+                    text = stepPill,
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                )
+            }
+            ImeStepRow(
+                number = "1",
+                title = stringResource(if (enabled) R.string.ime_step1_done else R.string.ime_step1_title),
+                subtitle = if (!enabled) stringResource(R.string.ime_step1_hint) else null,
+                done = enabled,
+                active = !enabled,
+                contentColor = content,
+            )
+            if (!enabled) {
+                Button(onClick = onOpenSettings, modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(R.string.ime_step1_cta))
+                }
+            }
+            HorizontalDivider(color = content.copy(alpha = 0.14f))
+            ImeStepRow(
+                number = "2",
+                title = stringResource(R.string.ime_step2_title),
+                subtitle = stringResource(if (enabled) R.string.ime_step2_hint else R.string.ime_step2_locked),
+                done = false,
+                active = enabled,
+                contentColor = content,
+            )
+            if (enabled) {
+                Button(onClick = onChooseKeyboard, modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(R.string.ime_step2_cta))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ImeStepRow(
+    number: String,
+    title: String,
+    subtitle: String?,
+    done: Boolean,
+    active: Boolean,
+    contentColor: Color,
+) {
+    Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Box(
+            Modifier
+                .padding(top = 2.dp)
+                .size(22.dp)
+                .clip(CircleShape)
+                .background(
+                    when {
+                        done || active -> MaterialTheme.colorScheme.primary
+                        else -> contentColor.copy(alpha = 0.16f)
+                    },
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (done) {
+                Icon(
+                    painterResource(R.drawable.ic_check),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onPrimary,
+                    modifier = Modifier.size(14.dp),
+                )
+            } else {
+                Text(
+                    number,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = if (active) MaterialTheme.colorScheme.onPrimary else contentColor.copy(alpha = 0.65f),
+                )
+            }
+        }
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                title,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium,
+                color = if (active || done) contentColor else contentColor.copy(alpha = 0.6f),
+            )
+            if (subtitle != null) {
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = contentColor.copy(alpha = if (active) 0.85f else 0.55f),
+                )
+            }
+        }
+    }
+}
+
+private fun isKumiImeEnabled(context: Context, imm: InputMethodManager?): Boolean =
+    imm?.enabledInputMethodList?.any { it.packageName == context.packageName } == true
+
+private fun isKumiImeSelected(context: Context, imm: InputMethodManager?): Boolean {
+    val current = imm?.currentInputMethodInfo
+    if (current != null) return current.packageName == context.packageName
+    val def = runCatching {
+        Settings.Secure.getString(context.contentResolver, Settings.Secure.DEFAULT_INPUT_METHOD)
+    }.getOrNull()
+    return def?.startsWith("${context.packageName}/") == true
 }
 
 @Composable

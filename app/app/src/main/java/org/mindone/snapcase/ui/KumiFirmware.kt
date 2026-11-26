@@ -48,6 +48,9 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import java.io.File
 import java.text.DateFormat
@@ -60,6 +63,7 @@ import org.mindone.snapcase.kumi.AppInstallResult
 import org.mindone.snapcase.kumi.AppReleaseAsset
 import org.mindone.snapcase.kumi.AppUpdateInstaller
 import org.mindone.snapcase.kumi.CatalogState
+import org.mindone.snapcase.kumi.FirmwareCatalog
 import org.mindone.snapcase.kumi.FirmwarePackage
 import org.mindone.snapcase.kumi.FirmwareSource
 import org.mindone.snapcase.kumi.FlowKind
@@ -114,6 +118,7 @@ fun KumiFirmwareScreen(
     flows: InstallFlow,
     prefs: AppPreferences,
     installBlocked: StateFlow<Boolean>,
+    initialPage: Int = 0,
     onBack: () -> Unit = {},
     onOpenDetails: () -> Unit = {},
     onOpenHome: () -> Unit = {},
@@ -121,6 +126,7 @@ fun KumiFirmwareScreen(
     val context = LocalContext.current
     val resources = LocalResources.current
     val view = LocalView.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val kind by kumi.kind.collectAsStateWithLifecycle()
     val state by kumi.state.collectAsStateWithLifecycle()
     val firmware by catalog.state.collectAsStateWithLifecycle()
@@ -133,10 +139,21 @@ fun KumiFirmwareScreen(
     val blocked by installBlocked.collectAsStateWithLifecycle()
     val settings by prefs.settings.collectAsStateWithLifecycle()
     val installed = state.device?.firmware
+    val appUpdate = remember(firmware.appReleases) { firmware.appUpdate(BuildConfig.VERSION_NAME) }
+    val fwUpdateVersion = remember(installed, firmware.packages, firmware.releases, state.ramOnly) {
+        if (installed != null && !state.ramOnly) {
+            FirmwareCatalog.latestFirmwareUpdateVersion(installed, firmware.packages, firmware.releases)
+        } else {
+            null
+        }
+    }
+    val hasUpdateBadge = appUpdate != null || fwUpdateVersion != null
     var confirmInstall by remember { mutableStateOf<FirmwarePackage?>(null) }
     var confirmRestore by remember { mutableStateOf(false) }
     var changelog by remember { mutableStateOf<ChangelogPreview?>(null) }
     var installError by remember { mutableStateOf<String?>(null) }
+    var installNotice by remember { mutableStateOf<String?>(null) }
+    var pendingApkInstall by remember { mutableStateOf<File?>(null) }
     val backup = remember(settings.stockBackup) { StoredBackup.parse(settings.stockBackup) }
     val backupDate = remember(backup?.takenAt) { backup?.let { DateFormat.getDateTimeInstance().format(Date(it.takenAt)) } }
     val flow = flowState
@@ -144,20 +161,59 @@ fun KumiFirmwareScreen(
     val stockOnboarding = kind == CaseKind.STOCK || kind == CaseKind.SERVICE || (kind == CaseKind.KUMI && state.ramOnly)
 
     val launchApkInstall: (File) -> Unit = { file ->
-        installError = when (val res = AppUpdateInstaller.install(context, file)) {
-            AppInstallResult.Launched -> null
-            AppInstallResult.PermissionRequested -> resources.getString(R.string.kumi_updates_err_permission)
-            AppInstallResult.InvalidApk -> resources.getString(R.string.kumi_updates_err_invalid_apk)
-            AppInstallResult.LaunchFailed -> resources.getString(R.string.kumi_updates_err_launch)
-            is AppInstallResult.PackageMismatch -> resources.getString(R.string.kumi_updates_err_package, res.actual)
-            is AppInstallResult.SignatureMismatch -> resources.getString(
-                if (res.systemBuild) R.string.kumi_updates_err_signature_system else R.string.kumi_updates_err_signature,
-            )
+        when (val res = AppUpdateInstaller.install(context, file)) {
+            AppInstallResult.Launched -> {
+                pendingApkInstall = null
+                installError = null
+                installNotice = null
+            }
+            AppInstallResult.PermissionRequested -> {
+                pendingApkInstall = file
+                installError = null
+                installNotice = resources.getString(R.string.kumi_updates_err_permission)
+            }
+            AppInstallResult.InvalidApk -> {
+                pendingApkInstall = null
+                installNotice = null
+                installError = resources.getString(R.string.kumi_updates_err_invalid_apk)
+            }
+            AppInstallResult.LaunchFailed -> {
+                pendingApkInstall = null
+                installNotice = null
+                installError = resources.getString(R.string.kumi_updates_err_launch)
+            }
+            is AppInstallResult.PackageMismatch -> {
+                pendingApkInstall = null
+                installNotice = null
+                installError = resources.getString(R.string.kumi_updates_err_package, res.actual)
+            }
+            is AppInstallResult.SignatureMismatch -> {
+                pendingApkInstall = null
+                installNotice = null
+                installError = resources.getString(
+                    if (res.systemBuild) R.string.kumi_updates_err_signature_system else R.string.kumi_updates_err_signature,
+                )
+            }
         }
     }
 
+    DisposableEffect(lifecycleOwner, context) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                val pending = pendingApkInstall
+                if (pending != null && context.packageManager.canRequestPackageInstalls()) {
+                    pendingApkInstall = null
+                    installNotice = null
+                    launchApkInstall(pending)
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
     val listState = rememberLazyListState()
-    var page by rememberSaveable { mutableIntStateOf(0) }
+    var page by rememberSaveable(initialPage) { mutableIntStateOf(initialPage.coerceIn(0, 2)) }
     LaunchedEffect(flow?.kind, flow?.step) {
         if (flow != null) listState.animateScrollToItem(0)
     }
@@ -254,6 +310,27 @@ fun KumiFirmwareScreen(
                         }
                     }
                 }
+                if (appUpdate != null && initialPage == 1) {
+                    item {
+                        UpdatesCenterCard(
+                            firmware = firmware,
+                            catalog = catalog,
+                            kind = kind,
+                            installed = installed,
+                            ramOnly = state.ramOnly,
+                            busy = false,
+                            blocked = blocked,
+                            demo = settings.demoMode,
+                            repository = settings.releaseRepository,
+                            installError = installError,
+                            installNotice = installNotice,
+                            onInstallPackage = { confirmInstall = it },
+                            onUpdatePackage = { flows.update(it) },
+                            onInstallApk = launchApkInstall,
+                            onShowChangelog = { changelog = it },
+                        )
+                    }
+                }
                 item {
                     Card(
                         Modifier.fillMaxWidth(),
@@ -313,23 +390,26 @@ fun KumiFirmwareScreen(
                     }
                 }
                 item { CompactUpgradeBenefitsCard() }
-                item {
-                    UpdatesCenterCard(
-                        firmware = firmware,
-                        catalog = catalog,
-                        kind = kind,
-                        installed = installed,
-                        ramOnly = state.ramOnly,
-                        busy = false,
-                        blocked = blocked,
-                        demo = settings.demoMode,
-                        repository = settings.releaseRepository,
-                        installError = installError,
-                        onInstallPackage = { confirmInstall = it },
-                        onUpdatePackage = { flows.update(it) },
-                        onInstallApk = launchApkInstall,
-                        onShowChangelog = { changelog = it },
-                    )
+                if (!(appUpdate != null && initialPage == 1)) {
+                    item {
+                        UpdatesCenterCard(
+                            firmware = firmware,
+                            catalog = catalog,
+                            kind = kind,
+                            installed = installed,
+                            ramOnly = state.ramOnly,
+                            busy = false,
+                            blocked = blocked,
+                            demo = settings.demoMode,
+                            repository = settings.releaseRepository,
+                            installError = installError,
+                            installNotice = installNotice,
+                            onInstallPackage = { confirmInstall = it },
+                            onUpdatePackage = { flows.update(it) },
+                            onInstallApk = launchApkInstall,
+                            onShowChangelog = { changelog = it },
+                        )
+                    }
                 }
                 if (kind == CaseKind.KUMI && state.ramOnly) {
                     item {
@@ -350,10 +430,13 @@ fun KumiFirmwareScreen(
         }
     } else {
         Column(Modifier.fillMaxSize()) {
+            val updatesTabLabel = stringResource(R.string.kumi_case_tab_updates).let { label ->
+                if (hasUpdateBadge && page != 1) "$label •" else label
+            }
             InlineTabHeader(
                 tabs = listOf(
                     stringResource(R.string.kumi_case_tab_status),
-                    stringResource(R.string.kumi_case_tab_updates),
+                    updatesTabLabel,
                     stringResource(R.string.kumi_case_tab_stock),
                 ),
                 selectedIndex = page,
@@ -438,6 +521,7 @@ fun KumiFirmwareScreen(
                                 demo = settings.demoMode,
                                 repository = settings.releaseRepository,
                                 installError = installError,
+                                installNotice = installNotice,
                                 onInstallPackage = { confirmInstall = it },
                                 onUpdatePackage = { flows.update(it) },
                                 onInstallApk = launchApkInstall,
@@ -537,6 +621,7 @@ private fun UpdatesCenterCard(
     demo: Boolean,
     repository: String,
     installError: String?,
+    installNotice: String?,
     onInstallPackage: (FirmwarePackage) -> Unit,
     onUpdatePackage: (FirmwarePackage) -> Unit,
     onInstallApk: (File) -> Unit,
@@ -568,6 +653,16 @@ private fun UpdatesCenterCard(
         if (firmware.checking) LinearProgressIndicator(Modifier.fillMaxWidth())
         firmware.releaseError?.let { Note(it, MaterialTheme.colorScheme.error) }
         installError?.let { Note(it, MaterialTheme.colorScheme.error) }
+        installNotice?.let { notice ->
+            Surface(
+                color = MaterialTheme.colorScheme.tertiaryContainer,
+                contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(notice, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(10.dp))
+            }
+        }
         if (firmware.noReleases) Note(stringResource(R.string.kumi_releases_none))
 
         if (!demo) {
@@ -684,32 +779,47 @@ private fun AppReleaseRow(
     onShowChangelogWithCta: (String) -> Unit,
 ) {
     val ctaLabel = stringResource(if (downloaded != null) R.string.kumi_updates_install_now else R.string.kumi_updates_download_install)
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text(stringResource(R.string.kumi_updates_app_available, asset.version?.toString() ?: asset.tag), style = MaterialTheme.typography.bodyLarge)
-                Note(
-                    listOfNotNull(
-                        stringResource(R.string.kumi_updates_current_app, BuildConfig.VERSION_NAME),
-                        stringResource(R.string.kumi_updates_size_mb, asset.size / (1024.0 * 1024.0)),
-                        stringResource(R.string.kumi_prerelease).takeIf { asset.prerelease },
-                    ).joinToString(" · "),
+    val targetVersion = asset.version?.toString() ?: asset.tag
+    Surface(
+        color = MaterialTheme.colorScheme.primaryContainer,
+        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+        shape = RoundedCornerShape(14.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(stringResource(R.string.kumi_updates_app_available, targetVersion), style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        listOfNotNull(
+                            stringResource(R.string.kumi_updates_version_arrow, BuildConfig.VERSION_NAME, targetVersion),
+                            stringResource(R.string.kumi_updates_size_mb, asset.size / (1024.0 * 1024.0)),
+                            stringResource(R.string.kumi_prerelease).takeIf { asset.prerelease },
+                        ).joinToString(" · "),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.85f),
+                    )
+                }
+                StatusPill(
+                    text = stringResource(R.string.kumi_updates_badge_new),
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
                 )
             }
-        }
-        if (downloading) {
-            val pct = ((progress ?: 0f) * 100f).toInt().coerceIn(0, 100)
-            Note(stringResource(R.string.kumi_updates_downloading, pct))
-            if (progress != null) LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
-            else LinearProgressIndicator(Modifier.fillMaxWidth())
-        } else {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(
-                    onClick = { if (downloaded != null) onInstall(downloaded) else onDownload() },
-                    enabled = !anyDownloading,
-                ) { Text(ctaLabel) }
-                OutlinedButton(onClick = { onShowChangelogWithCta(ctaLabel) }) {
-                    Text(stringResource(R.string.kumi_updates_changelog))
+            if (downloading) {
+                val pct = ((progress ?: 0f) * 100f).toInt().coerceIn(0, 100)
+                Text(stringResource(R.string.kumi_updates_downloading, pct), style = MaterialTheme.typography.bodySmall)
+                if (progress != null) LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
+                else LinearProgressIndicator(Modifier.fillMaxWidth())
+            } else {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(
+                        onClick = { if (downloaded != null) onInstall(downloaded) else onDownload() },
+                        enabled = !anyDownloading,
+                    ) { Text(ctaLabel) }
+                    OutlinedButton(onClick = { onShowChangelogWithCta(ctaLabel) }) {
+                        Text(stringResource(R.string.kumi_updates_changelog))
+                    }
                 }
             }
         }
@@ -728,26 +838,48 @@ private fun FirmwarePackageRow(
     onUpdate: () -> Unit,
     onChangelog: (() -> Unit)?,
 ) {
-    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(stringResource(R.string.kumi_name_version, pkg.version.toString()), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-            EvidenceLabel(stringResource(sourceName(pkg.source)))
-        }
-        Note(listOf(stringResource(R.string.kumi_package_size, (pkg.info.stage0 + pkg.info.image) / 1024), stringResource(R.string.kumi_verified)).joinToString(" · "))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            when {
-                installable && blocked -> Note(stringResource(R.string.kumi_install_not_enabled), MaterialTheme.colorScheme.error)
-                installable -> Button(onClick = onInstall, enabled = !busy) { Text(stringResource(R.string.kumi_install_action)) }
-                kind == CaseKind.KUMI && installed != null && pkg.version > installed -> Button(onClick = onUpdate, enabled = !busy) {
-                    Text(stringResource(R.string.kumi_update_to, pkg.version.toString()))
+    val isNewer = kind == CaseKind.KUMI && installed != null && pkg.version > installed
+    val content: @Composable () -> Unit = {
+        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(stringResource(R.string.kumi_name_version, pkg.version.toString()), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+                if (isNewer) {
+                    StatusPill(
+                        text = stringResource(R.string.kumi_updates_badge_new),
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary,
+                    )
                 }
-                kind == CaseKind.KUMI && installed == pkg.version -> Note(stringResource(R.string.kumi_installed_now))
-                else -> Unit
+                EvidenceLabel(stringResource(sourceName(pkg.source)))
             }
-            if (onChangelog != null) {
-                OutlinedButton(onClick = onChangelog) { Text(stringResource(R.string.kumi_updates_changelog)) }
+            Note(listOf(stringResource(R.string.kumi_package_size, (pkg.info.stage0 + pkg.info.image) / 1024), stringResource(R.string.kumi_verified)).joinToString(" · "))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                when {
+                    installable && blocked -> Note(stringResource(R.string.kumi_install_not_enabled), MaterialTheme.colorScheme.error)
+                    installable -> Button(onClick = onInstall, enabled = !busy) { Text(stringResource(R.string.kumi_install_action)) }
+                    isNewer -> Button(onClick = onUpdate, enabled = !busy) {
+                        Text(stringResource(R.string.kumi_update_to, pkg.version.toString()))
+                    }
+                    kind == CaseKind.KUMI && installed == pkg.version -> Note(stringResource(R.string.kumi_installed_now))
+                    else -> Unit
+                }
+                if (onChangelog != null) {
+                    OutlinedButton(onClick = onChangelog) { Text(stringResource(R.string.kumi_updates_changelog)) }
+                }
             }
         }
+    }
+    if (isNewer) {
+        Surface(
+            color = MaterialTheme.colorScheme.secondaryContainer,
+            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+            shape = RoundedCornerShape(14.dp),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column(Modifier.padding(10.dp)) { content() }
+        }
+    } else {
+        content()
     }
 }
 

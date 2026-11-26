@@ -16,6 +16,7 @@ use kumi_settings::{Store, StoredSettings};
 use sha2::{Digest, Sha256};
 
 pub const HEALTHY_AFTER_MS: u32 = 30_000;
+pub const CONFIRMED_HEALTHY_MS: u32 = 10_000;
 pub const SETTINGS_SETTLE_MS: u32 = 2_000;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -26,12 +27,16 @@ pub struct Health {
 
 impl Health {
     pub fn due(&mut self, configured: bool, now: u32) -> bool {
+        self.due_for(configured, now, HEALTHY_AFTER_MS)
+    }
+
+    pub fn due_for(&mut self, configured: bool, now: u32, after_ms: u32) -> bool {
         if self.done || !configured {
             self.since = None;
             return false;
         }
         let since = *self.since.get_or_insert(now);
-        now.wrapping_sub(since) >= HEALTHY_AFTER_MS
+        now.wrapping_sub(since) >= after_ms
     }
 
     pub fn finish(&mut self) {
@@ -319,6 +324,9 @@ impl<F: NorFlash + WriteGuard> Storage<F> {
     #[cfg_attr(target_arch = "riscv32", unsafe(link_section = ".text.storage"))]
     pub fn request_reboot(&mut self, target: RebootTarget, mut verify: impl FnMut(&mut F, SlotId) -> bool) -> Ack {
         if target != RebootTarget::OtherSlot {
+            if target == RebootTarget::Normal {
+                let _ = self.mark_healthy_if_confirmed();
+            }
             self.incoming = None;
             self.reboot = Some(target);
             return Ok(());
@@ -335,6 +343,29 @@ impl<F: NorFlash + WriteGuard> Storage<F> {
         }
         self.persist(next)?;
         self.reboot = Some(target);
+        Ok(())
+    }
+
+    pub fn is_confirmed(&self) -> bool {
+        self.info.zip(self.state).is_some_and(|(info, state)| state.slot(info.slot).status == SlotStatus::Confirmed)
+    }
+
+    #[inline(never)]
+    #[cfg_attr(target_arch = "riscv32", unsafe(link_section = ".text.storage"))]
+    pub fn mark_healthy_if_confirmed(&mut self) -> Ack {
+        self.ready()?;
+        if self.reboot.is_some() {
+            return Err(CaseError::Busy);
+        }
+        let info = self.info.ok_or(CaseError::WrongState)?;
+        let state = self.state.ok_or(CaseError::WrongState)?;
+        if state.slot(info.slot).status != SlotStatus::Confirmed {
+            return Ok(());
+        }
+        let next = policy::mark_healthy(&state);
+        if next != state {
+            self.persist(next)?;
+        }
         Ok(())
     }
 

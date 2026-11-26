@@ -71,10 +71,10 @@ import org.mindone.snapcase.kumi.EqMath
 import org.mindone.snapcase.kumi.EqProfile
 import org.mindone.snapcase.kumi.FastEqCurve
 import org.mindone.snapcase.kumi.FirmwareCatalog
-import org.mindone.snapcase.kumi.FirmwarePackage
 import org.mindone.snapcase.kumi.Jack
 import org.mindone.snapcase.kumi.KumiSession
 import org.mindone.snapcase.kumi.KumiState
+import org.mindone.snapcase.kumi.KumiVersion
 import org.mindone.snapcase.kumi.OutputFilter
 import org.mindone.snapcase.kumi.SlotState
 import org.mindone.snapcase.protocol.DacFilter
@@ -91,13 +91,20 @@ fun KumiHomeScreen(
     onOpenIme: () -> Unit,
     onOpenTester: () -> Unit,
     onOpenFirmware: () -> Unit,
+    onOpenUpdates: () -> Unit = onOpenFirmware,
     overflowMenu: @Composable () -> Unit = {},
 ) {
     val kind by kumi.kind.collectAsStateWithLifecycle()
     val state by kumi.state.collectAsStateWithLifecycle()
     val firmware by catalog.collectAsStateWithLifecycle()
-    val fwUpdate = FirmwareCatalog.updateFor(state.device?.firmware, firmware.packages)?.takeIf { state.device != null && !state.ramOnly }
+    val fwUpdateVersion = FirmwareCatalog.latestFirmwareUpdateVersion(
+        state.device?.firmware,
+        firmware.packages,
+        firmware.releases,
+    )?.takeIf { state.device != null && !state.ramOnly }
     val appUpdate = firmware.appUpdate(BuildConfig.VERSION_NAME)
+    val hasAnyUpdate = fwUpdateVersion != null || appUpdate != null
+    val caseOpenTarget: () -> Unit = if (hasAnyUpdate) onOpenUpdates else onOpenFirmware
     var lastEqSlot by rememberSaveable { mutableIntStateOf(0) }
     val activeEq = state.audio?.eqActive
     if (activeEq != null) lastEqSlot = activeEq
@@ -151,7 +158,7 @@ fun KumiHomeScreen(
             KeyEvent.KEYCODE_Q -> { onOpenAudio(); true }
             KeyEvent.KEYCODE_W -> { onOpenEq(activeEq ?: lastEqSlot); true }
             KeyEvent.KEYCODE_E -> { onOpenKeys(); true }
-            KeyEvent.KEYCODE_R -> { onOpenFirmware(); true }
+            KeyEvent.KEYCODE_R -> { caseOpenTarget(); true }
             KeyEvent.KEYCODE_SPACE -> if (state.connected) { toggleEq(); true } else false
             KeyEvent.KEYCODE_X -> if (state.connected && state.dsp != null) { cycleCrossfeed(); true } else false
             KeyEvent.KEYCODE_A -> if (state.connected && state.dacExtras != null) { toggleStayAwake(); true } else false
@@ -221,6 +228,13 @@ fun KumiHomeScreen(
             if (state.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
 
             if (!good) {
+                if (appUpdate != null) {
+                    HomeUpdateCard(
+                        fwVersion = null,
+                        appUpdate = appUpdate,
+                        onOpenUpdates = onOpenUpdates,
+                    )
+                }
                 Card(
                     Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(16.dp),
@@ -239,13 +253,18 @@ fun KumiHomeScreen(
                     }
                 }
             } else {
-                if (fwUpdate != null || appUpdate != null || state.error != null || state.diagnostics?.safeMode == true || state.ramOnly) {
+                if (state.error != null || state.diagnostics?.safeMode == true || state.ramOnly) {
                     HomeAlertBanner(
                         state = state,
-                        fwUpdate = fwUpdate,
-                        appUpdate = appUpdate,
-                        onOpenFirmware = onOpenFirmware,
                         onDismiss = kumi::clearError,
+                        onRestart = kumi::restartCase,
+                    )
+                }
+                if (hasAnyUpdate && state.diagnostics?.safeMode != true) {
+                    HomeUpdateCard(
+                        fwVersion = fwUpdateVersion,
+                        appUpdate = appUpdate,
+                        onOpenUpdates = onOpenUpdates,
                     )
                 }
 
@@ -302,13 +321,14 @@ fun KumiHomeScreen(
                             onClick = onOpenKeys,
                             modifier = Modifier.weight(1f),
                         )
+                        val updateTag = fwUpdateVersion?.toString() ?: appUpdate?.version?.toString() ?: appUpdate?.tag
                         HomeNavTile(
                             icon = R.drawable.ic_memory,
                             title = stringResource(R.string.kumi_tab_case),
-                            subtitle = if (fwUpdate != null) stringResource(R.string.kumi_update_to, fwUpdate.version.toString()) else slotTag,
+                            subtitle = if (updateTag != null) stringResource(R.string.kumi_update_to, updateTag) else slotTag,
                             keyHint = "R",
-                            highlighted = fwUpdate != null,
-                            onClick = onOpenFirmware,
+                            highlighted = hasAnyUpdate,
+                            onClick = caseOpenTarget,
                             modifier = Modifier.weight(1f),
                         )
                     }
@@ -378,10 +398,8 @@ fun KumiHomeScreen(
 @Composable
 private fun HomeAlertBanner(
     state: KumiState,
-    fwUpdate: FirmwarePackage?,
-    appUpdate: AppReleaseAsset?,
-    onOpenFirmware: () -> Unit,
     onDismiss: () -> Unit,
+    onRestart: () -> Unit,
 ) {
     Surface(
         color = if (state.error != null || state.diagnostics?.safeMode == true) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.tertiaryContainer,
@@ -397,12 +415,10 @@ private fun HomeAlertBanner(
             val text = when {
                 state.error != null -> kumiFriendlyError(state)
                 state.diagnostics?.safeMode == true -> stringResource(R.string.kumi_safe_mode)
-                fwUpdate != null -> stringResource(R.string.kumi_update_to, fwUpdate.version.toString())
-                appUpdate != null -> stringResource(R.string.kumi_updates_app_available, appUpdate.version?.toString() ?: appUpdate.tag)
                 state.ramOnly -> stringResource(R.string.kumi_ram_only_text)
                 else -> ""
             }
-            Text(text, style = MaterialTheme.typography.labelMedium, maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+            Text(text, style = MaterialTheme.typography.labelMedium, maxLines = 4, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
             if (state.error != null) {
                 Text(
                     stringResource(R.string.action_dismiss),
@@ -410,15 +426,89 @@ private fun HomeAlertBanner(
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.clickable(onClick = onDismiss).padding(horizontal = 4.dp),
                 )
-            } else if (state.diagnostics?.safeMode != true && (fwUpdate != null || appUpdate != null)) {
+            } else if (state.diagnostics?.safeMode == true) {
                 Surface(
-                    color = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                    color = MaterialTheme.colorScheme.error,
+                    contentColor = MaterialTheme.colorScheme.onError,
                     shape = CircleShape,
-                    modifier = Modifier.clip(CircleShape).clickable(onClick = onOpenFirmware),
+                    modifier = Modifier.clip(CircleShape).clickable(onClick = onRestart),
                 ) {
-                    Text(stringResource(R.string.kumi_updates_title), style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
+                    Text(
+                        stringResource(R.string.kumi_action_restart),
+                        style = MaterialTheme.typography.labelSmall,
+                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+                    )
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun HomeUpdateCard(
+    fwVersion: KumiVersion?,
+    appUpdate: AppReleaseAsset?,
+    onOpenUpdates: () -> Unit,
+) {
+    val appVer = appUpdate?.version?.toString() ?: appUpdate?.tag
+    val title = when {
+        appVer != null && fwVersion != null -> {
+            val shown = if (appVer == fwVersion.toString()) appVer else "$appVer / $fwVersion"
+            stringResource(R.string.kumi_updates_both_available, shown)
+        }
+        appVer != null -> stringResource(R.string.kumi_updates_app_available, appVer)
+        fwVersion != null -> stringResource(R.string.kumi_update_available, fwVersion.toString())
+        else -> stringResource(R.string.kumi_updates_title)
+    }
+    val subtitle = when {
+        appUpdate != null && fwVersion != null -> stringResource(R.string.kumi_updates_both_hint)
+        appUpdate != null -> listOf(
+            stringResource(R.string.kumi_updates_size_mb, appUpdate.size / (1024.0 * 1024.0)),
+            stringResource(R.string.kumi_updates_banner_hint),
+        ).joinToString(" · ")
+        else -> stringResource(R.string.kumi_updates_fw_banner_hint)
+    }
+    Card(
+        onClick = onOpenUpdates,
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer,
+            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+        ),
+    ) {
+        Row(
+            Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Icon(
+                painterResource(R.drawable.ic_bolt),
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(20.dp),
+            )
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    title,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.85f),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Button(
+                onClick = onOpenUpdates,
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+            ) {
+                Text(stringResource(R.string.kumi_updates_cta_short), style = MaterialTheme.typography.labelLarge)
             }
         }
     }

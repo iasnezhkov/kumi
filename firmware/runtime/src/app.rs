@@ -112,6 +112,10 @@ impl Shared {
         }
     }
 
+    pub fn safe_mode(&self) -> bool {
+        self.safe_mode
+    }
+
     pub fn touch_activity(&self) {
         self.last_activity_ms.set(self.milliseconds.get());
     }

@@ -80,6 +80,7 @@ fun HomeScreen(
     onOpenIme: () -> Unit,
     onOpenTester: () -> Unit,
     onOpenFirmware: () -> Unit,
+    onOpenUpdates: () -> Unit = onOpenFirmware,
     showHeader: Boolean = false,
     overflowMenu: @Composable () -> Unit = {},
 ) {
@@ -105,7 +106,7 @@ fun HomeScreen(
             contentPadding = PaddingValues(start = 10.dp, end = 10.dp, top = 2.dp, bottom = 14.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            appUpdate?.let { asset -> item { AppUpdateBannerCard(asset, onOpenFirmware) } }
+            appUpdate?.let { asset -> item { AppUpdateBannerCard(asset, onOpenUpdates) } }
             if (mergedOffer != null) {
                 item {
                     StockUpgradeHeroCard(
@@ -197,23 +198,30 @@ private fun StockUpgradeHeroCard(pkg: FirmwarePackage, onUpgrade: () -> Unit, on
 @Composable
 private fun AppUpdateBannerCard(asset: AppReleaseAsset, onOpen: () -> Unit) {
     Card(
-        Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+        onClick = onOpen,
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer,
+            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+        ),
     ) {
-        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Icon(painterResource(R.drawable.ic_bolt), contentDescription = null, modifier = Modifier.size(22.dp))
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
                     stringResource(R.string.kumi_updates_app_available, asset.version?.toString() ?: asset.tag),
                     style = MaterialTheme.typography.titleSmall,
                 )
                 Text(
-                    stringResource(R.string.kumi_updates_size_mb, asset.size / (1024.0 * 1024.0)),
+                    listOf(
+                        stringResource(R.string.kumi_updates_size_mb, asset.size / (1024.0 * 1024.0)),
+                        stringResource(R.string.kumi_updates_banner_hint),
+                    ).joinToString(" · "),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.85f),
                 )
             }
-            Spacer(Modifier.width(8.dp))
-            Button(onClick = onOpen) { Text(stringResource(R.string.kumi_updates_title)) }
+            Button(onClick = onOpen) { Text(stringResource(R.string.kumi_updates_cta_short)) }
         }
     }
 }

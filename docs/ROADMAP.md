@@ -18,7 +18,7 @@ Each milestone runs entirely from RAM first; the flash is written only after the
 | M7 | stage0 binary, signed A/B updates, rollback, install and return to stock from the app and CLI | a broken slot falls back; both broken reach the boot ROM |
 | M8 | research: charger and battery, keyboard MCU protocol (LEDs, sleep), hardware EQ block | a report with measurements |
 
-## Feature state (Kumi 1.0.0)
+## Feature state (Kumi 1.0.1)
 
 **hardware**: works on the real case booted from flash (`stage0` 360 MHz + 90 MHz Quad-SPI XIP + signed A/B slots); **code**: written
 and host-, model- or emulator-tested, not yet accepted on the case; **missing**: not written. The last
