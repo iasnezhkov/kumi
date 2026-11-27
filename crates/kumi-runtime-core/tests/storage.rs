@@ -24,6 +24,7 @@ impl NorFlashError for Cut {
 struct Flash {
     data: Vec<u8>,
     budget: Option<usize>,
+    reads: usize,
     writes: usize,
     cut_at: Option<(u32, usize)>,
     writer: Option<Writer>,
@@ -55,6 +56,7 @@ impl ErrorType for Flash {
 impl ReadNorFlash for Flash {
     const READ_SIZE: usize = 1;
     fn read(&mut self, offset: u32, bytes: &mut [u8]) -> Result<(), Cut> {
+        self.reads += 1;
         bytes.copy_from_slice(self.data.get(offset as usize..offset as usize + bytes.len()).ok_or(Cut)?);
         Ok(())
     }
@@ -95,7 +97,8 @@ fn key() -> SigningKey {
 
 fn fixture(trial: bool) -> (Flash, BootInfo) {
     let image = kumi_install::sample::image(&key(), [0, 1, 0], 1);
-    let mut flash = Flash { data: vec![0xff; FLASH_SIZE as usize], budget: None, writes: 0, cut_at: None, writer: None };
+    let mut flash =
+        Flash { data: vec![0xff; FLASH_SIZE as usize], budget: None, reads: 0, writes: 0, cut_at: None, writer: None };
     flash.data[SLOT_A.offset as usize..SLOT_A.offset as usize + image.len()].copy_from_slice(&image);
     let mut state = BootState::FRESH;
     state.boot_count = 1;
@@ -435,14 +438,21 @@ fn a_host_loaded_runtime_never_writes_and_a_pending_reboot_defers_the_health_poi
 fn the_last_crash_is_saved_to_the_crash_log_once() {
     let (flash, info) = fixture(false);
     let mut storage = Storage::open(flash, Some(info));
+    let reads = storage.flash().reads;
     assert_eq!(storage.logged_crash(), None);
+    assert_eq!(storage.flash().reads, reads);
     let area = crash("saved");
     assert_eq!(storage.log_crash(&area), Ok(true));
+    let reads = storage.flash().reads;
+    assert_eq!(storage.logged_crash(), Some(area));
+    assert_eq!(storage.flash().reads, reads);
     assert_eq!(storage.log_crash(&area), Ok(false));
     let flash = storage.into_flash();
     assert!(flash.data[CRASH_LOG.offset as usize..CRASH_LOG.offset as usize + 4] == *b"KCL1");
     let mut reader = Storage::open(flash, None);
+    let reads = reader.flash().reads;
     assert_eq!(reader.logged_crash(), Some(area));
+    assert_eq!(reader.flash().reads, reads);
 }
 
 #[test]

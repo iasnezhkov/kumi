@@ -12,7 +12,7 @@ const LUFS_BLOCKS: usize = 30;
 const MOMENTARY_BLOCKS: usize = 4;
 const AGC_GATE_LUFS: f32 = -45.0;
 const AGC_MIN_DB: f32 = -15.0;
-const AGC_MAX_DB: f32 = 9.0;
+const AGC_MAX_BOOST_DB: f32 = 4.0;
 const AGC_ATTACK_DB_PER_BLOCK: f32 = 0.60;
 const AGC_RELEASE_DB_PER_BLOCK: f32 = 0.15;
 const AGC_HEADROOM_DB: f32 = -0.5;
@@ -55,11 +55,13 @@ pub struct Analyzer {
     block_energy: f32,
     block_frames: u32,
     block_target: u32,
+    block_pre_peak: f32,
     blocks: [f32; LUFS_BLOCKS],
     block_idx: u8,
     blocks_filled: u8,
     agc_gain_db: f32,
     agc_gain_lin: f32,
+    allow_boost: bool,
     spectrum_enabled: bool,
 }
 
@@ -89,11 +91,13 @@ impl Analyzer {
             block_energy: 0.0,
             block_frames: 0,
             block_target: 4_800,
+            block_pre_peak: 0.0,
             blocks: [0.0; LUFS_BLOCKS],
             block_idx: 0,
             blocks_filled: 0,
             agc_gain_db: 0.0,
             agc_gain_lin: 1.0,
+            allow_boost: false,
             spectrum_enabled: false,
         }
     }
@@ -106,6 +110,14 @@ impl Analyzer {
         self.spectrum_enabled
     }
 
+    pub fn set_allow_boost(&mut self, allow: bool) {
+        self.allow_boost = allow;
+        if !allow && self.agc_gain_db > 0.0 {
+            self.agc_gain_db = 0.0;
+            self.agc_gain_lin = 1.0;
+        }
+    }
+
     pub fn agc_gain_lin(&self) -> f32 {
         self.agc_gain_lin
     }
@@ -115,6 +127,7 @@ impl Analyzer {
     }
 
     pub fn reset_agc(&mut self) {
+        self.block_pre_peak = 0.0;
         self.agc_gain_db = 0.0;
         self.agc_gain_lin = 1.0;
     }
@@ -155,6 +168,7 @@ impl Analyzer {
         self.tp_r = 0.0;
         self.block_energy = 0.0;
         self.block_frames = 0;
+        self.block_pre_peak = 0.0;
         self.blocks = [0.0; LUFS_BLOCKS];
         self.block_idx = 0;
         self.blocks_filled = 0;
@@ -197,6 +211,12 @@ impl Analyzer {
     pub fn push_output_frame(&mut self, out_l: f32, out_r: f32, pre_l: f32, pre_r: f32, auto_level: bool, target_lufs: f32) {
         if !self.spectrum_enabled && !auto_level {
             return;
+        }
+        if auto_level {
+            let p = pre_l.abs().max(pre_r.abs());
+            if p > self.block_pre_peak {
+                self.block_pre_peak = p;
+            }
         }
         if self.spectrum_enabled {
             Self::update_true_peak_channel(&mut self.tp_hist[0], out_l, &mut self.tp_l);
@@ -268,6 +288,7 @@ impl Analyzer {
             if auto_level {
                 self.step_agc(target_lufs);
             } else {
+                self.block_pre_peak = 0.0;
                 self.agc_gain_db = 0.0;
                 self.agc_gain_lin = 1.0;
             }
@@ -276,29 +297,34 @@ impl Analyzer {
 
     #[cfg_attr(target_arch = "riscv32", unsafe(link_section = ".text.cold"))]
     fn step_agc(&mut self, target_lufs: f32) {
+        let peak = self.block_pre_peak;
+        self.block_pre_peak = 0.0;
         let count = usize::from(self.blocks_filled);
         if count == 0 {
             return;
         }
         let window = if count >= 6 { count } else { count.min(MOMENTARY_BLOCKS) };
         let measured = self.lufs_over(window);
+        let max_db = if self.allow_boost { AGC_MAX_BOOST_DB } else { 0.0 };
         if measured > AGC_GATE_LUFS {
-            let desired = (target_lufs - measured).clamp(AGC_MIN_DB, AGC_MAX_DB);
-            let cur = self.agc_gain_db;
+            let desired = (target_lufs - measured).clamp(AGC_MIN_DB, max_db);
+            let cur = self.agc_gain_db.min(max_db);
             let next = if desired < cur {
                 (cur - AGC_ATTACK_DB_PER_BLOCK).max(desired)
             } else {
                 (cur + AGC_RELEASE_DB_PER_BLOCK).min(desired)
             };
-            let tp_max = self.tp_l.max(self.tp_r);
-            let safe = if tp_max > 1e-5 {
-                let tp_db = gain_to_db(tp_max);
-                if tp_db > AGC_HEADROOM_DB { (next - (tp_db - AGC_HEADROOM_DB)).clamp(AGC_MIN_DB, AGC_MAX_DB) } else { next }
+            let safe = if peak > 1e-5 {
+                let safe_max = (AGC_HEADROOM_DB - gain_to_db(peak)).clamp(AGC_MIN_DB, max_db);
+                next.min(safe_max)
             } else {
                 next
             };
             self.agc_gain_db = safe;
             self.agc_gain_lin = db_to_gain(safe);
+        } else if self.agc_gain_db > max_db {
+            self.agc_gain_db = max_db;
+            self.agc_gain_lin = db_to_gain(max_db);
         }
     }
 
@@ -321,6 +347,12 @@ impl Analyzer {
     #[cfg_attr(target_arch = "riscv32", unsafe(link_section = ".text.cold"))]
     #[inline(never)]
     pub fn take_spectrum(&mut self, active: bool, auto_level: bool) -> AudioSpectrum {
+        self.take_spectrum_with(active, auto_level, || {})
+    }
+
+    #[cfg_attr(target_arch = "riscv32", unsafe(link_section = ".text.cold"))]
+    #[inline(never)]
+    pub fn take_spectrum_with(&mut self, active: bool, auto_level: bool, mut poll: impl FnMut()) -> AudioSpectrum {
         let tp_l = self.tp_l;
         let tp_r = self.tp_r;
         self.tp_l = 0.0;
@@ -330,7 +362,7 @@ impl Analyzer {
         }
         let mut bands = [0u8; SPECTRUM_BANDS];
         if self.hi_filled || self.hi_pos >= 64 {
-            self.compute_bands(&mut bands);
+            self.compute_bands_with(&mut bands, &mut poll);
         }
         let gain_offset = if auto_level { self.agc_gain_db } else { 0.0 };
         let mom = self.lufs_over(MOMENTARY_BLOCKS);
@@ -350,7 +382,7 @@ impl Analyzer {
 
     #[cfg_attr(target_arch = "riscv32", unsafe(link_section = ".text.cold"))]
     #[inline(never)]
-    fn compute_bands(&self, out: &mut [u8; SPECTRUM_BANDS]) {
+    fn compute_bands_with(&self, out: &mut [u8; SPECTRUM_BANDS], poll: &mut dyn FnMut()) {
         let fs_hi = (self.sample_rate as f32 / f32::from(self.decim_step)).max(8_000.0);
         let fs_lo = fs_hi / f32::from(LO_DECIM);
 
@@ -360,26 +392,33 @@ impl Analyzer {
         let mut lo_mag = [0.0f32; LO_LEN / 2];
         if self.lo_filled || self.lo_pos >= 32 {
             copy_hann_window(&self.lo_ring, usize::from(self.lo_pos), &mut re[..LO_LEN]);
+            poll();
             im[..LO_LEN].fill(0.0);
-            fft_radix2(&mut re[..LO_LEN], &mut im[..LO_LEN]);
+            fft_radix2_with(&mut re[..LO_LEN], &mut im[..LO_LEN], poll);
             let norm_lo = 16.0 / ((LO_LEN * LO_LEN) as f32);
             for k in 1..(LO_LEN / 2) {
                 lo_mag[k] = mul_add(re[k], re[k], im[k] * im[k]) * norm_lo;
             }
+            poll();
         }
 
         copy_hann_window(&self.hi_ring, usize::from(self.hi_pos), &mut re);
+        poll();
         im.fill(0.0);
-        fft_radix2(&mut re, &mut im);
+        fft_radix2_with(&mut re, &mut im, poll);
         let norm_hi = 16.0 / ((HI_LEN * HI_LEN) as f32);
         let mut hi_mag = [0.0f32; HI_LEN / 2];
         for k in 1..(HI_LEN / 2) {
             hi_mag[k] = mul_add(re[k], re[k], im[k] * im[k]) * norm_hi;
         }
+        poll();
 
         let df_lo = fs_lo / LO_LEN as f32;
         let df_hi = fs_hi / HI_LEN as f32;
         for b in 0..SPECTRUM_BANDS {
+            if b > 0 && b % 6 == 0 {
+                poll();
+            }
             let fc = BAND_CENTERS_HZ[b];
             let f_lo_edge = if b == 0 { 20.0 } else { libm::sqrtf(BAND_CENTERS_HZ[b - 1] * fc) };
             let f_hi_edge =
@@ -453,7 +492,7 @@ fn copy_hann_window(ring: &[f32], pos: usize, out: &mut [f32]) {
 }
 
 #[cfg_attr(target_arch = "riscv32", unsafe(link_section = ".text.cold"))]
-pub fn fft_radix2(re: &mut [f32], im: &mut [f32]) {
+fn fft_radix2_with(re: &mut [f32], im: &mut [f32], poll: &mut dyn FnMut()) {
     let n = re.len();
     let mut j = 0usize;
     for i in 1..n {
@@ -468,6 +507,7 @@ pub fn fft_radix2(re: &mut [f32], im: &mut [f32]) {
             im.swap(i, j);
         }
     }
+    poll();
     let mut len = 2usize;
     while len <= n {
         let half = len >> 1;
@@ -498,6 +538,7 @@ pub fn fft_radix2(re: &mut [f32], im: &mut [f32]) {
             }
             start += len;
         }
+        poll();
         len <<= 1;
     }
 }

@@ -62,6 +62,7 @@ pub struct Storage<F> {
     flash_ok: bool,
     incoming: Option<Incoming>,
     reboot: Option<RebootTarget>,
+    logged_crash: Option<[u8; AREA_SIZE]>,
 }
 
 pub fn slot_id(slot: Slot) -> SlotId {
@@ -131,8 +132,10 @@ impl<F: NorFlash + WriteGuard> Storage<F> {
             })
         });
         table.booted = info.map(|info| wire_slot(info.slot));
+        let logged_crash =
+            CrashLog::new(&mut flash, CRASH_LOG).ok().and_then(|mut log| log.latest().ok().flatten()).map(|entry| entry.area);
         flash.set_writer(info.map(|info| Writer::Firmware { active: info.slot }));
-        Self { flash, info, state, table, flash_ok: true, incoming: None, reboot: None }
+        Self { flash, info, state, table, flash_ok: true, incoming: None, reboot: None, logged_crash }
     }
 
     pub fn booted(&self) -> Option<SlotId> {
@@ -407,16 +410,20 @@ impl<F: NorFlash + WriteGuard> Storage<F> {
     #[cfg_attr(target_arch = "riscv32", unsafe(link_section = ".text.storage"))]
     pub fn log_crash(&mut self, area: &[u8; AREA_SIZE]) -> Result<bool, CaseError> {
         self.ready()?;
-        CrashLog::new(&mut self.flash, CRASH_LOG)
+        let appended = CrashLog::new(&mut self.flash, CRASH_LOG)
             .map_err(|_| CaseError::HardwareFault)?
             .append(area)
-            .map_err(|_| CaseError::HardwareFault)
+            .map_err(|_| CaseError::HardwareFault)?;
+        if appended {
+            self.logged_crash = Some(*area);
+        }
+        Ok(appended)
     }
 
     #[inline(never)]
     #[cfg_attr(target_arch = "riscv32", unsafe(link_section = ".text.storage"))]
     pub fn logged_crash(&mut self) -> Option<[u8; AREA_SIZE]> {
-        CrashLog::new(&mut self.flash, CRASH_LOG).ok()?.latest().ok().flatten().map(|entry| entry.area)
+        self.logged_crash
     }
 
     pub fn update_in_progress(&self) -> bool {

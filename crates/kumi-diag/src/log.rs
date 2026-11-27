@@ -81,12 +81,21 @@ impl<F: NorFlash> CrashLog<F> {
 
     pub fn latest(&mut self) -> Result<Option<Entry>, F::Error> {
         let mut best: Option<Entry> = None;
+        let mut hdr = [0u8; 8];
         let mut area = [0u8; AREA_SIZE];
         for index in 0..self.slots() {
-            if let Slot::Valid(sequence) = self.slot(index, &mut area)?
-                && best.is_none_or(|b| sequence > b.sequence)
+            self.flash.read(self.address(index), &mut hdr)?;
+            if hdr[..4] != MAGIC {
+                continue;
+            }
+            let sequence = get32(&hdr, 4);
+            if best.is_some_and(|b| sequence <= b.sequence) {
+                continue;
+            }
+            if let Slot::Valid(seq) = self.slot(index, &mut area)?
+                && best.is_none_or(|b| seq > b.sequence)
             {
-                best = Some(Entry { sequence, index, area });
+                best = Some(Entry { sequence: seq, index, area });
             }
         }
         Ok(best)

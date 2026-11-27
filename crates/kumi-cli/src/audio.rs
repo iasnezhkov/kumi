@@ -15,7 +15,7 @@ use kumi_icd::{
     AUDIO_MONITOR_FRAME, AUDIO_MONITOR_LOST_PACKETS, AUDIO_MONITOR_OVERRUNS, AUDIO_MONITOR_PACKETS, AUDIO_MONITOR_PAUSES,
     AUDIO_MONITOR_POLLS, AUDIO_MONITOR_PROBE_RATE, AUDIO_MONITOR_QUEUED, AUDIO_MONITOR_UNDERRUNS, AUDIO_MONITOR_WORDS,
     AUDIO_MONITOR_WRAPS, AudioBench, AudioBenchRequest, AudioBenchState, AudioChannel, AudioStart, AudioStream, CaseError,
-    ClassHMode, CrossfeedMode, DacExtras, DacFilter, DevAudio, DevI2c, DevPeek, DevPoke, DevUnlock, DevUnlockRequest,
+    ClassHMode, CrossfeedMode, DacExtras, DacFilter, DevAudio, DevI2c, DevPeek, DevPoke, DevUnlock, DevUnlockRequest, DspExtras,
     DspSettings, EQ_MAX_BANDS, EQ_SLOTS, EqBand, EqProfile, EqSlotUpdate, FilterKind, I2cRequest, OutputSettings, PeekRequest,
     PokeRequest, TestToneRequest,
 };
@@ -879,6 +879,52 @@ pub fn dsp(client: &mut Connection, args: &[String]) -> Result<Value, Failure> {
     }
 }
 
+pub fn parse_dsp_extras_update(current: DspExtras, args: &[String]) -> Result<DspExtras, Failure> {
+    let shape = "dsp-extras set [--auto-level on|off] [--target-lufs DB] [--subsonic HZ] [--mono-bass HZ]";
+    if args.is_empty() {
+        return Err(usage(shape));
+    }
+    let mut next = current;
+    let mut i = 0;
+    while i < args.len() {
+        let Some(value) = args.get(i + 1) else { return Err(usage(shape)) };
+        match args[i].as_str() {
+            "--auto-level" => next.auto_level = parse_bool(value, "--auto-level")?,
+            "--target-lufs" => {
+                let target = value.parse::<i8>().map_err(|_| usage("--target-lufs must be in -24..-10"))?;
+                next.auto_level_target_lufs = target;
+            }
+            "--subsonic" => {
+                let hz = value.parse::<u8>().map_err(|_| usage("--subsonic must be 0 or 15..40"))?;
+                next.subsonic_hz = hz;
+            }
+            "--mono-bass" => {
+                let hz = value.parse::<u8>().map_err(|_| usage("--mono-bass must be 0 or 60..200"))?;
+                next.mono_bass_hz = hz;
+            }
+            _ => return Err(usage(shape)),
+        }
+        i += 2;
+    }
+    if !next.is_valid() {
+        return Err(usage("dsp-extras values out of valid range"));
+    }
+    Ok(next)
+}
+
+pub fn dsp_extras(client: &mut Connection, args: &[String]) -> Result<Value, Failure> {
+    match args.first().map(String::as_str) {
+        None => Ok(json!(client.dsp_extras().map_err(|e| case_failure("audio/dsp-extras/get", e))?)),
+        Some("set") => {
+            let current = client.dsp_extras().map_err(|e| case_failure("audio/dsp-extras/get", e))?;
+            let next = parse_dsp_extras_update(current, &args[1..])?;
+            client.set_dsp_extras(next).map_err(|e| case_failure("audio/dsp-extras/set", e))?;
+            Ok(json!(next))
+        }
+        _ => Err(usage("dsp-extras [set [--auto-level on|off] [--target-lufs DB] [--subsonic HZ] [--mono-bass HZ]]")),
+    }
+}
+
 fn parse_class_h(text: &str) -> Result<ClassHMode, Failure> {
     match text {
         "adaptive-hv" => Ok(ClassHMode::AdaptiveHv),
@@ -1124,6 +1170,15 @@ mod tests {
         );
         for bad in ["", "--crossfeed extreme", "--limiter maybe", "--mono"] {
             assert_eq!(parse_dsp_update(DspSettings::default(), &words(bad)).unwrap_err().code, 2, "{bad}");
+        }
+        let extras = parse_dsp_extras_update(
+            DspExtras::default(),
+            &words("--auto-level on --target-lufs -16 --subsonic 25 --mono-bass 120"),
+        )
+        .unwrap();
+        assert_eq!(extras, DspExtras { auto_level: true, auto_level_target_lufs: -16, subsonic_hz: 25, mono_bass_hz: 120 });
+        for bad in ["", "--auto-level maybe", "--target-lufs -5", "--subsonic 5", "--mono-bass 250", "--auto-level"] {
+            assert_eq!(parse_dsp_extras_update(DspExtras::default(), &words(bad)).unwrap_err().code, 2, "{bad}");
         }
     }
 }

@@ -93,6 +93,7 @@ class KumiSession(
     val liveSpectrum: StateFlow<AudioSpectrum?> = _liveSpectrum.asStateFlow()
 
     @Volatile private var spectrumSupported: Boolean = false
+    @Volatile private var meterPollTick: Int = 0
 
     private class EqSnapshot(val profile: EqProfile?)
 
@@ -228,6 +229,7 @@ class KumiSession(
         runCatching { bridge.resetSession() }
         SnapLiveMirror.clear()
         spectrumSupported = false
+        meterPollTick = 0
         _liveMeters.value = null
         _liveSpectrum.value = null
         _state.update {
@@ -323,6 +325,7 @@ class KumiSession(
             val audio = c.audioStatus()
             val keyboard = c.keyboardStatus()
             if (audio.stream == null) {
+                meterPollTick = 0
                 _liveMeters.value = null
                 _liveSpectrum.value = null
             }
@@ -348,8 +351,9 @@ class KumiSession(
     suspend fun pollMetersNow() = withContext(dispatcher) {
         val c = client ?: return@withContext
         if (_state.value.audio?.stream == null) return@withContext
+        val tick = meterPollTick++
         runCatching { c.audioMeters() }.getOrNull()?.let { m -> _liveMeters.value = m }
-        if (spectrumSupported) {
+        if (spectrumSupported && (tick and 1) == 0) {
             runCatching { c.audioSpectrum() }.getOrNull()?.let { s -> _liveSpectrum.value = s }
         }
     }
@@ -380,16 +384,18 @@ class KumiSession(
         optimistic: (KumiState) -> KumiState,
         send: (KumiClient) -> Unit,
         retry: (() -> Unit)? = null,
+        onSuccess: () -> Unit = {},
         recover: (KumiClient?) -> (KumiState) -> KumiState,
     ): Job {
         _state.update { optimistic(it).copy(error = null, errorKind = null, errorBridgeKind = null) }
         SnapLiveMirror.update(_state.value, _kind.value)
-        return scope.launch(dispatcher) { perform(send, retry, recover) }
+        return scope.launch(dispatcher) { perform(send, retry, onSuccess, recover) }
     }
 
     private fun perform(
         send: (KumiClient) -> Unit,
         retry: (() -> Unit)? = null,
+        onSuccess: () -> Unit = {},
         recover: (KumiClient?) -> (KumiState) -> KumiState,
     ) {
         val c = client
@@ -404,6 +410,7 @@ class KumiSession(
             }
         } else {
             SnapLiveMirror.update(_state.value, _kind.value)
+            onSuccess()
         }
     }
 
@@ -458,9 +465,14 @@ class KumiSession(
         }
     }
 
-    fun setDacExtras(value: DacExtras): Job {
+    fun setDacExtras(value: DacExtras, onSuccess: () -> Unit = {}): Job {
         val before = _state.value.dacExtras
-        return change({ it.copy(dacExtras = value) }, { it.setDacExtras(value) }, retry = { setDacExtras(value) }) { c ->
+        return change(
+            { it.copy(dacExtras = value) },
+            { it.setDacExtras(value) },
+            retry = { setDacExtras(value, onSuccess) },
+            onSuccess = onSuccess,
+        ) { c ->
             val extras = reread(c, KumiClient::dacExtras, before)
             return@change { s -> s.copy(dacExtras = extras) }
         }

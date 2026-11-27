@@ -386,4 +386,30 @@ class KumiSessionTest {
         assertTrue(rig.state.connected)
         assertTrue(rig.port.channels.first().closed)
     }
+
+    @Test
+    fun setDacExtrasOnlyInvokesOnSuccessWhenCaseAccepts() = runTest {
+        val rig = connected()
+        var toggled = 0
+        rig.bridge.handlers["audio/dac-extras/set"] = { """{"ok":{"Err":"Busy"}}""" }
+        rig.session.setDacExtras(DacExtras(lineOut = true)) { toggled++ }
+        advanceUntilIdle()
+        assertEquals(0, toggled)
+        rig.bridge.handlers.remove("audio/dac-extras/set")
+        rig.session.setDacExtras(DacExtras(lineOut = true)) { toggled++ }
+        advanceUntilIdle()
+        assertEquals(1, toggled)
+    }
+
+    @Test
+    fun pollMetersFetchesSpectrumEveryOtherTick() = runTest {
+        val rig = Rig(this)
+        rig.bridge.handlers["audio/status"] = { """{"ok":${Contract.json.getJSONObject("audio_status")}}""" }
+        rig.session.refreshNow()
+        assertNotNull(rig.state.audio?.stream)
+        rig.bridge.calls.clear()
+        repeat(4) { rig.session.pollMetersNow() }
+        assertEquals(4, rig.bridge.calls.count { it == "audio/meters" })
+        assertEquals(2, rig.bridge.calls.count { it == "audio/spectrum" })
+    }
 }

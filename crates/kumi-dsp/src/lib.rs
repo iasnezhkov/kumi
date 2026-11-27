@@ -597,14 +597,13 @@ impl Chain {
     }
 
     #[cfg_attr(target_arch = "riscv32", unsafe(link_section = ".text.hot"))]
-    fn process_chunk(&mut self, chunk: &[i32], buf: &mut [[f32; 2]], agc_gain: f32, limiter_hits: &mut u32) {
+    fn process_linear(&mut self, chunk: &[i32], buf: &mut [[f32; 2]]) {
         const INV_SCALE: f32 = 1.0 / 2_147_483_648.0;
-        let base_gain = self.preamp * self.base_preamp * self.tone_preamp * self.loudness_preamp * agc_gain * INV_SCALE;
+        let base_gain = self.preamp * self.base_preamp * self.tone_preamp * self.loudness_preamp * INV_SCALE;
         let gain = if self.dsp.invert_phase { -base_gain } else { base_gain };
         let swap = self.dsp.swap_channels;
         let mono = self.dsp.mono;
         let use_crossfeed = !mono && !matches!(self.dsp.crossfeed, CrossfeedMode::Off);
-        let limiter = self.dsp.limiter || (self.extras.auto_level && agc_gain > 1.0);
         if swap {
             for (slot, pair) in buf.iter_mut().zip(chunk.chunks_exact(2)) {
                 slot[0] = pair[1] as f32 * gain;
@@ -690,18 +689,6 @@ impl Chain {
                 self.crossfeed.lp = [clean(lp_l), clean(lp_r)];
             }
         }
-        if limiter {
-            for slot in buf.iter_mut() {
-                if slot[0].abs() > LIMITER_THRESHOLD {
-                    *limiter_hits = limiter_hits.wrapping_add(1);
-                    slot[0] = soft_limit(slot[0]);
-                }
-                if slot[1].abs() > LIMITER_THRESHOLD {
-                    *limiter_hits = limiter_hits.wrapping_add(1);
-                    slot[1] = soft_limit(slot[1]);
-                }
-            }
-        }
     }
 }
 
@@ -713,6 +700,7 @@ pub struct Equalizer {
     fade_len: u32,
     has_processed: bool,
     loudness_vol_centi_db: i16,
+    agc_applied: f32,
     scratch: [[f32; 2]; CHUNK],
     old_scratch: [[f32; 2]; CHUNK],
     sample_rate: u32,
@@ -749,6 +737,7 @@ impl Equalizer {
             fade_len: 0,
             has_processed: false,
             loudness_vol_centi_db: 0,
+            agc_applied: 1.0,
             scratch: [[0.0; 2]; CHUNK],
             old_scratch: [[0.0; 2]; CHUNK],
             sample_rate: 0,
@@ -823,6 +812,7 @@ impl Equalizer {
     }
 
     pub fn set_loudness_volume(&mut self, volume_centi_db: i16) {
+        self.analyzer.set_allow_boost(volume_centi_db < 0);
         let quantized = (volume_centi_db / 50) * 50;
         if quantized == self.loudness_vol_centi_db {
             return;
@@ -1087,6 +1077,7 @@ impl Equalizer {
         self.active = Chain::EMPTY;
         self.previous = Chain::EMPTY;
         self.clear_transition();
+        self.agc_applied = 1.0;
         self.clipped = 0;
         self.limiter_hits = 0;
     }
@@ -1144,11 +1135,16 @@ impl Equalizer {
         self.active.mono_bass_state = [[0.0; 2]; 2];
         self.active.loudness_state = [[[0.0; 2]; 2]; 2];
         self.active.crossfeed.lp = [0.0; 2];
+        self.agc_applied = 1.0;
         self.analyzer.reset_stream();
     }
 
     pub fn take_spectrum(&mut self, active: bool) -> AudioSpectrum {
         self.analyzer.take_spectrum(active, self.active.extras.auto_level)
+    }
+
+    pub fn take_spectrum_with(&mut self, active: bool, poll: impl FnMut()) -> AudioSpectrum {
+        self.analyzer.take_spectrum_with(active, self.active.extras.auto_level, poll)
     }
 
     pub fn take_meters(&mut self, active: bool) -> AudioMeters {
@@ -1243,17 +1239,14 @@ impl Equalizer {
         let run_analyzer = self.analyzer.spectrum_enabled() || auto_level;
         for chunk in frames.chunks_mut(CHUNK * 2) {
             let pairs = chunk.len() / 2;
-            let agc_gain = if auto_level { self.analyzer.agc_gain_lin() } else { 1.0 };
-            let inv_agc = if auto_level && agc_gain > 1e-4 { 1.0 / agc_gain } else { 1.0 };
+            let agc_target = if auto_level { self.analyzer.agc_gain_lin() } else { 1.0 };
             let buf = &mut self.scratch[..pairs];
-            self.active.process_chunk(chunk, buf, agc_gain, &mut limiter_hits);
+            self.active.process_linear(chunk, buf);
             if self.fade_len > 0 {
                 let old_buf = &mut self.old_scratch[..pairs];
-                let mut ignored_hits = 0u32;
-                self.previous.process_chunk(chunk, old_buf, agc_gain, &mut ignored_hits);
+                self.previous.process_linear(chunk, old_buf);
                 let inv_len = 1.0 / self.fade_len as f32;
                 let mut pos = self.fade_pos;
-                let post_limit = self.active.dsp.limiter || (auto_level && agc_gain > 1.0);
                 for (cur, old) in buf.iter_mut().zip(old_buf.iter()) {
                     if pos < self.fade_len {
                         pos += 1;
@@ -1261,14 +1254,6 @@ impl Equalizer {
                         let w = t * t * (3.0 - 2.0 * t);
                         cur[0] = mul_add(w, cur[0] - old[0], old[0]);
                         cur[1] = mul_add(w, cur[1] - old[1], old[1]);
-                        if post_limit {
-                            if cur[0].abs() > LIMITER_THRESHOLD {
-                                cur[0] = soft_limit(cur[0]);
-                            }
-                            if cur[1].abs() > LIMITER_THRESHOLD {
-                                cur[1] = soft_limit(cur[1]);
-                            }
-                        }
                     }
                 }
                 if pos >= self.fade_len {
@@ -1278,11 +1263,27 @@ impl Equalizer {
                     self.fade_pos = pos;
                 }
             }
+            let mut agc_cur = self.agc_applied;
+            let agc_step = if pairs > 0 { (agc_target - agc_cur) / pairs as f32 } else { 0.0 };
+            let limiter = self.active.dsp.limiter || (auto_level && (agc_target > 1.0 || agc_cur > 1.0));
             for (slot, pair) in buf.iter().zip(chunk.chunks_exact_mut(2)) {
-                let sl = slot[0];
-                let sr = slot[1];
+                let pre_l = slot[0];
+                let pre_r = slot[1];
+                agc_cur += agc_step;
+                let mut sl = pre_l * agc_cur;
+                let mut sr = pre_r * agc_cur;
+                if limiter {
+                    if sl.abs() > LIMITER_THRESHOLD {
+                        limiter_hits = limiter_hits.wrapping_add(1);
+                        sl = soft_limit(sl);
+                    }
+                    if sr.abs() > LIMITER_THRESHOLD {
+                        limiter_hits = limiter_hits.wrapping_add(1);
+                        sr = soft_limit(sr);
+                    }
+                }
                 if run_analyzer {
-                    self.analyzer.push_output_frame(sl, sr, sl * inv_agc, sr * inv_agc, auto_level, target_lufs);
+                    self.analyzer.push_output_frame(sl, sr, pre_l, pre_r, auto_level, target_lufs);
                 }
                 let l = sl.abs();
                 let r = sr.abs();
@@ -1298,11 +1299,12 @@ impl Equalizer {
                 pair[0] = quantize(sl, SCALE, &mut clipped);
                 pair[1] = quantize(sr, SCALE, &mut clipped);
             }
+            self.agc_applied = agc_target;
             if chunk.len() & 1 != 0 {
                 let last = chunk.len() - 1;
                 let count = self.active.cascade.count;
                 let eq_preamp = self.active.preamp * self.active.base_preamp * self.active.tone_preamp;
-                let base_gain = eq_preamp * self.active.loudness_preamp * agc_gain * INV_SCALE;
+                let base_gain = eq_preamp * self.active.loudness_preamp * agc_target * INV_SCALE;
                 let gain = if self.active.dsp.invert_phase { -base_gain } else { base_gain };
                 let mut x = chunk[last] as f32 * gain;
                 for (section, z) in self.active.cascade.sections[..count].iter().flatten().zip(self.active.state[0].iter_mut()) {
@@ -2015,5 +2017,103 @@ mod tests {
         let hi_l = hi_tail.iter().step_by(2).map(|s| s.unsigned_abs()).max().unwrap() as f64;
         let hi_r = hi_tail.iter().skip(1).step_by(2).map(|s| s.unsigned_abs()).max().unwrap() as f64;
         assert!(hi_r < hi_l * 0.05, "mono-bass must keep 2 kHz stereo separate: L={hi_l} R={hi_r}");
+    }
+
+    #[test]
+    fn agc_never_boosts_without_hardware_volume_and_respects_peak_headroom_with_spectrum_off() {
+        let rate = 48_000u32;
+        let mut android_eq = Equalizer::new();
+        android_eq
+            .configure_dsp_extras(
+                DspExtras { auto_level: true, auto_level_target_lufs: -14, subsonic_hz: 0, mono_bass_hz: 0 },
+                rate,
+            )
+            .unwrap();
+        android_eq.set_loudness_volume(0);
+        let quiet_amp = 0.05 * 2_147_483_648.0f64;
+        for block in 0..30 {
+            let mut pcm = std::vec![0i32; 9_600];
+            for i in 0..4_800 {
+                let idx = block * 4_800 + i;
+                let s = (quiet_amp * libm::sin(2.0 * PI * 1_000.0 * idx as f64 / f64::from(rate))) as i32;
+                pcm[i * 2] = s;
+                pcm[i * 2 + 1] = s;
+            }
+            android_eq.process_stereo(&mut pcm);
+        }
+        assert_eq!(android_eq.take_spectrum(true).auto_level_gain_centi_db, 0);
+
+        let mut hw_eq = Equalizer::new();
+        hw_eq
+            .configure_dsp_extras(
+                DspExtras { auto_level: true, auto_level_target_lufs: -14, subsonic_hz: 0, mono_bass_hz: 0 },
+                rate,
+            )
+            .unwrap();
+        hw_eq.set_loudness_volume(-2_000);
+        for block in 0..40 {
+            let mut pcm = std::vec![0i32; 9_600];
+            for i in 0..4_800 {
+                let idx = block * 4_800 + i;
+                let s = (quiet_amp * libm::sin(2.0 * PI * 1_000.0 * idx as f64 / f64::from(rate))) as i32;
+                pcm[i * 2] = s;
+                pcm[i * 2 + 1] = s;
+            }
+            hw_eq.process_stereo(&mut pcm);
+        }
+        let boosted = hw_eq.take_spectrum(true).auto_level_gain_centi_db;
+        assert!(boosted > 250 && boosted <= 400, "hardware volume should cap gentle boost at +4 dB, got {boosted}");
+
+        let mut spiky_eq = Equalizer::new();
+        spiky_eq
+            .configure_dsp_extras(
+                DspExtras { auto_level: true, auto_level_target_lufs: -14, subsonic_hz: 0, mono_bass_hz: 0 },
+                rate,
+            )
+            .unwrap();
+        spiky_eq.set_loudness_volume(-2_000);
+        let peak_amp = (0.85 * 2_147_483_648.0) as i32;
+        for block in 0..30 {
+            let mut pcm = std::vec![0i32; 9_600];
+            for i in 0..4_800 {
+                let idx = block * 4_800 + i;
+                let s = if i == 100 {
+                    peak_amp
+                } else {
+                    (quiet_amp * libm::sin(2.0 * PI * 1_000.0 * idx as f64 / f64::from(rate))) as i32
+                };
+                pcm[i * 2] = s;
+                pcm[i * 2 + 1] = s;
+            }
+            spiky_eq.process_stereo(&mut pcm);
+        }
+        let guarded = spiky_eq.take_spectrum(true).auto_level_gain_centi_db;
+        assert!(guarded <= 110, "headroom guard must hold with spectrum_enabled=false, got {guarded}");
+    }
+
+    #[test]
+    fn take_spectrum_with_polls_across_fft_stages_and_matches_take_spectrum() {
+        let rate = 48_000u32;
+        let mut a = Equalizer::new();
+        let mut b = Equalizer::new();
+        a.configure(&[], 0.0, rate).unwrap();
+        b.configure(&[], 0.0, rate).unwrap();
+        a.set_spectrum_enabled(true);
+        b.set_spectrum_enabled(true);
+        let frames = 24_000usize;
+        let amp = 0.5 * 2_147_483_648.0f64;
+        let mut pcm = std::vec![0i32; frames * 2];
+        for i in 0..frames {
+            let s = (amp * libm::sin(2.0 * PI * 1_000.0 * i as f64 / f64::from(rate))) as i32;
+            pcm[i * 2] = s;
+            pcm[i * 2 + 1] = s;
+        }
+        a.observe_stereo(&pcm);
+        b.observe_stereo(&pcm);
+        let plain = a.take_spectrum(true);
+        let mut polls = 0u32;
+        let sliced = b.take_spectrum_with(true, || polls += 1);
+        assert_eq!(plain, sliced);
+        assert!(polls >= 15, "expected fine-grained FFT poll slices, got {polls}");
     }
 }

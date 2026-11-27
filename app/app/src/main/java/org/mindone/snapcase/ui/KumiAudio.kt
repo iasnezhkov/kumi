@@ -227,8 +227,9 @@ fun KumiAudioScreen(
                 } ?: false
                 KeyEvent.KEYCODE_O -> state.dacExtras?.let { ex ->
                     if (ex.lineOut) {
-                        kumi.setDacExtras(ex.copy(lineOut = false))
-                        if (!kumi.simulated) onLineOutToggled(false)
+                        kumi.setDacExtras(ex.copy(lineOut = false)) {
+                            if (!kumi.simulated) onLineOutToggled(false)
+                        }
                     } else {
                         confirmLineOut = true
                     }
@@ -348,8 +349,9 @@ fun KumiAudioScreen(
                                     if (next.lineOut && !wasLineOut) {
                                         confirmLineOut = true
                                     } else {
-                                        kumi.setDacExtras(next)
-                                        if (wasLineOut && !next.lineOut && !kumi.simulated) onLineOutToggled(false)
+                                        kumi.setDacExtras(next) {
+                                            if (wasLineOut && !next.lineOut && !kumi.simulated) onLineOutToggled(false)
+                                        }
                                     }
                                 },
                                 onMic = { kumi.setMic(it) },
@@ -402,8 +404,9 @@ fun KumiAudioScreen(
             text = stringResource(R.string.kumi_line_out_confirm_text),
             onConfirm = {
                 state.dacExtras?.let {
-                    kumi.setDacExtras(it.copy(lineOut = true))
-                    if (!kumi.simulated) onLineOutToggled(true)
+                    kumi.setDacExtras(it.copy(lineOut = true)) {
+                        if (!kumi.simulated) onLineOutToggled(true)
+                    }
                 }
             },
             onDismiss = { confirmLineOut = false },

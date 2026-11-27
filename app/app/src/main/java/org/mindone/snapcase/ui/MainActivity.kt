@@ -70,7 +70,6 @@ import org.mindone.snapcase.R
 import org.mindone.snapcase.bridge.KumiBridgeProvider
 import org.mindone.snapcase.ime.ui.ImeSettingsScreen
 import org.mindone.snapcase.kumi.HomeKind
-import org.mindone.snapcase.kumi.SnapLiveMirror
 import org.mindone.snapcase.stock.UserMessage
 import org.mindone.snapcase.transport.CaseKind
 import org.mindone.snapcase.ui.theme.SnapTheme
@@ -268,13 +267,9 @@ fun SnapApp(
     }
     LaunchedEffect(lifecycleOwner) {
         lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
-            try {
-                while (true) {
-                    viewModel.refreshNow()
-                    delay(POLL_MS)
-                }
-            } finally {
-                SnapLiveMirror.clear()
+            while (true) {
+                viewModel.refreshNow()
+                delay(POLL_MS)
             }
         }
     }
@@ -566,7 +561,7 @@ private val ALLOWED_DEEP_LINKS = setOf("home", "audio", "eq", "keys", "firmware"
 private val LEGACY_SCREENS = setOf(Screen.LEGACY, Screen.TECH)
 
 private const val POLL_MS = 3500L
-private const val METER_POLL_MS = 40L
+private const val METER_POLL_MS = 50L
 
 private fun messageText(message: UserMessage): Int = when (message) {
     UserMessage.CASE_NOT_ANSWERING -> R.string.msg_case_not_answering

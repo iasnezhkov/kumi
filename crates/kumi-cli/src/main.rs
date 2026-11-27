@@ -44,6 +44,9 @@ commands:
   dac-extras set [--hpf on|off] [--deemp on|off] [--line-out on|off] [--class-h adaptive-hv|low-power|fixed-hv] [--auto-uac on|off]
   dsp                 show audiophile DSP settings (crossfeed, soft limiter, mono, phase invert, loudness, channel swap)
   dsp set [--crossfeed off|subtle|natural|strong] [--limiter on|off] [--mono on|off] [--invert-phase on|off] [--loudness on|off] [--swap-channels on|off]
+  dsp-extras          show Auto-level (LUFS), subsonic filter and mono-bass settings
+  dsp-extras set [--auto-level on|off] [--target-lufs DB] [--subsonic HZ] [--mono-bass HZ]
+  spectrum            show live 24-band spectrum, true-peak and LUFS measurements
   audio test-tone [left|right|both|phase|stop] [HZ] [MS]
                       play a safe -20 dBFS channel/phase check tone (48 kHz, auto-stops after MS)
   eq [SLOT]           show active EQ selection and saved EQ profile(s) (slots 0..3)
@@ -867,6 +870,8 @@ fn run(args: &[String]) -> Result<Value, Failure> {
         "output" => audio::output(&mut client, &options.command[1..]),
         "dac-extras" => audio::dac_extras(&mut client, &options.command[1..]),
         "dsp" => audio::dsp(&mut client, &options.command[1..]),
+        "dsp-extras" => audio::dsp_extras(&mut client, &options.command[1..]),
+        "spectrum" => Ok(json!(client.audio_spectrum().map_err(|e| case_failure("audio/spectrum", e))?)),
         "eq" => audio::eq(&mut client, &options.command[1..]),
         "audio" => match argument(1).as_deref() {
             Some("dac-probe") => audio::dac_probe(&mut client),

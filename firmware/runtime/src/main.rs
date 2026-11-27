@@ -388,7 +388,9 @@ where
         } else {
             kumi_runtime_core::HEALTHY_AFTER_MS
         };
-        if health.due_for(shared.configured.get(), mono_ms, health_after) {
+        if health.due_for(shared.configured.get(), mono_ms, health_after)
+            && (!streaming || !shared.storage.borrow().is_confirmed())
+        {
             board::kick_watchdog();
             let mut storage = shared.storage.borrow_mut();
             if storage.reached_health() != Err(kumi_icd::CaseError::Busy) {

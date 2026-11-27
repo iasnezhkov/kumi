@@ -39,6 +39,19 @@ const MAX_PACKET_FRAMES: usize = PACKET_BUFFER / 4;
 const PACKETS_PER_POLL: usize = 4;
 const HOST_PAUSE_US: u32 = 8_000;
 const PUBLISH_INTERVAL_MS: u32 = 4;
+const SPECTRUM_INTERVAL_MS: u32 = 60;
+const SPECTRUM_STAGE_PACKETS: usize = 8;
+
+#[derive(Clone, Copy)]
+struct StagedPacket {
+    words: [u32; PACKET_BUFFER / 4],
+    length: u16,
+    flags: u16,
+}
+
+impl StagedPacket {
+    const EMPTY: Self = Self { words: [0; PACKET_BUFFER / 4], length: 0, flags: 0 };
+}
 
 const fn max_eq_bands(_rate_hz: u32) -> usize {
     kumi_dsp::MAX_BANDS
@@ -140,7 +153,6 @@ pub struct Function {
     meters: AudioMeters,
     meters_consumed: bool,
     spectrum: AudioSpectrum,
-    spectrum_consumed: bool,
     spectrum_until_ms: Option<u32>,
 }
 
@@ -163,7 +175,6 @@ impl Function {
             meters: AudioMeters::default(),
             meters_consumed: false,
             spectrum: AudioSpectrum::default(),
-            spectrum_consumed: false,
             spectrum_until_ms: None,
         }
     }
@@ -185,7 +196,6 @@ impl Function {
     }
 
     pub fn take_spectrum(&mut self, now_ms: u32) -> AudioSpectrum {
-        self.spectrum_consumed = true;
         self.spectrum_until_ms = Some(now_ms.wrapping_add(1_500));
         self.spectrum
     }
@@ -743,7 +753,6 @@ impl<'d> Stream<'d> {
             function.meters = AudioMeters::default();
             function.meters_consumed = false;
             function.spectrum = AudioSpectrum::default();
-            function.spectrum_consumed = false;
             function.spectrum_until_ms = None;
         }
         self.equalizer.set_spectrum_enabled(false);
@@ -1096,20 +1105,55 @@ impl<'d> Stream<'d> {
             function.meters = AudioMeters::default();
             function.meters_consumed = false;
             function.spectrum = AudioSpectrum::default();
-            function.spectrum_consumed = false;
         } else {
             if function.meters_consumed || ms.wrapping_sub(self.meter_ms) >= 50 {
                 function.meters = self.equalizer.take_meters(true);
                 function.meters_consumed = false;
                 self.meter_ms = ms;
             }
-            if want_spectrum && (function.spectrum_consumed || ms.wrapping_sub(self.spectrum_ms) >= 40) {
-                function.spectrum = self.equalizer.take_spectrum(true);
-                function.spectrum_consumed = false;
-                self.spectrum_ms = ms;
-            } else if !want_spectrum {
+            let recompute_spectrum = want_spectrum && ms.wrapping_sub(self.spectrum_ms) >= SPECTRUM_INTERVAL_MS;
+            if !want_spectrum {
                 function.spectrum = AudioSpectrum::default();
-                function.spectrum_consumed = false;
+            }
+            drop(function);
+            if recompute_spectrum {
+                let mut staged = [StagedPacket::EMPTY; SPECTRUM_STAGE_PACKETS];
+                let mut staged_count = 0usize;
+                let out = &mut self.out;
+                let equalizer = &mut self.equalizer;
+                let spectrum = equalizer.take_spectrum_with(true, || {
+                    while staged_count < SPECTRUM_STAGE_PACKETS && out.readable() {
+                        let slot = &mut staged[staged_count];
+                        let bytes =
+                            unsafe { core::slice::from_raw_parts_mut(slot.words.as_mut_ptr().cast::<u8>(), PACKET_BUFFER) };
+                        let Some((length, flags)) = out.receive(bytes) else { break };
+                        slot.length = length as u16;
+                        slot.flags = flags;
+                        staged_count += 1;
+                    }
+                });
+                shared.uac.borrow_mut().spectrum = spectrum;
+                self.spectrum_ms = ms;
+                if staged_count > 0 {
+                    let now_cycles = board::cycles();
+                    for slot in &staged[..staged_count] {
+                        if slot.flags != 0 && matches!(self.phase, Phase::Running { .. }) {
+                            self.lost = self.lost.wrapping_add(1);
+                        }
+                        if slot.length == 0 || slot.flags & usb::DAMAGED != 0 {
+                            continue;
+                        }
+                        let length = usize::from(slot.length);
+                        self.packets = self.packets.wrapping_add(1);
+                        self.last_packet_cycles = now_cycles;
+                        let bytes = unsafe { core::slice::from_raw_parts(slot.words.as_ptr().cast::<u8>(), length) };
+                        let words = &slot.words[..length / 4];
+                        self.accept(bytes, words);
+                        if self.pending_transport.is_some() {
+                            break;
+                        }
+                    }
+                }
             }
         }
     }
