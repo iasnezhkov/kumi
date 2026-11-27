@@ -5,7 +5,8 @@ pub mod hid;
 
 use heapless::{Deque, Vec};
 pub use kumi_icd::{
-    COMBO_SLOTS, CaseHotkey, KeyAction as Action, KeyCombo, KeyConfig, KeyEvent as Event, MACRO_SLOTS, MacroProgram, MouseAction,
+    COMBO_SLOTS, CaseHotkey, KeyAction as Action, KeyCombo, KeyConfig, KeyEvent as Event, MACRO_SLOTS, MacroProgram,
+    MediaGestures, MouseAction,
 };
 
 pub const LAYERS: usize = kumi_icd::LAYERS as usize;
@@ -30,6 +31,10 @@ const MAX_PENDING_COMBOS: usize = 4;
 const MAX_ACTIVE_COMBOS: usize = 4;
 const MACRO_QUEUE_CAPACITY: usize = 24;
 const LSHIFT_BIT: u8 = 0x02;
+const KEY_LSHIFT: u8 = 0xE1;
+const KEY_BACKSPACE: u8 = 0x2A;
+const KEY_SPACE: u8 = 0x2C;
+const CONSUMER_PULSE_MS: u32 = 24;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct KeyboardReport {
@@ -76,6 +81,7 @@ pub struct Keymap {
     layers: [[Action; SOURCES]; LAYERS],
     consumer_defaults: [u16; CONSUMER_BITS],
     config: KeyConfig,
+    media: MediaGestures,
     macros: [Option<MacroProgram>; MACRO_SLOTS as usize],
     combos: [Option<KeyCombo>; COMBO_SLOTS as usize],
 }
@@ -86,6 +92,14 @@ impl Keymap {
             layers: [[Action::Transparent; SOURCES]; LAYERS],
             consumer_defaults,
             config: KeyConfig { tapping_term_ms: 200, one_shot_timeout_ms: 3_000, combo_term_ms: 50 },
+            media: MediaGestures {
+                enabled: false,
+                window_ms: 320,
+                idle_guard_ms: 1_200,
+                double_shift_usage: 0xB6,
+                double_backspace_usage: 0xB5,
+                double_space_usage: 0xCD,
+            },
             macros: [const { None }; MACRO_SLOTS as usize],
             combos: [None; COMBO_SLOTS as usize],
         }
@@ -99,6 +113,28 @@ impl Keymap {
 
     pub fn config(&self) -> KeyConfig {
         self.config
+    }
+
+    pub fn set_media_gestures(&mut self, media: MediaGestures) {
+        if media.is_valid() {
+            self.media = media;
+        }
+    }
+
+    pub fn media_gestures(&self) -> MediaGestures {
+        self.media
+    }
+
+    fn media_usage_for(&self, source: u8) -> u16 {
+        if !self.media.enabled {
+            return 0;
+        }
+        match source {
+            KEY_LSHIFT => self.media.double_shift_usage,
+            KEY_BACKSPACE => self.media.double_backspace_usage,
+            KEY_SPACE => self.media.double_space_usage,
+            _ => 0,
+        }
     }
 
     pub fn set_macro(&mut self, slot: u8, program: Option<MacroProgram>) -> Result<(), KeymapError> {
@@ -292,6 +328,11 @@ pub struct Engine {
     mouse_tick_at: Option<u32>,
     mouse_hold_start: Option<u32>,
     mouse_wheel_div: u8,
+    last_typing_ms: Option<u32>,
+    media_tap_candidate: Option<(u8, u32)>,
+    media_last_shift_tap_ms: Option<u32>,
+    media_deferred: Option<(u8, u32)>,
+    consumer_pulse: Option<(u16, u32)>,
 }
 
 impl Default for Engine {
@@ -321,6 +362,11 @@ impl Engine {
             mouse_tick_at: None,
             mouse_hold_start: None,
             mouse_wheel_div: 0,
+            last_typing_ms: None,
+            media_tap_candidate: None,
+            media_last_shift_tap_ms: None,
+            media_deferred: None,
+            consumer_pulse: None,
         }
     }
 
@@ -345,6 +391,9 @@ impl Engine {
             || !self.macro_steps.is_empty()
             || !self.pending_combos.is_empty()
             || self.mouse_tick_at.is_some()
+            || self.consumer_pulse.is_some()
+            || self.media_deferred.is_some()
+            || matches!(self.media_tap_candidate, Some((KEY_BACKSPACE | KEY_SPACE, _)))
     }
 
     pub fn has_pending_timers(&self) -> bool {
@@ -639,7 +688,23 @@ impl Engine {
             && let Action::Consumer(usage) = self.held[usize::from(*source)]
         {
             output.consumer = usage;
+        } else if let Some((usage, _)) = self.consumer_pulse {
+            output.consumer = usage;
         }
+    }
+
+    fn is_media_idle(&self, keymap: &Keymap, now_ms: u32) -> bool {
+        let guard = u32::from(keymap.media.idle_guard_ms);
+        guard == 0 || self.last_typing_ms.is_none_or(|t| now_ms.wrapping_sub(t) >= guard)
+    }
+
+    fn flush_deferred_media(&mut self, now_ms: u32) -> bool {
+        let Some((source, _)) = self.media_deferred.take() else {
+            return false;
+        };
+        let _ = self.macro_steps.push_back((source, 0));
+        let _ = self.step_macro(now_ms);
+        true
     }
 
     pub fn tick(&mut self, keymap: &Keymap, now_ms: u32) -> Option<Output> {
@@ -648,6 +713,28 @@ impl Engine {
         let mut emit_wheel = false;
         let mut changed = self.flush_expired_combos(keymap, now_ms, &mut output, &mut emit_mouse_motion);
         changed |= self.promote_expired_pending(keymap.config().tapping_term_ms, now_ms);
+        if let Some((_, until)) = self.consumer_pulse
+            && now_ms.wrapping_sub(until) as i32 >= 0
+        {
+            self.consumer_pulse = None;
+            changed = true;
+        }
+        let win = u32::from(keymap.media.window_ms);
+        if let Some((source, pressed_at)) = self.media_tap_candidate
+            && (source == KEY_BACKSPACE || source == KEY_SPACE)
+            && now_ms.wrapping_sub(pressed_at) >= win
+        {
+            self.media_tap_candidate = None;
+            if self.is_pressed(source) {
+                self.held[usize::from(source)] = Action::Key(source);
+                changed = true;
+            }
+        }
+        if let Some((_, released_at)) = self.media_deferred
+            && now_ms.wrapping_sub(released_at) >= win
+        {
+            changed |= self.flush_deferred_media(now_ms);
+        }
         if self.one_shot_armed && now_ms.wrapping_sub(self.one_shot_until_ms) as i32 >= 0 {
             self.one_shot_armed = false;
             self.one_shot_mods = 0;
@@ -687,6 +774,17 @@ impl Engine {
         let mut emit_mouse_motion = false;
         let _ = self.flush_expired_combos(keymap, now_ms, &mut output, &mut emit_mouse_motion);
         let _ = self.promote_expired_pending(config.tapping_term_ms, now_ms);
+        if let Some((_, until)) = self.consumer_pulse
+            && now_ms.wrapping_sub(until) as i32 >= 0
+        {
+            self.consumer_pulse = None;
+        }
+        let media_win = u32::from(keymap.media.window_ms);
+        if let Some((_, released_at)) = self.media_deferred
+            && now_ms.wrapping_sub(released_at) >= media_win
+        {
+            let _ = self.flush_deferred_media(now_ms);
+        }
         if self.one_shot_armed && now_ms.wrapping_sub(self.one_shot_until_ms) as i32 >= 0 {
             self.one_shot_armed = false;
             self.one_shot_mods = 0;
@@ -812,6 +910,29 @@ impl Engine {
             }
             self.set_pressed(source, false);
             self.consumer_order.retain(|s| *s != source);
+            if let Some((cand, pressed_at)) = self.media_tap_candidate
+                && cand == source
+            {
+                self.media_tap_candidate = None;
+                let held_ms = now_ms.wrapping_sub(pressed_at);
+                let usage = keymap.media_usage_for(source);
+                if usage != 0 && held_ms < media_win {
+                    if source == KEY_LSHIFT {
+                        if let Some(prev) = self.media_last_shift_tap_ms
+                            && now_ms.wrapping_sub(prev) <= media_win
+                        {
+                            self.media_last_shift_tap_ms = None;
+                            self.consumer_pulse = Some((usage, now_ms.wrapping_add(CONSUMER_PULSE_MS)));
+                        } else {
+                            self.media_last_shift_tap_ms = Some(now_ms);
+                        }
+                    } else if source == KEY_BACKSPACE || source == KEY_SPACE {
+                        self.media_deferred = Some((source, now_ms));
+                    }
+                } else if source == KEY_LSHIFT {
+                    self.media_last_shift_tap_ms = None;
+                }
+            }
             let _ = output.events.push(Event { source, pressed: false, layer: self.top_layer(), action });
         }
         let mut newly_pressed: Vec<u8, 16> = Vec::new();
@@ -823,6 +944,25 @@ impl Engine {
         }
         if !newly_pressed.is_empty() {
             self.promote_all_pending();
+            if self.media_tap_candidate.is_some() {
+                if let Some((cand, _)) = self.media_tap_candidate.take()
+                    && (cand == KEY_BACKSPACE || cand == KEY_SPACE)
+                    && self.is_pressed(cand)
+                {
+                    self.held[usize::from(cand)] = Action::Key(cand);
+                }
+                self.media_last_shift_tap_ms = None;
+            }
+            if let Some((def_src, _)) = self.media_deferred
+                && (newly_pressed.len() != 1 || newly_pressed[0] != def_src)
+            {
+                let _ = self.flush_deferred_media(now_ms);
+            }
+            let any_non_media = newly_pressed.iter().any(|&s| s != KEY_LSHIFT && s != KEY_BACKSPACE && s != KEY_SPACE);
+            if any_non_media {
+                self.last_typing_ms = Some(now_ms);
+                self.media_last_shift_tap_ms = None;
+            }
         }
         let mut consumed_by_combo = [false; 16];
         for i in 0..newly_pressed.len() {
@@ -884,6 +1024,41 @@ impl Engine {
                 }
                 if layers_first && unconsumed_new == 1 && keymap.has_combo_for(source) {
                     continue;
+                }
+                if !layers_first && unconsumed_new == 1 && layer == 0 && keymap.media.enabled {
+                    let usage = keymap.media_usage_for(source);
+                    if usage != 0 {
+                        let other_held = self.pressed.iter().any(|&word| word != 0);
+                        if !other_held {
+                            if source == KEY_LSHIFT && action == Action::Modifiers(LSHIFT_BIT) {
+                                self.media_tap_candidate = Some((KEY_LSHIFT, now_ms));
+                            } else if (source == KEY_BACKSPACE || source == KEY_SPACE) && action == Action::Key(source) {
+                                if let Some((def_src, released_at)) = self.media_deferred
+                                    && def_src == source
+                                    && now_ms.wrapping_sub(released_at) <= media_win
+                                {
+                                    self.media_deferred = None;
+                                    self.set_pressed(source, true);
+                                    self.held[usize::from(source)] = Action::Disabled;
+                                    self.consumer_pulse = Some((usage, now_ms.wrapping_add(CONSUMER_PULSE_MS)));
+                                    let _ = output.events.push(Event {
+                                        source,
+                                        pressed: true,
+                                        layer,
+                                        action: Action::Consumer(usage),
+                                    });
+                                    continue;
+                                }
+                                if self.is_media_idle(keymap, now_ms) {
+                                    self.set_pressed(source, true);
+                                    self.held[usize::from(source)] = Action::Disabled;
+                                    self.media_tap_candidate = Some((source, now_ms));
+                                    let _ = output.events.push(Event { source, pressed: true, layer, action });
+                                    continue;
+                                }
+                            }
+                        }
+                    }
                 }
                 self.set_pressed(source, true);
                 self.activate_action(keymap, source, layer, action, now_ms, &mut output, &mut emit_mouse_motion);
@@ -1294,5 +1469,57 @@ mod tests {
         let wheel = engine.process_at(&map, &keys(&[C], 0), 500);
         assert_eq!(wheel.mouse.wheel, 1);
         let _ = engine.process_at(&map, &keys(&[], 0), 520);
+    }
+
+    #[test]
+    fn media_gestures_emit_consumer_pulses_when_idle_and_never_hijack_typing() {
+        let mut map = keymap();
+        map.set_media_gestures(MediaGestures { enabled: true, ..MediaGestures::default() });
+        let mut engine = Engine::new();
+
+        let _ = engine.process_at(&map, &keys(&[], LSHIFT_BIT), 100);
+        let _ = engine.process_at(&map, &keys(&[], 0), 140);
+        let _ = engine.process_at(&map, &keys(&[], LSHIFT_BIT), 220);
+        let prev = engine.process_at(&map, &keys(&[], 0), 260);
+        assert_eq!(prev.consumer, 0xB6);
+        assert!(engine.has_fast_timers());
+        let rel = engine.tick(&map, 260 + CONSUMER_PULSE_MS).unwrap();
+        assert_eq!(rel.consumer, 0);
+
+        let p1 = engine.process_at(&map, &keys(&[SPACE], 0), 2_000);
+        assert_eq!(p1.keyboard, KeyboardReport::default());
+        let _ = engine.process_at(&map, &keys(&[], 0), 2_040);
+        let p2 = engine.process_at(&map, &keys(&[SPACE], 0), 2_120);
+        assert_eq!(p2.consumer, PLAY);
+        assert_eq!(p2.keyboard, KeyboardReport::default());
+        let r2 = engine.process_at(&map, &keys(&[], 0), 2_130);
+        assert_eq!(r2.consumer, PLAY);
+        let done = engine.tick(&map, 2_120 + CONSUMER_PULSE_MS).unwrap();
+        assert_eq!(done.consumer, 0);
+
+        let _ = engine.process_at(&map, &keys(&[KEY_BACKSPACE], 0), 4_000);
+        let _ = engine.process_at(&map, &keys(&[], 0), 4_030);
+        let next = engine.process_at(&map, &keys(&[KEY_BACKSPACE], 0), 4_120);
+        assert_eq!(next.consumer, 0xB5);
+        assert_eq!(next.keyboard, KeyboardReport::default());
+        let _ = engine.process_at(&map, &keys(&[], 0), 4_150);
+        let _ = engine.tick(&map, 4_200);
+
+        let _ = engine.process_at(&map, &keys(&[A], 0), 6_000);
+        let _ = engine.process_at(&map, &keys(&[], 0), 6_020);
+        let bs1 = engine.process_at(&map, &keys(&[KEY_BACKSPACE], 0), 6_100);
+        assert_eq!(bs1.keyboard.keys[0], KEY_BACKSPACE);
+        assert_eq!(bs1.consumer, 0);
+        let _ = engine.process_at(&map, &keys(&[], 0), 6_130);
+        let bs2 = engine.process_at(&map, &keys(&[KEY_BACKSPACE], 0), 6_200);
+        assert_eq!(bs2.keyboard.keys[0], KEY_BACKSPACE);
+        assert_eq!(bs2.consumer, 0);
+
+        let _ = engine.process_at(&map, &keys(&[], 0), 6_230);
+        let single_sp = engine.process_at(&map, &keys(&[SPACE], 0), 9_000);
+        assert_eq!(single_sp.keyboard, KeyboardReport::default());
+        let _ = engine.process_at(&map, &keys(&[], 0), 9_030);
+        let flushed = engine.tick(&map, 9_030 + 320).unwrap();
+        assert_eq!(flushed.keyboard.keys[0], SPACE);
     }
 }

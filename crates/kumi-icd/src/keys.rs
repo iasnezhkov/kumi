@@ -148,6 +148,43 @@ impl KeyConfig {
 }
 
 #[derive(Serialize, Deserialize, Schema, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MediaGestures {
+    pub enabled: bool,
+    pub window_ms: u16,
+    pub idle_guard_ms: u16,
+    pub double_shift_usage: u16,
+    pub double_backspace_usage: u16,
+    pub double_space_usage: u16,
+}
+
+impl Default for MediaGestures {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            window_ms: 320,
+            idle_guard_ms: 1_200,
+            double_shift_usage: 0xB6,
+            double_backspace_usage: 0xB5,
+            double_space_usage: 0xCD,
+        }
+    }
+}
+
+impl MediaGestures {
+    pub const MIN_WINDOW_MS: u16 = 150;
+    pub const MAX_WINDOW_MS: u16 = 600;
+    pub const MAX_IDLE_GUARD_MS: u16 = 5_000;
+
+    pub fn is_valid(&self) -> bool {
+        (Self::MIN_WINDOW_MS..=Self::MAX_WINDOW_MS).contains(&self.window_ms)
+            && self.idle_guard_ms <= Self::MAX_IDLE_GUARD_MS
+            && self.double_shift_usage <= KeyAction::MAX_CONSUMER_USAGE
+            && self.double_backspace_usage <= KeyAction::MAX_CONSUMER_USAGE
+            && self.double_space_usage <= KeyAction::MAX_CONSUMER_USAGE
+    }
+}
+
+#[derive(Serialize, Deserialize, Schema, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct KeymapEntry {
     pub layer: u8,
     pub source: u8,

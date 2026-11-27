@@ -114,6 +114,9 @@ static mut LINK_LOG_NEXT: usize = 0;
 #[unsafe(link_section = ".text.cold")]
 #[inline(never)]
 fn log_link(direction: u8, group: u8, command: u8, body: &[u8]) {
+    if !board::raw_access() {
+        return;
+    }
     let next = unsafe { (&raw const LINK_LOG_NEXT).read() };
     if next >= LINK_LOG_RECORDS {
         return;
@@ -140,6 +143,7 @@ fn rebuild(keymap: &mut Keymap, shared: &app::Shared) {
     keymap.clear_macros();
     keymap.clear_combos();
     keymap.set_config(settings.key_config);
+    keymap.set_media_gestures(settings.media_gestures);
     for (slot, program) in settings.macros.iter().enumerate() {
         let _ = keymap.set_macro(slot as u8, program.clone());
     }
@@ -173,12 +177,12 @@ extern "C" fn kumi_main(boot_arg: u32) -> ! {
     board::keep_awake();
     board::arm_watchdog();
     mark(kumi_diag::stage::FW_UART);
-    let mut jack = kumi_audio::jack::Detector::new();
-    let initial_jack = jack.init_and_sample(&mut board::Mmio, 50);
     audio::power_down_dacs();
     regs::apply(&mut board::Mmio, &pins::POWER_OFF);
     board::set_cpu_profile(CpuProfile::Idle90);
     board::enable_idle_wake();
+    let mut jack = kumi_audio::jack::Detector::new();
+    let initial_jack = jack.init_and_sample(&mut board::Mmio, 250);
     let audio_config = uac::config(USB_SPEED);
     let shared = app::Shared::new(settings, storage, safe_mode, audio_config);
     shared.uac.borrow_mut().set_jack(initial_jack);
@@ -228,6 +232,7 @@ extern "C" fn kumi_main(boot_arg: u32) -> ! {
     function.msos_feature(embassy_usb::msos::CompatibleIdFeatureDescriptor::new("WINUSB", ""));
     let mut interface = function.interface();
     let mut alt = interface.alt_setting(VENDOR_INTERFACE_CLASS, VENDOR_INTERFACE_SUBCLASS, VENDOR_INTERFACE_PROTOCOL, None);
+    #[cfg(feature = "webusb")]
     alt.bos_capability(
         0x05,
         &[
@@ -328,7 +333,7 @@ where
         if now != frame {
             last_sof_us = now_us;
             boot_grace = false;
-            if shared.suspended.get() {
+            if was_suspended && shared.suspended.get() {
                 shared.suspended.set(false);
                 remote_wakeup_sent = false;
             }
@@ -359,6 +364,7 @@ where
         let need_reenum = !board::raw_access() && (keymap.has_mouse_action() != mouse_function || want_audio != audio_function);
         let can_reenum = !streaming
             && shared.developer().is_err()
+            && shared.storage.borrow().is_confirmed()
             && !shared.storage.borrow().update_in_progress()
             && !shared.audio.borrow().busy();
         if !need_reenum {
@@ -420,11 +426,16 @@ where
                             usb::trigger_remote_wakeup();
                         }
                         kumi_kbdlink::apply_hid(&mut input, &report);
-                        let out = engine.process_at(&keymap, &input, mono_ms);
-                        shared.apply_case_hotkeys(&out.case_hotkeys);
-                        shared.report(&out);
-                        status.active_layer = engine.top_layer();
-                        status.caps_word = engine.caps_word();
+                        shared.poll_presence(&input.keyboard, mono_ms);
+                        if shared.passthrough() {
+                            shared.report_passthrough(&input);
+                        } else {
+                            let out = engine.process_at(&keymap, &input, mono_ms);
+                            shared.apply_case_hotkeys(&out.case_hotkeys);
+                            shared.report(&out);
+                            status.active_layer = engine.top_layer();
+                            status.caps_word = engine.caps_word();
+                        }
                     } else {
                         status.controller_commands = status.controller_commands.wrapping_add(1);
                     }
@@ -539,7 +550,12 @@ where
             tx.pop_front();
             loop_busy = true;
         }
-        if keymap_dirty {
+        if shared.presence_chord_active() {
+            shared.poll_presence(&input.keyboard, mono_ms);
+        }
+        if shared.passthrough() {
+            keymap_dirty = false;
+        } else if keymap_dirty {
             keymap_dirty = false;
             loop_busy = true;
             let out = engine.process_at(&keymap, &input, mono_ms);

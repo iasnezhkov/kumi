@@ -2,8 +2,9 @@
 use embedded_storage::nor_flash::{ErrorType, NorFlash, NorFlashError, NorFlashErrorKind, ReadNorFlash};
 use heapless::Vec;
 use kumi_icd::{
-    COMBO_SLOTS, ClassHMode, CrossfeedMode, DacExtras, DacFilter, DspSettings, EqBand, EqProfile, FilterKind, KeyAction,
-    KeyCombo, KeyConfig, KeymapEntry, MACRO_SLOTS, MacroProgram, MacroStep, MicSettings, OutputSettings,
+    COMBO_SLOTS, ClassHMode, CrossfeedMode, DacExtras, DacFilter, DspExtras, DspSettings, EqBand, EqBaseSettings, EqProfile,
+    FilterKind, KeyAction, KeyCombo, KeyConfig, KeymapEntry, MACRO_SLOTS, MacroProgram, MacroStep, MediaGestures, MicSettings,
+    OutputSettings, ToneEqSettings,
 };
 use kumi_layout::{SECTOR, SETTINGS};
 use kumi_settings::*;
@@ -139,6 +140,10 @@ fn sample() -> StoredSettings {
         key_config: KeyConfig { tapping_term_ms: 180, one_shot_timeout_ms: 2_500, combo_term_ms: 45 },
         macros,
         combos,
+        dsp_extras: DspExtras::default(),
+        eq_base: EqBaseSettings::default(),
+        tone_eq: ToneEqSettings::default(),
+        media_gestures: MediaGestures::default(),
     }
 }
 
@@ -305,12 +310,19 @@ fn the_format_one_record_layout_is_pinned() {
     assert_eq!(decode(3, &v3_sample), Some(expected_v3));
     let v4_default = from_hex("00000000000000000000000000000000000100000001c801b8173200000000000000000000000000000000");
     assert_eq!(decode(4, &v4_default), Some(StoredSettings::default()));
+    let v5_default = from_hex("0000000000000000000000000000000000010000000100c801b8173200000000000000000000000000000000");
+    assert_eq!(decode(5, &v5_default), Some(StoredSettings::default()));
     assert_eq!(decode(1, &from_hex("0000000000000000000000")), Some(StoredSettings::default()));
     assert_eq!(decode(2, &from_hex("000000000000000000000000000000")), Some(StoredSettings::default()));
 
     let mut out = [0u8; MAX_RECORD];
-    let used = encode(&sample(), &mut out).unwrap();
-    assert_eq!(decode(FORMAT, &out[..used]), Some(sample()));
+    let mut full = sample();
+    full.dsp_extras = DspExtras { auto_level: true, auto_level_target_lufs: -15, subsonic_hz: 20, mono_bass_hz: 120 };
+    full.eq_base = EqBaseSettings { enabled: true, profile: profile(120, 200) };
+    full.tone_eq = ToneEqSettings { enabled: true, bass_centi_db: 200, treble_centi_db: -150, ..ToneEqSettings::default() };
+    full.media_gestures = MediaGestures { enabled: true, ..MediaGestures::default() };
+    let used = encode(&full, &mut out).unwrap();
+    assert_eq!(decode(FORMAT, &out[..used]), Some(full));
     assert_eq!(decode(FORMAT + 1, &out[..used]), None);
     let used = encode(&StoredSettings::default(), &mut out).unwrap();
     assert_eq!(decode(FORMAT, &out[..used]), Some(StoredSettings::default()));

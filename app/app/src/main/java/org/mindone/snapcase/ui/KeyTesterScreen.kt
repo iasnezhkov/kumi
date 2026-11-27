@@ -18,6 +18,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
@@ -28,6 +29,7 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import org.mindone.snapcase.R
+import org.mindone.snapcase.remap.RemapAccessibilityService
 import org.mindone.snapcase.system.DeviceState
 
 data class KeyRecord(
@@ -43,6 +45,10 @@ data class KeyRecord(
 
 @Composable
 fun KeyTesterScreen(onClose: () -> Unit) {
+    DisposableEffect(Unit) {
+        RemapAccessibilityService.keyTesterActive = true
+        onDispose { RemapAccessibilityService.keyTesterActive = false }
+    }
     val records = remember { mutableStateListOf<KeyRecord>() }
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }

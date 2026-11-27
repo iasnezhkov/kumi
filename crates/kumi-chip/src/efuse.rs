@@ -4,8 +4,22 @@ use crate::regs;
 pub const OTP_BASE: usize = 0x2000_0010;
 pub const OTP_WORDS: usize = 8;
 
-const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
-const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
+const SERIAL_KEY_0: u64 = 0x736f_6d65_7073_6575 ^ 0x6b75_6d69_7573_6231;
+const SERIAL_KEY_1: u64 = 0x646f_7261_6e64_6f6d ^ 0x7365_7269_616c_7631;
+
+const fn sip_round(mut v0: u64, mut v1: u64, mut v2: u64, mut v3: u64) -> (u64, u64, u64, u64) {
+    v0 = v0.wrapping_add(v1);
+    v1 = v1.rotate_left(13) ^ v0;
+    v0 = v0.rotate_left(32);
+    v2 = v2.wrapping_add(v3);
+    v3 = v3.rotate_left(16) ^ v2;
+    v0 = v0.wrapping_add(v3);
+    v3 = v3.rotate_left(21) ^ v0;
+    v2 = v2.wrapping_add(v1);
+    v1 = v1.rotate_left(17) ^ v2;
+    v2 = v2.rotate_left(32);
+    (v0, v1, v2, v3)
+}
 
 pub const fn derive_serial(otp: [u32; OTP_WORDS]) -> Option<[u8; 8]> {
     let mut non_zero = false;
@@ -19,18 +33,30 @@ pub const fn derive_serial(otp: [u32; OTP_WORDS]) -> Option<[u8; 8]> {
     if !non_zero {
         return None;
     }
-    let mut hash = FNV_OFFSET_BASIS;
-    let mut w = 0;
-    while w < OTP_WORDS {
-        let bytes = otp[w].to_le_bytes();
-        let mut b = 0;
-        while b < 4 {
-            hash ^= bytes[b] as u64;
-            hash = hash.wrapping_mul(FNV_PRIME);
-            b += 1;
-        }
-        w += 1;
+    let mut v0 = 0x736f_6d65_7073_6575 ^ SERIAL_KEY_0;
+    let mut v1 = 0x646f_7261_6e64_6f6d ^ SERIAL_KEY_1;
+    let mut v2 = 0x6c79_6765_6e65_7261 ^ SERIAL_KEY_0;
+    let mut v3 = 0x7465_6462_7974_6573 ^ SERIAL_KEY_1;
+    let mut pair = 0;
+    while pair < OTP_WORDS / 2 {
+        let m = (otp[2 * pair] as u64) | ((otp[2 * pair + 1] as u64) << 32);
+        v3 ^= m;
+        (v0, v1, v2, v3) = sip_round(v0, v1, v2, v3);
+        (v0, v1, v2, v3) = sip_round(v0, v1, v2, v3);
+        v0 ^= m;
+        pair += 1;
     }
+    let last = ((OTP_WORDS * 4) as u64) << 56;
+    v3 ^= last;
+    (v0, v1, v2, v3) = sip_round(v0, v1, v2, v3);
+    (v0, v1, v2, v3) = sip_round(v0, v1, v2, v3);
+    v0 ^= last;
+    v2 ^= 0xff;
+    (v0, v1, v2, v3) = sip_round(v0, v1, v2, v3);
+    (v0, v1, v2, v3) = sip_round(v0, v1, v2, v3);
+    (v0, v1, v2, v3) = sip_round(v0, v1, v2, v3);
+    (v0, v1, v2, v3) = sip_round(v0, v1, v2, v3);
+    let hash = v0 ^ v1 ^ v2 ^ v3;
     Some(hash.to_be_bytes())
 }
 

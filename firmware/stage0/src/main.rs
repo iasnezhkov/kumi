@@ -253,7 +253,7 @@ extern "C" fn kumi_stage0_verify_main(slot: u32) -> u32 {
     let Some(slot) = SlotId::from_index(slot as usize) else { return 1 };
     let Some(key) = public_key() else { return 1 };
     let mut flash = BootFlash::Rom(RomFlash::new(unsafe { BootRom::prepared() }, None));
-    u32::from(kumi_boot_core::verify_slot(&mut flash, slot, &key).is_err())
+    u32::from(!kumi_boot_core::verify_slot(&mut flash, slot, &key).is_ok_and(|h| h.flags & kumi_layout::FLAG_LAB == 0))
 }
 
 fn arm_fault_reset() {

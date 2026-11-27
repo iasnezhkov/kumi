@@ -109,6 +109,7 @@ class InstallFlow(
     private val backups: BackupStore,
     private val publicKey: () -> String,
     private val onFinished: (FlowKind) -> Unit = {},
+    private val onFlashAudioFocus: (Boolean) -> Unit = {},
 ) {
     private class Pending(
         val kind: FlowKind,
@@ -169,12 +170,17 @@ class InstallFlow(
         if (busy || !p.resumable) return
         _state.update { FlowState(p.kind, FlowStep.ENTERING_SERVICE, target = it?.target) }
         scope.launch(dispatcher) {
-            runCatching {
-                p.lease.close()
-                p.lease = service.enter(SERVICE_WAIT_MS)
-                p.session = ServiceSession(bridge, p.lease)
-                writeAndRestart()
-            }.onFailure { failed(p.kind, it) }
+            if (!port.simulated) onFlashAudioFocus(true)
+            try {
+                runCatching {
+                    p.lease.close()
+                    p.lease = service.enter(SERVICE_WAIT_MS)
+                    p.session = ServiceSession(bridge, p.lease)
+                    writeAndRestart()
+                }.onFailure { failed(p.kind, it) }
+            } finally {
+                if (!port.simulated) onFlashAudioFocus(false)
+            }
         }
     }
 
@@ -199,8 +205,13 @@ class InstallFlow(
         pending = null
         _state.value = FlowState(kind, FlowStep.PREPARING, target = target)
         scope.launch(dispatcher) {
-            stale?.lease?.close()
-            runCatching { block() }.onFailure { failed(kind, it) }
+            if (!port.simulated) onFlashAudioFocus(true)
+            try {
+                stale?.lease?.close()
+                runCatching { block() }.onFailure { failed(kind, it) }
+            } finally {
+                if (!port.simulated) onFlashAudioFocus(false)
+            }
         }
     }
 

@@ -6,6 +6,9 @@ use core::future::poll_fn;
 use core::pin::pin;
 use core::task::Poll;
 use embassy_usb::class::hid::{self, HidProtocolMode, ReportId, RequestHandler};
+#[cfg(not(feature = "webusb"))]
+use embassy_usb::control::OutResponse;
+#[cfg(feature = "webusb")]
 use embassy_usb::control::{InResponse, OutResponse, Request, RequestType};
 use embassy_usb_driver::{Endpoint, EndpointIn, EndpointOut};
 use heapless::Deque;
@@ -22,6 +25,13 @@ use crate::{audio, board, uac, usb};
 const MIRROR_QUEUE: usize = 8;
 const RAM_BUILD: &str = if board::LAB { "ram-lab" } else { "ram" };
 const SLOT_BUILD: &str = if board::LAB { "slot-lab" } else { "slot" };
+const PRESENCE_TIER2_HOLD_MS: u32 = 2_000;
+const PRESENCE_PASSTHROUGH_HOLD_MS: u32 = 3_000;
+const PRESENCE_TIER2_WINDOW_MS: u32 = 60_000;
+const MOD_LSHIFT: u8 = 0x02;
+const KEY_ENTER: u8 = 0x28;
+const KEY_BACKSPACE: u8 = 0x2A;
+const KEY_SPACE: u8 = 0x2C;
 
 pub struct Shared {
     pub controls: RefCell<Controls>,
@@ -52,6 +62,11 @@ pub struct Shared {
     flush: Cell<Option<SaveTrigger>>,
     safe_mode: bool,
     unlocked_until: Cell<Option<u32>>,
+    tier2_until: Cell<Option<u32>>,
+    passthrough: Cell<bool>,
+    chord_kind: Cell<u8>,
+    chord_since_ms: Cell<u32>,
+    chord_fired: Cell<bool>,
     fault: Cell<Option<FaultKind>>,
     mirror: Cell<bool>,
     mirror_batch: RefCell<heapless::Vec<u8, BYTE_BLOCK>>,
@@ -101,6 +116,11 @@ impl Shared {
             flush: Cell::new(None),
             safe_mode,
             unlocked_until: Cell::new(None),
+            tier2_until: Cell::new(None),
+            passthrough: Cell::new(false),
+            chord_kind: Cell::new(0),
+            chord_since_ms: Cell::new(0),
+            chord_fired: Cell::new(false),
             fault: Cell::new(None),
             mirror: Cell::new(false),
             mirror_batch: RefCell::new(heapless::Vec::new()),
@@ -137,6 +157,133 @@ impl Shared {
 
     fn unlock(&self, seconds: u16) {
         self.unlocked_until.set(Some(self.milliseconds.get().wrapping_add(1000 * u32::from(seconds))));
+    }
+
+    #[unsafe(link_section = ".text.cold")]
+    #[inline(never)]
+    pub fn mono_ms(&self) -> u32 {
+        (board::monotonic_us() / 1_000) as u32
+    }
+
+    #[unsafe(link_section = ".text.cold")]
+    #[inline(never)]
+    pub fn clear_presence(&self) {
+        self.tier2_until.set(None);
+        self.chord_kind.set(0);
+        self.chord_fired.set(false);
+    }
+
+    pub fn passthrough(&self) -> bool {
+        self.passthrough.get()
+    }
+
+    pub fn presence_chord_active(&self) -> bool {
+        self.chord_kind.get() != 0
+    }
+
+    #[unsafe(link_section = ".text.cold")]
+    #[inline(never)]
+    fn remaining_ms(until: Option<u32>, now_ms: u32) -> u32 {
+        match until {
+            Some(deadline) => {
+                let delta = deadline.wrapping_sub(now_ms) as i32;
+                if delta > 0 { delta as u32 } else { 0 }
+            }
+            None => 0,
+        }
+    }
+
+    #[unsafe(link_section = ".text.cold")]
+    #[inline(never)]
+    pub fn tier2_remaining_ms(&self, now_ms: u32) -> u32 {
+        let rem = Self::remaining_ms(self.tier2_until.get(), now_ms);
+        if rem == 0 {
+            self.tier2_until.set(None);
+        }
+        rem
+    }
+
+    #[unsafe(link_section = ".text.cold")]
+    #[inline(never)]
+    pub fn presence_status(&self) -> PresenceStatus {
+        let now_ms = self.mono_ms();
+        let t2 = self.tier2_remaining_ms(now_ms);
+        let (tier, remaining_ms) = if t2 > 0 {
+            (2, t2)
+        } else if board::raw_access() {
+            (2, PRESENCE_TIER2_WINDOW_MS)
+        } else {
+            (0, 0)
+        };
+        PresenceStatus { tier, remaining_ms, passthrough: self.passthrough.get() }
+    }
+
+    #[unsafe(link_section = ".text.cold")]
+    #[inline(never)]
+    pub fn consume_tier2(&self) -> Ack {
+        if board::raw_access() {
+            return Ok(());
+        }
+        let now_ms = self.mono_ms();
+        if self.tier2_remaining_ms(now_ms) == 0 {
+            return Err(CaseError::PresenceRequired);
+        }
+        self.tier2_until.set(None);
+        Ok(())
+    }
+
+    #[unsafe(link_section = ".text.cold")]
+    #[inline(never)]
+    pub fn poll_presence(&self, kbd: &KeyboardReport, now_ms: u32) {
+        let has_shift = kbd.modifiers & MOD_LSHIFT != 0;
+        let has_enter = kbd.keys.contains(&KEY_ENTER);
+        let has_bs = kbd.keys.contains(&KEY_BACKSPACE);
+        let has_space = kbd.keys.contains(&KEY_SPACE);
+        let kind = if has_shift && has_bs && has_space && !has_enter {
+            3
+        } else if has_shift && has_bs && !has_enter && !has_space {
+            2
+        } else {
+            0
+        };
+        if kind == 0 {
+            self.chord_kind.set(0);
+            self.chord_fired.set(false);
+            return;
+        }
+        if kind != self.chord_kind.get() {
+            self.chord_kind.set(kind);
+            self.chord_since_ms.set(now_ms);
+            self.chord_fired.set(false);
+            return;
+        }
+        if self.chord_fired.get() {
+            return;
+        }
+        let hold_ms = if kind == 2 { PRESENCE_TIER2_HOLD_MS } else { PRESENCE_PASSTHROUGH_HOLD_MS };
+        if now_ms.wrapping_sub(self.chord_since_ms.get()) < hold_ms {
+            return;
+        }
+        self.chord_fired.set(true);
+        if kind == 2 {
+            self.tier2_until.set(Some(now_ms.wrapping_add(PRESENCE_TIER2_WINDOW_MS)));
+        } else {
+            self.passthrough.set(!self.passthrough.get());
+        }
+    }
+
+    #[unsafe(link_section = ".text.cold")]
+    #[inline(never)]
+    pub fn report_passthrough(&self, input: &kumi_keymap::Input) {
+        let mut consumer = 0u16;
+        for (bit, &usage) in kumi_keymap::STOCK_CONSUMER_USAGES.iter().enumerate() {
+            if usage != 0 && (input.consumer_bits & (1u8 << bit)) != 0 {
+                consumer = usage;
+                break;
+            }
+        }
+        let out = Output { keyboard: input.keyboard, consumer, ..Output::default() };
+        self.report(&out);
     }
 
     pub fn mirror_byte(&self, byte: u8) {
@@ -345,6 +492,7 @@ impl embassy_usb::Handler for Lifecycle<'_> {
         self.0.remote_wakeup_enabled.set(false);
         self.0.flush.set(Some(SaveTrigger::LinkDown));
         self.0.unlocked_until.set(None);
+        self.0.clear_presence();
         self.0.stop_mirror();
         self.0.uart_tx.borrow_mut().clear();
         #[cfg(feature = "lab")]
@@ -362,6 +510,7 @@ impl embassy_usb::Handler for Lifecycle<'_> {
         #[cfg(feature = "lab")]
         crate::lab::usb(if suspended { crate::lab::usb_event::SUSPEND } else { crate::lab::usb_event::RESUME });
         if suspended {
+            self.0.clear_presence();
             self.0.flush.set(Some(SaveTrigger::Sleeping));
         } else {
             self.0.touch_activity();
@@ -372,6 +521,7 @@ impl embassy_usb::Handler for Lifecycle<'_> {
         self.0.remote_wakeup_enabled.set(enabled);
     }
 
+    #[cfg(feature = "webusb")]
     #[unsafe(link_section = ".text.cold")]
     fn control_in<'a>(&mut self, req: Request, buf: &'a mut [u8]) -> Option<InResponse<'a>> {
         const WEBUSB_URL: &[u8] = b"\x1b\x03\x01nonbiri.dev/mindone/case";
@@ -471,6 +621,10 @@ impl Provider for Services<'_> {
         Ok(board::telemetry(self.shared.milliseconds.get()))
     }
 
+    fn presence(&mut self) -> PresenceStatus {
+        self.shared.presence_status()
+    }
+
     fn measure_impedance(&mut self) -> ImpedanceResult {
         self.shared.audio.borrow_mut().measure_impedance()
     }
@@ -479,13 +633,19 @@ impl Provider for Services<'_> {
         self.shared.uac.borrow_mut().take_meters()
     }
 
+    fn audio_spectrum(&mut self) -> AudioSpectrum {
+        let now_ms = self.shared.milliseconds.get();
+        self.shared.uac.borrow_mut().take_spectrum(now_ms)
+    }
+
     fn play_test_tone(&mut self, request: TestToneRequest) -> Ack {
         let now_ms = (board::monotonic_us() / 1_000) as u32;
         self.shared.audio.borrow_mut().start_test_tone(request, now_ms)
     }
 
     fn subscribe(&mut self, events: EventMask) -> EventsResult {
-        let available = (EventMask::KEYS | EventMask::LOG).with(EventMask::UART, self.shared.developer().is_ok());
+        let uart_allowed = board::raw_access() && self.shared.developer().is_ok();
+        let available = (EventMask::KEYS | EventMask::LOG).with(EventMask::UART, uart_allowed);
         let granted = events & available;
         self.shared.subscribed.set(granted.contains(EventMask::KEYS));
         self.shared.startup_log.set(granted.contains(EventMask::LOG));
@@ -510,7 +670,8 @@ impl Provider for Services<'_> {
             flash_jedec: self.jedec,
             serial: board::serial(),
             running_from_ram: board::loaded_by_host(),
-            capabilities: (Capabilities::KEYMAP | Capabilities::LAYERS | Capabilities::DEVELOPER)
+            capabilities: (Capabilities::KEYMAP | Capabilities::LAYERS)
+                .with(Capabilities::DEVELOPER, board::raw_access())
                 .with(Capabilities::AUDIO_OUT | Capabilities::PARAMETRIC_EQ | Capabilities::DSD, audio_present)
                 .with(Capabilities::PERSISTENT_SETTINGS | Capabilities::FIRMWARE_UPDATE, storage.writable())
                 .with(Capabilities::LAB, board::LAB),
@@ -545,6 +706,9 @@ impl Provider for Services<'_> {
     }
 
     fn reboot(&mut self, target: RebootTarget) -> Ack {
+        if target == RebootTarget::BootRom {
+            self.shared.consume_tier2()?;
+        }
         self.storage().request_reboot(target, board::verify)
     }
 
@@ -553,7 +717,11 @@ impl Provider for Services<'_> {
     }
 
     fn update_begin(&mut self, manifest: UpdateManifest) -> Ack {
-        self.storage().update_begin(manifest)
+        let res = self.storage().update_begin(manifest);
+        if res.is_ok() {
+            self.shared.uac.borrow_mut().set_ota_silence(true);
+        }
+        res
     }
 
     fn update_chunk(&mut self, block: UpdateBlock) -> CountResult {
@@ -561,15 +729,25 @@ impl Provider for Services<'_> {
     }
 
     fn update_finish(&mut self) -> SlotResult {
-        self.storage().update_finish(board::verify)
+        let res = self.storage().update_finish_with_policy(board::LAB, board::verify);
+        if res.is_err() {
+            self.shared.uac.borrow_mut().set_ota_silence(false);
+        }
+        res
     }
 
     fn dev_unlock(&mut self, request: DevUnlockRequest) -> Ack {
+        if !board::raw_access() {
+            return Err(CaseError::Unsupported);
+        }
         self.shared.unlock(request.seconds);
         Ok(())
     }
 
     fn dev_peek(&mut self, request: PeekRequest) -> WordsResult {
+        if !board::raw_access() {
+            return Err(CaseError::Unsupported);
+        }
         self.shared.developer()?;
         if !board::peekable(request.address, request.words) {
             return Err(CaseError::InvalidArgument);
@@ -647,6 +825,9 @@ impl Provider for Services<'_> {
     }
 
     fn dev_fault(&mut self, kind: FaultKind) -> Ack {
+        if !board::raw_access() {
+            return Err(CaseError::Unsupported);
+        }
         self.shared.developer()?;
         self.shared.fault.set(Some(kind));
         Ok(())

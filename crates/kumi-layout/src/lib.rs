@@ -230,6 +230,7 @@ pub const HEADER_SIZE: usize = 256;
 pub const SIGNED_HEADER_LEN: usize = 128;
 pub const MAX_SEGMENTS: usize = 4;
 pub const FLAG_SAFE_MODE_CAPABLE: u16 = 1;
+pub const FLAG_LAB: u16 = 1 << 1;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SegmentKind {

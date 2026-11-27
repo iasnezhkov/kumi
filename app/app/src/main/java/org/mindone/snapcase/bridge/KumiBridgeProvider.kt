@@ -4,6 +4,7 @@ package org.mindone.snapcase.bridge
 import android.content.ContentProvider
 import android.content.ContentValues
 import android.content.Context
+import android.content.pm.PackageManager
 import android.database.Cursor
 import android.database.MatrixCursor
 import android.hardware.usb.UsbDevice
@@ -29,6 +30,12 @@ class KumiBridgeProvider : ContentProvider() {
         return true
     }
 
+    private fun verifyCaller(context: Context): Boolean {
+        val caller = callingPackage ?: return false
+        if (caller == context.packageName) return true
+        return context.packageManager.checkSignatures(context.packageName, caller) == PackageManager.SIGNATURE_MATCH
+    }
+
     override fun query(
         uri: Uri,
         projection: Array<out String>?,
@@ -37,6 +44,7 @@ class KumiBridgeProvider : ContentProvider() {
         sortOrder: String?,
     ): Cursor? {
         val ctx = context ?: return null
+        if (!verifyCaller(ctx)) return null
         if (uri.lastPathSegment != PATH_STATE) return null
         val liveKind = detectCaseKind(ctx)
         val snap = SnapLiveMirror.persisted(ctx)
@@ -71,6 +79,9 @@ class KumiBridgeProvider : ContentProvider() {
 
     override fun call(method: String, arg: String?, extras: Bundle?): Bundle {
         val ctx = context ?: return resultBundle(false, "no_context")
+        if (!verifyCaller(ctx)) {
+            return resultBundle(false, "unauthorized")
+        }
         if (!SnapLiveMirror.controlsAllowed(ctx)) {
             return resultBundle(false, "disabled_by_user")
         }
@@ -108,10 +119,6 @@ class KumiBridgeProvider : ContentProvider() {
                     val modes = CrossfeedMode.entries
                     val next = modes[(modes.indexOf(dsp.crossfeed) + 1) % modes.size]
                     client.setDsp(dsp.copy(crossfeed = next))
-                }
-                CMD_TOGGLE_LINE_OUT -> {
-                    val extras = client.dacExtras()
-                    client.setDacExtras(extras.copy(lineOut = !extras.lineOut))
                 }
                 CMD_TOGGLE_STAY_AWAKE -> {
                     val extras = client.dacExtras()
@@ -200,7 +207,6 @@ class KumiBridgeProvider : ContentProvider() {
         const val CMD_TOGGLE_EQ = "toggle_eq"
         const val CMD_SELECT_EQ = "select_eq"
         const val CMD_CYCLE_CROSSFEED = "cycle_crossfeed"
-        const val CMD_TOGGLE_LINE_OUT = "toggle_line_out"
         const val CMD_TOGGLE_STAY_AWAKE = "toggle_stay_awake"
         const val CMD_REFRESH = "refresh"
 

@@ -2,6 +2,7 @@
 package org.mindone.snapcase.ime
 
 import android.accessibilityservice.AccessibilityService
+import android.app.KeyguardManager
 import android.graphics.PixelFormat
 import android.util.Log
 import android.view.Gravity
@@ -42,6 +43,7 @@ class QuickSearchOverlayController(
     val isShowing: Boolean get() = overlayView != null
 
     fun show(initialChar: Char?): Boolean {
+        if (service.getSystemService(KeyguardManager::class.java)?.isKeyguardLocked == true) return false
         val text = initialChar?.toString().orEmpty()
         queryValue = TextFieldValue(text, TextRange(text.length))
         selectedIndex = 0

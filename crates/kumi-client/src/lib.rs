@@ -2,16 +2,18 @@
 use std::fmt;
 
 use kumi_icd::{
-    AudioBench, AudioBenchRequest, AudioMeters, AudioStart, AudioStatus, BYTE_BLOCK, ByteBlock, CaseError, CaseResult,
-    ClearKeymap, ComboSlotUpdate, ConfirmBoot, DacExtras, DevAudio, DevFault, DevFlashTest, DevI2c, DevPeek, DevPoke,
-    DevUartSend, DevUnlock, DevUnlockRequest, DeviceInfo, Diagnostics, DspSettings, EqProfile, EqSelection, EqSlotUpdate,
-    EventMask, FaultKind, FlashTestReport, GetAudioMeters, GetAudioStatus, GetCombo, GetDacExtras, GetDeviceInfo, GetDiagnostics,
-    GetDspSettings, GetEq, GetKeyConfig, GetKeyboardStatus, GetKeymap, GetMacro, GetMic, GetOutputSettings, GetSlots,
-    GetTelemetry, I2cReply, I2cRequest, ImpedanceReport, KeyAction, KeyCombo, KeyConfig, KeyboardStatus, KeymapChunk,
-    KeymapEntry, KeymapPage, LAYERS, MacroProgram, MacroSlotUpdate, MeasureImpedance, MicSettings, OutputSettings, PeekRequest,
-    PingEndpoint, PlayTestTone, PokeRequest, Reboot, RebootTarget, ResetSettings, SaveSettings, SelectEq, SetCombo, SetDacExtras,
-    SetDspSettings, SetEq, SetKey, SetKeyConfig, SetMacro, SetMic, SetOutputSettings, SettingsScope, SlotTable, SubscribeEvents,
-    SystemTelemetry, TestToneRequest, WordBlock,
+    AudioBench, AudioBenchRequest, AudioMeters, AudioSpectrum, AudioStart, AudioStatus, BYTE_BLOCK, ByteBlock, CaseError,
+    CaseResult, ClearKeymap, ComboSlotUpdate, ConfirmBoot, DacExtras, DevAudio, DevFault, DevFlashTest, DevI2c, DevPeek, DevPoke,
+    DevUartSend, DevUnlock, DevUnlockRequest, DeviceInfo, Diagnostics, DspExtras, DspSettings, EqBaseSettings, EqProfile,
+    EqSelection, EqSlotUpdate, EventMask, FaultKind, FlashTestReport, GetAudioMeters, GetAudioSpectrum, GetAudioStatus, GetCombo,
+    GetDacExtras, GetDeviceInfo, GetDiagnostics, GetDspExtras, GetDspSettings, GetEq, GetEqBase, GetKeyConfig, GetKeyboardStatus,
+    GetKeymap, GetMacro, GetMediaGestures, GetMic, GetOutputSettings, GetPresence, GetSlots, GetTelemetry, GetToneEq, I2cReply,
+    I2cRequest, ImpedanceReport, KeyAction, KeyCombo, KeyConfig, KeyboardStatus, KeymapChunk, KeymapEntry, KeymapPage, LAYERS,
+    MacroProgram, MacroSlotUpdate, MeasureImpedance, MediaGestures, MicSettings, OutputSettings, PeekRequest, PingEndpoint,
+    PlayTestTone, PokeRequest, PresenceStatus, Reboot, RebootTarget, ResetSettings, SaveSettings, SelectEq, SetCombo,
+    SetDacExtras, SetDspExtras, SetDspSettings, SetEq, SetEqBase, SetKey, SetKeyConfig, SetMacro, SetMediaGestures, SetMic,
+    SetOutputSettings, SetToneEq, SettingsScope, SlotTable, SubscribeEvents, SystemTelemetry, TestToneRequest, ToneEqSettings,
+    WordBlock,
 };
 use postcard_rpc::{Endpoint, Key};
 use serde::Serialize;
@@ -62,6 +64,10 @@ impl<E> ClientError<E> {
 
     pub fn is_not_unlocked(&self) -> bool {
         self.case_error() == Some(CaseError::NotUnlocked)
+    }
+
+    pub fn is_presence_required(&self) -> bool {
+        self.case_error() == Some(CaseError::PresenceRequired)
     }
 }
 
@@ -148,6 +154,10 @@ impl<T: Transport> Client<T> {
         self.call_case::<GetTelemetry, _>(&())
     }
 
+    pub fn presence(&mut self) -> Result<PresenceStatus, ClientError<T::Error>> {
+        self.call::<GetPresence>(&())
+    }
+
     pub fn subscribe(&mut self, events: EventMask) -> Result<EventMask, ClientError<T::Error>> {
         self.call_case::<SubscribeEvents, _>(&events)
     }
@@ -194,6 +204,34 @@ impl<T: Transport> Client<T> {
 
     pub fn audio_meters(&mut self) -> Result<AudioMeters, ClientError<T::Error>> {
         self.call::<GetAudioMeters>(&())
+    }
+
+    pub fn audio_spectrum(&mut self) -> Result<AudioSpectrum, ClientError<T::Error>> {
+        self.call::<GetAudioSpectrum>(&())
+    }
+
+    pub fn dsp_extras(&mut self) -> Result<DspExtras, ClientError<T::Error>> {
+        self.call::<GetDspExtras>(&())
+    }
+
+    pub fn set_dsp_extras(&mut self, extras: DspExtras) -> Result<(), ClientError<T::Error>> {
+        self.call_case::<SetDspExtras, _>(&extras)
+    }
+
+    pub fn eq_base(&mut self) -> Result<EqBaseSettings, ClientError<T::Error>> {
+        self.call::<GetEqBase>(&())
+    }
+
+    pub fn set_eq_base(&mut self, base: EqBaseSettings) -> Result<(), ClientError<T::Error>> {
+        self.call_case::<SetEqBase, _>(&base)
+    }
+
+    pub fn tone_eq(&mut self) -> Result<ToneEqSettings, ClientError<T::Error>> {
+        self.call::<GetToneEq>(&())
+    }
+
+    pub fn set_tone_eq(&mut self, tone: ToneEqSettings) -> Result<(), ClientError<T::Error>> {
+        self.call_case::<SetToneEq, _>(&tone)
     }
 
     pub fn play_test_tone(&mut self, request: TestToneRequest) -> Result<(), ClientError<T::Error>> {
@@ -280,6 +318,14 @@ impl<T: Transport> Client<T> {
 
     pub fn set_key_config(&mut self, config: KeyConfig) -> Result<(), ClientError<T::Error>> {
         self.call_case::<SetKeyConfig, _>(&config)
+    }
+
+    pub fn media_gestures(&mut self) -> Result<MediaGestures, ClientError<T::Error>> {
+        self.call::<GetMediaGestures>(&())
+    }
+
+    pub fn set_media_gestures(&mut self, gestures: MediaGestures) -> Result<(), ClientError<T::Error>> {
+        self.call_case::<SetMediaGestures, _>(&gestures)
     }
 
     pub fn save_settings(&mut self) -> Result<(), ClientError<T::Error>> {

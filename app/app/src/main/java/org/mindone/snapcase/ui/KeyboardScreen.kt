@@ -70,9 +70,13 @@ fun KeysScreen(prefs: AppPreferences) {
         }
     }
 
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    RegisterScreenScroll(listState)
+
     Column(Modifier.fillMaxSize()) {
         LazyColumn(
             Modifier.weight(1f).fillMaxWidth(),
+            state = listState,
             contentPadding = PaddingValues(12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {

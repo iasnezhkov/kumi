@@ -149,10 +149,11 @@ mode keeps working after the session.
 
 ## At run time
 
-Logs and counters stream over the vendor interface. Developer endpoints are available only after
-`dev/unlock`, for the 1 to 600 seconds it names, counted in USB frames; a USB bus reset locks them
-again. Locked, they answer `NotUnlocked`. The development runtime serves these and reports the
-`developer` capability; `dev/uart/send` still answers `Unsupported`.
+Logs and counters stream over the vendor interface. Release slot builds disable developer endpoints
+(`Unsupported`, `developer: false`). In `"slot-lab"` or RAM-loaded `"ram"` builds, developer
+endpoints are available only after `dev/unlock`, for the 1 to 600 seconds it names, counted in USB
+frames; a USB bus reset locks them again. Locked, they answer `NotUnlocked`. Only RAM/lab builds
+report the `developer` capability; `dev/uart/send` is lab-only.
 
 | Endpoint | What it does |
 |---|---|

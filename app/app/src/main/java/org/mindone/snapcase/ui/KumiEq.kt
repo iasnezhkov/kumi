@@ -39,6 +39,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -59,6 +60,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -76,17 +78,22 @@ import kotlin.math.exp
 import kotlin.math.hypot
 import kotlin.math.ln
 import kotlin.math.roundToInt
+import kotlinx.coroutines.flow.StateFlow
 import org.mindone.snapcase.R
 import org.mindone.snapcase.data.AppPreferences
+import org.mindone.snapcase.kumi.AudioSpectrum
 import org.mindone.snapcase.kumi.BandKind
 import org.mindone.snapcase.kumi.BuiltInEqPreset
 import org.mindone.snapcase.kumi.CustomEqPreset
+import org.mindone.snapcase.kumi.EqBaseSettings
 import org.mindone.snapcase.kumi.EqMath
 import org.mindone.snapcase.kumi.EqProfile
 import org.mindone.snapcase.kumi.FastEqCurve
 import org.mindone.snapcase.kumi.KumiEqPresets
+import org.mindone.snapcase.kumi.KumiLimits
 import org.mindone.snapcase.kumi.KumiSession
 import org.mindone.snapcase.kumi.ParametricBand
+import org.mindone.snapcase.kumi.ToneEqSettings
 
 private const val EQ_MIN_HZ = 20.0
 private const val EQ_MAX_HZ = 20_000.0
@@ -151,20 +158,22 @@ fun KumiEqScreen(
     val shPreamp = stringResource(R.string.kumi_preamp)
     val shAuto = stringResource(R.string.kumi_preamp_auto)
 
+    val scrollState = rememberScrollState()
+    LaunchedEffect(page) { scrollState.scrollTo(0) }
+
     val pageShortcuts = when (page) {
-        0 -> listOf("Q–R / A–F" to shPreset, "Z" to shGroup, "C" to shSave, "␣" to shAb, "Tab" to shTab)
-        1 -> listOf("Q–P" to shBand, "H / J" to shGain, "A / D" to shFreq, "K / L" to shQ, "F" to shType, "Z" to shZero, "␣" to shAb, "Tab" to shTab)
-        else -> listOf("Q–R" to shSlot, "H / J" to shPreamp, "A" to shAuto, "S" to shSave, "␣" to shAb, "Tab" to shTab)
+        0 -> listOf("Q–R / A–F" to shPreset, "Z" to shGroup, "C" to shSave, "␣" to shAb, "↵" to shTab)
+        1 -> listOf("Q–P" to shBand, "H / J" to shGain, "A / D" to shFreq, "K / L" to shQ, "F" to shType, "Z" to shZero, "␣" to shAb, "↵" to shTab)
+        else -> listOf("Q–R" to shSlot, "H / J" to shPreamp, "A" to shAuto, "S" to shSave, "␣" to shAb, "↵" to shTab)
     }
+
+    RegisterScreenTabs(count = 3, current = page, onSelect = { page = it })
+    RegisterScreenScroll(scrollState)
 
     RegisterScreenKeys(
         key = listOf(page, presetCategory, slot, selectedBand, profile, active, state.eqSlots, state.audio?.eqActive),
         shortcuts = pageShortcuts,
     ) { code, repeat ->
-        if (!repeat && code == KeyEvent.KEYCODE_TAB) {
-            page = (page + 1) % 3
-            return@RegisterScreenKeys true
-        }
         if (!repeat && code == KeyEvent.KEYCODE_SPACE) {
             toggleEqBypass()
             return@RegisterScreenKeys true
@@ -300,9 +309,9 @@ fun KumiEqScreen(
             Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 12.dp, vertical = 4.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+                .verticalScroll(scrollState)
+                .padding(horizontal = 12.dp, vertical = 2.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             KumiErrorBanner(state, kumi::clearError)
             if (state.isUacSleeping() && state.audio?.stream == null) {
@@ -315,6 +324,9 @@ fun KumiEqScreen(
                     slotLoaded = state.eqSlots.getOrNull(slot) != null,
                     profile = profile,
                     math = math,
+                    liveSpectrum = kumi.liveSpectrum,
+                    eqBase = state.eqBase,
+                    toneEq = state.toneEq,
                     customPresets = settings.customEqPresets,
                     presetCategory = presetCategory,
                     selectedBuiltInId = selectedBuiltInId,
@@ -334,6 +346,9 @@ fun KumiEqScreen(
                 1 -> EqBandsPage(
                     profile = profile,
                     math = math,
+                    liveSpectrum = kumi.liveSpectrum,
+                    eqBase = state.eqBase,
+                    toneEq = state.toneEq,
                     selectedBand = selectedBand,
                     onSelectBand = { selectedBand = it },
                     onCommitProfile = { next ->
@@ -347,6 +362,9 @@ fun KumiEqScreen(
                     activeSlot = state.audio?.eqActive,
                     profile = profile,
                     math = math,
+                    liveSpectrum = kumi.liveSpectrum,
+                    eqBase = state.eqBase,
+                    toneEq = state.toneEq,
                     onSelectSlot = { idx ->
                         slot = idx
                         if (state.eqSlots.getOrNull(idx) != null) kumi.selectEq(idx)
@@ -356,14 +374,16 @@ fun KumiEqScreen(
                     onAutoPreamp = { apply(math.withAutoPreamp(profile), true) },
                     onSaveCustom = { savingCustom = true },
                     onReset = { confirmReset = true },
+                    onSetEqBase = { kumi.setEqBase(it) },
+                    onSetToneEq = { kumi.setToneEq(it) },
                 )
             }
         }
         KeyboardHintStrip(
             hints = when (page) {
-                0 -> listOf("Q–F" to shPreset, "Z" to shGroup, "␣" to shAb)
-                1 -> listOf("Q–P" to shBand, "H/J" to shGain, "A/D" to shFreq, "␣" to shAb)
-                else -> listOf("Q–R" to shSlot, "H/J" to shPreamp, "␣" to shAb)
+                0 -> listOf("Q–F" to shPreset, "Z" to shGroup, "↵" to shTab, "␣" to shAb)
+                1 -> listOf("Q–P" to shBand, "H/J" to shGain, "A/D" to shFreq, "↵" to shTab)
+                else -> listOf("Q–R" to shSlot, "H/J" to shPreamp, "↵" to shTab, "␣" to shAb)
             },
         )
     }
@@ -405,6 +425,9 @@ private fun EqPresetsPage(
     slotLoaded: Boolean,
     profile: EqProfile,
     math: EqMath,
+    liveSpectrum: StateFlow<AudioSpectrum?>,
+    eqBase: EqBaseSettings?,
+    toneEq: ToneEqSettings?,
     customPresets: List<CustomEqPreset>,
     presetCategory: Int,
     selectedBuiltInId: String?,
@@ -420,39 +443,50 @@ private fun EqPresetsPage(
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
     ) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(114.dp)
+                .padding(horizontal = 10.dp, vertical = 8.dp),
         ) {
-            ResponseCurve(profile, math, Modifier.weight(1f).height(58.dp))
-            Column(
-                horizontalAlignment = Alignment.End,
-                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ResponseCurve(
+                profile = profile,
+                math = math,
+                modifier = Modifier.fillMaxSize(),
+                liveSpectrum = liveSpectrum,
+                eqBase = eqBase,
+                toneEq = toneEq,
+            )
+            Row(
+                Modifier.align(Alignment.TopEnd),
+                horizontalArrangement = Arrangement.spacedBy(5.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
-                    StatusPill(
-                        text = stringResource(R.string.kumi_eq_slot_short, slot + 1),
-                        containerColor = if (active) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest,
-                        contentColor = if (active) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    if (!active && slotLoaded) {
-                        Surface(
-                            color = MaterialTheme.colorScheme.secondaryContainer,
-                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                            shape = CircleShape,
-                            modifier = Modifier.clip(CircleShape).clickable(onClick = onUseSlot),
-                        ) {
-                            Text(
-                                stringResource(R.string.kumi_eq_use),
-                                style = MaterialTheme.typography.labelMedium,
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                            )
-                        }
+                StatusPill(
+                    text = stringResource(R.string.kumi_eq_slot_short, slot + 1),
+                    containerColor = if (active) {
+                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.90f)
+                    } else {
+                        MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.86f)
+                    },
+                    contentColor = if (active) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (!active && slotLoaded) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.90f),
+                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                        shape = CircleShape,
+                        modifier = Modifier.clip(CircleShape).clickable(onClick = onUseSlot),
+                    ) {
+                        Text(
+                            stringResource(R.string.kumi_eq_use),
+                            style = MaterialTheme.typography.labelMedium,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                        )
                     }
                 }
                 Surface(
-                    color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                    color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.86f),
                     contentColor = MaterialTheme.colorScheme.primary,
                     shape = CircleShape,
                     modifier = Modifier.clip(CircleShape).clickable(onClick = onSaveCustom),
@@ -469,6 +503,24 @@ private fun EqPresetsPage(
                         )
                         KeycapBadge("C")
                     }
+                }
+            }
+            val layersActive = listOfNotNull(
+                if (eqBase?.enabled == true && eqBase.profile.bands.isNotEmpty()) "AutoEQ" else null,
+                if (toneEq?.active == true) "Tone" else null,
+            ).joinToString(" + ")
+            if (layersActive.isNotEmpty()) {
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.80f),
+                    shape = CircleShape,
+                    modifier = Modifier.align(Alignment.BottomStart),
+                ) {
+                    Text(
+                        layersActive,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp),
+                    )
                 }
             }
         }
@@ -510,7 +562,7 @@ private fun EqPresetsPage(
     val list = if (presetCategory == 0) KumiEqPresets.STANDARDS else KumiEqPresets.GENRES
     val matchedId = KumiEqPresets.ALL.firstOrNull { it.bands == profile.bands }?.id
     val rows = remember(list) { list.chunked(2) }
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         rows.forEachIndexed { rowIdx, pair ->
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 pair.forEachIndexed { colIdx, preset ->
@@ -522,7 +574,7 @@ private fun EqPresetsPage(
                         shape = RoundedCornerShape(14.dp),
                         modifier = Modifier
                             .weight(1f)
-                            .height(54.dp)
+                            .height(44.dp)
                             .clip(RoundedCornerShape(14.dp))
                             .clickable { onApplyBuiltIn(preset) },
                     ) {
@@ -558,6 +610,9 @@ private fun EqPresetsPage(
 private fun EqBandsPage(
     profile: EqProfile,
     math: EqMath,
+    liveSpectrum: StateFlow<AudioSpectrum?>,
+    eqBase: EqBaseSettings?,
+    toneEq: ToneEqSettings?,
     selectedBand: Int,
     onSelectBand: (Int) -> Unit,
     onCommitProfile: (EqProfile) -> Unit,
@@ -588,6 +643,9 @@ private fun EqBandsPage(
             commitBands(next, false)
         },
         modifier = Modifier.fillMaxWidth().height(194.dp),
+        liveSpectrum = liveSpectrum,
+        eqBase = eqBase,
+        toneEq = toneEq,
     )
 
     val slotCount = (draftBands.size + if (draftBands.size < EqProfile.MAX_BANDS) 1 else 0).coerceAtLeast(1)
@@ -827,9 +885,13 @@ private fun InteractiveResponseCurve(
     onDragBands: (List<ParametricBand>) -> Unit,
     onCommitBands: (List<ParametricBand>, Boolean) -> Unit,
     modifier: Modifier = Modifier,
+    liveSpectrum: StateFlow<AudioSpectrum?>? = null,
+    eqBase: EqBaseSettings? = null,
+    toneEq: ToneEqSettings? = null,
 ) {
     val primary = MaterialTheme.colorScheme.primary
     val onPrimary = MaterialTheme.colorScheme.onPrimary
+    val secondary = MaterialTheme.colorScheme.secondary
     val tertiary = MaterialTheme.colorScheme.tertiary
     val secondaryContainer = MaterialTheme.colorScheme.secondaryContainer
     val onSecondaryContainer = MaterialTheme.colorScheme.onSecondaryContainer
@@ -837,9 +899,17 @@ private fun InteractiveResponseCurve(
     val labelStyle = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold)
     val textMeasurer = rememberTextMeasurer()
     val haptic = LocalHapticFeedback.current
+    val (spectrumBands, spectrumTick) = rememberSmoothedSpectrum(liveSpectrum)
 
     val selectedBand = profile.bands.getOrNull(selectedIndex)
     val compositeDb = remember(profile) { FloatArray(FastEqCurve.POINTS).also { FastEqCurve.evaluate(profile, it) } }
+    val totalDb = remember(profile, eqBase, toneEq) {
+        if ((eqBase?.enabled == true && eqBase.profile.bands.isNotEmpty()) || toneEq?.active == true) {
+            FloatArray(FastEqCurve.POINTS).also { FastEqCurve.evaluateComposite(profile, eqBase, toneEq, it) }
+        } else {
+            null
+        }
+    }
     val bandDb = remember(selectedBand) {
         selectedBand?.let { band -> FloatArray(FastEqCurve.POINTS).also { FastEqCurve.evaluateBand(band, it) } }
     }
@@ -864,8 +934,10 @@ private fun InteractiveResponseCurve(
 
     val path = remember { Path() }
     val fillPath = remember { Path() }
+    val totalPath = remember { Path() }
     val bandPath = remember { Path() }
     val bandFillPath = remember { Path() }
+    val dashEffect = remember { PathEffect.dashPathEffect(floatArrayOf(10f, 7f), 0f) }
 
     Card(
         modifier = modifier,
@@ -961,6 +1033,8 @@ private fun InteractiveResponseCurve(
                         }
                     },
             ) {
+                @Suppress("UNUSED_VARIABLE")
+                val rev = spectrumTick
                 val halfH = size.height / 2f
                 fun y(db: Double): Float = (halfH - (db.coerceIn(-EQ_GAIN_RANGE_DB, EQ_GAIN_RANGE_DB) / EQ_GAIN_RANGE_DB) * halfH).toFloat()
                 fun x(hz: Double): Float = (ln(hz.coerceIn(EQ_MIN_HZ, EQ_MAX_HZ) / EQ_MIN_HZ) / EQ_LOG_SPAN * size.width).toFloat()
@@ -979,8 +1053,24 @@ private fun InteractiveResponseCurve(
                     drawLine(grid.copy(alpha = 0.45f), Offset(xx, 0f), Offset(xx, size.height), strokeWidth = 1f)
                 }
 
+                drawRtaSpectrum(spectrumBands, tertiary, primary, minHz = EQ_MIN_HZ, logSpan = EQ_LOG_SPAN)
+
                 val zeroY = y(0.0)
                 val stepX = size.width / (FastEqCurve.POINTS - 1).toFloat()
+
+                if (totalDb != null) {
+                    totalPath.reset()
+                    for (i in 0 until FastEqCurve.POINTS) {
+                        val px = i * stepX
+                        val py = y(totalDb[i].toDouble())
+                        if (i == 0) totalPath.moveTo(px, py) else totalPath.lineTo(px, py)
+                    }
+                    drawPath(
+                        totalPath,
+                        color = secondary.copy(alpha = 0.65f),
+                        style = Stroke(width = 1.6.dp.toPx(), cap = StrokeCap.Round, pathEffect = dashEffect),
+                    )
+                }
 
                 if (bandDb != null) {
                     bandPath.reset()
@@ -1106,12 +1196,17 @@ private fun EqSlotsPage(
     activeSlot: Int?,
     profile: EqProfile,
     math: EqMath,
+    liveSpectrum: StateFlow<AudioSpectrum?>,
+    eqBase: EqBaseSettings?,
+    toneEq: ToneEqSettings?,
     onSelectSlot: (Int) -> Unit,
     onTurnOff: () -> Unit,
     onPreampChange: (Int) -> Unit,
     onAutoPreamp: () -> Unit,
     onSaveCustom: () -> Unit,
     onReset: () -> Unit,
+    onSetEqBase: (EqBaseSettings) -> Unit,
+    onSetToneEq: (ToneEqSettings) -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         listOf(0 to 1, 2 to 3).forEach { (a, b) ->
@@ -1156,7 +1251,14 @@ private fun EqSlotsPage(
                                 }
                             }
                             Text(subtitle, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            ResponseCurve(slotProfile ?: EqProfile.FLAT, math, Modifier.fillMaxWidth().height(34.dp))
+                            ResponseCurve(
+                                profile = slotProfile ?: EqProfile.FLAT,
+                                math = math,
+                                modifier = Modifier.fillMaxWidth().height(44.dp),
+                                liveSpectrum = if (isLive) liveSpectrum else null,
+                                eqBase = if (isLive) eqBase else null,
+                                toneEq = if (isLive) toneEq else null,
+                            )
                         }
                     }
                 }
@@ -1215,6 +1317,121 @@ private fun EqSlotsPage(
         val peakDb = remember(profile) { FastEqCurve.peakDb(profile) }
         if (peakDb > 0.2) {
             Note(stringResource(R.string.kumi_eq_editor_hint))
+        }
+    }
+
+    if (eqBase != null) {
+        SectionCard(
+            title = stringResource(R.string.kumi_eq_base_title),
+            trailing = {
+                Switch(
+                    checked = eqBase.enabled,
+                    onCheckedChange = { onSetEqBase(eqBase.copy(enabled = it)) },
+                )
+            },
+        ) {
+            Note(stringResource(R.string.kumi_eq_base_desc))
+            if (eqBase.profile.bands.isNotEmpty()) {
+                ResponseCurve(eqBase.profile, math, Modifier.fillMaxWidth().height(42.dp))
+            }
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                item {
+                    Surface(
+                        color = MaterialTheme.colorScheme.secondaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                        shape = CircleShape,
+                        modifier = Modifier.clip(CircleShape).clickable {
+                            if (profile.bands.isNotEmpty()) {
+                                onSetEqBase(EqBaseSettings(enabled = true, profile = profile))
+                            }
+                        },
+                    ) {
+                        Text(
+                            stringResource(R.string.kumi_eq_base_copy_slot),
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        )
+                    }
+                }
+                items(KumiEqPresets.AUTOEQ_BASES, key = { it.first }) { (name, bands) ->
+                    val selected = eqBase.profile.bands == bands
+                    Surface(
+                        color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
+                        contentColor = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                        shape = CircleShape,
+                        modifier = Modifier.clip(CircleShape).clickable {
+                            onSetEqBase(EqBaseSettings(enabled = true, profile = KumiEqPresets.toProfile(bands, math)))
+                        },
+                    ) {
+                        Text(
+                            name,
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    if (toneEq != null) {
+        SectionCard(
+            title = stringResource(R.string.kumi_eq_tone_title),
+            trailing = {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    if (toneEq.subBassCentiDb != 0 || toneEq.bassCentiDb != 0 || toneEq.midCentiDb != 0 || toneEq.presenceCentiDb != 0 || toneEq.trebleCentiDb != 0) {
+                        TextButton(
+                            onClick = { onSetToneEq(ToneEqSettings(enabled = toneEq.enabled)) },
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                        ) {
+                            Text(stringResource(R.string.kumi_tone_reset))
+                        }
+                    }
+                    Switch(
+                        checked = toneEq.enabled,
+                        onCheckedChange = { onSetToneEq(toneEq.copy(enabled = it)) },
+                    )
+                }
+            },
+        ) {
+            Note(stringResource(R.string.kumi_eq_tone_desc))
+            CentiDbSlider(
+                label = "${stringResource(R.string.kumi_tone_sub)} · 60 Hz",
+                value = toneEq.subBassCentiDb,
+                min = -KumiLimits.TONE_MAX_GAIN_CENTI_DB,
+                max = KumiLimits.TONE_MAX_GAIN_CENTI_DB,
+                step = 50,
+            ) { onSetToneEq(toneEq.copy(enabled = true, subBassCentiDb = it)) }
+            CentiDbSlider(
+                label = "${stringResource(R.string.kumi_tone_bass)} · 200 Hz",
+                value = toneEq.bassCentiDb,
+                min = -KumiLimits.TONE_MAX_GAIN_CENTI_DB,
+                max = KumiLimits.TONE_MAX_GAIN_CENTI_DB,
+                step = 50,
+            ) { onSetToneEq(toneEq.copy(enabled = true, bassCentiDb = it)) }
+            CentiDbSlider(
+                label = "${stringResource(R.string.kumi_tone_mid)} · 1 kHz",
+                value = toneEq.midCentiDb,
+                min = -KumiLimits.TONE_MAX_GAIN_CENTI_DB,
+                max = KumiLimits.TONE_MAX_GAIN_CENTI_DB,
+                step = 50,
+            ) { onSetToneEq(toneEq.copy(enabled = true, midCentiDb = it)) }
+            CentiDbSlider(
+                label = "${stringResource(R.string.kumi_tone_presence)} · 3.5 kHz",
+                value = toneEq.presenceCentiDb,
+                min = -KumiLimits.TONE_MAX_GAIN_CENTI_DB,
+                max = KumiLimits.TONE_MAX_GAIN_CENTI_DB,
+                step = 50,
+            ) { onSetToneEq(toneEq.copy(enabled = true, presenceCentiDb = it)) }
+            CentiDbSlider(
+                label = "${stringResource(R.string.kumi_tone_treble)} · 10 kHz",
+                value = toneEq.trebleCentiDb,
+                min = -KumiLimits.TONE_MAX_GAIN_CENTI_DB,
+                max = KumiLimits.TONE_MAX_GAIN_CENTI_DB,
+                step = 50,
+            ) { onSetToneEq(toneEq.copy(enabled = true, trebleCentiDb = it)) }
         }
     }
 }

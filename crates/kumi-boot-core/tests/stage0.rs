@@ -591,3 +591,34 @@ fn a_boot_reads_the_image_once_and_checks_only_headers_of_a_fresh_journal() {
     jumped(case.boot().0);
     assert!(case.flash().slot_bytes_read <= payload + 2 * HEADER_SIZE, "{}", case.flash().slot_bytes_read);
 }
+
+fn lab_image(generation: u32) -> Vec<u8> {
+    let mut raw = image(generation, 9);
+    let mut header = ImageHeader::decode(&raw[..HEADER_SIZE].try_into().unwrap(), SLOT_A.size).unwrap();
+    header.flags |= FLAG_LAB;
+    let payload = &raw[HEADER_SIZE..];
+    let mut signed = [0u8; SIGNED_HEADER_LEN];
+    signed.copy_from_slice(&header.encode()[..SIGNED_HEADER_LEN]);
+    header.digest = image_digest(&signed, payload);
+    header.signature = signer().sign(&header.digest).to_bytes();
+    raw[..HEADER_SIZE].copy_from_slice(&header.encode());
+    raw
+}
+
+#[test]
+fn stage0_rejects_lab_flagged_images_and_generation_downgrades() {
+    let mut flash = Flash::new();
+    put(&mut flash, SlotId::A, &lab_image(10));
+    let mut case = Case::new(flash);
+    let (outcome, _, ram) = case.boot();
+    assert_eq!(outcome, Outcome::BootRom(BootRomReason::NoBootableSlot));
+    assert!(ram.no_boot_info());
+
+    let mut case = Case::with_slot(SlotId::A, 5);
+    jumped(case.boot().0);
+    case.confirm(SlotId::A);
+    put(case.flash(), SlotId::A, &image(3, 3));
+    let (outcome, _, ram) = case.boot();
+    assert_eq!(outcome, Outcome::BootRom(BootRomReason::NoBootableSlot));
+    assert!(ram.no_boot_info());
+}

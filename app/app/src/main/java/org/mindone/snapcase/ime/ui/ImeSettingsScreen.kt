@@ -87,6 +87,8 @@ import org.mindone.snapcase.ui.KeycapBadge
 import org.mindone.snapcase.ui.NavRow
 import org.mindone.snapcase.ui.Note
 import org.mindone.snapcase.ui.RegisterScreenKeys
+import org.mindone.snapcase.ui.RegisterScreenScroll
+import org.mindone.snapcase.ui.RegisterScreenTabs
 import org.mindone.snapcase.ui.SectionCard
 import org.mindone.snapcase.ui.StatusPill
 import org.mindone.snapcase.ui.SuppressScreenKeys
@@ -122,7 +124,9 @@ fun ImeSettingsScreen(
 
     val pulseHaptic: (Int) -> Unit = { ms ->
         if (vibrator != null && vibrator.hasVibrator()) {
-            val effect = VibrationEffect.createOneShot(ms.coerceIn(4, 15).toLong(), VibrationEffect.DEFAULT_AMPLITUDE)
+            val clamped = ms.coerceIn(8, 100)
+            val effective = (if (vibrator.hasAmplitudeControl()) clamped else clamped.coerceAtLeast(14)).toLong()
+            val effect = VibrationEffect.createOneShot(effective, VibrationEffect.DEFAULT_AMPLITUDE)
             val attrs = VibrationAttributes.Builder().setUsage(VibrationAttributes.USAGE_TOUCH).build()
             runCatching { vibrator.vibrate(effect, attrs) }
         }
@@ -184,24 +188,26 @@ fun ImeSettingsScreen(
         }
     }
 
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    LaunchedEffect(page) { listState.scrollToItem(0) }
+
     val shTab = stringResource(R.string.kumi_key_hint_tab)
     val shHaptic = stringResource(R.string.ime_haptic_label)
     val shLong = stringResource(R.string.ime_long_press_label)
     val shBack = stringResource(R.string.action_back)
 
+    RegisterScreenTabs(count = 3, current = page, onSelect = { page = it })
+    RegisterScreenScroll(listState)
+
     RegisterScreenKeys(
         key = listOf(page, settings.imeHapticMode, settings.imeHapticDurationMs, settings.imeLongPressBehavior),
         shortcuts = when (page) {
-            0 -> listOf("H" to shHaptic, "L" to shLong, "Tab" to shTab, "⌫" to shBack)
-            2 -> listOf("A" to stringResource(R.string.ime_snippets_add), "F" to stringResource(R.string.shortcuts_tile), "Tab" to shTab, "⌫" to shBack)
-            else -> listOf("Tab" to shTab, "⌫" to shBack)
+            0 -> listOf("H" to shHaptic, "L" to shLong, "↵" to shTab, "⌫" to shBack)
+            2 -> listOf("A" to stringResource(R.string.ime_snippets_add), "F" to stringResource(R.string.shortcuts_tile), "↵" to shTab, "⌫" to shBack)
+            else -> listOf("↵" to shTab, "⌫" to shBack)
         },
     ) { code, repeat ->
         if (repeat) return@RegisterScreenKeys false
-        if (code == KeyEvent.KEYCODE_TAB) {
-            page = (page + 1) % 3
-            return@RegisterScreenKeys true
-        }
         when (page) {
             0 -> when (code) {
                 KeyEvent.KEYCODE_H -> {
@@ -240,6 +246,7 @@ fun ImeSettingsScreen(
         )
         LazyColumn(
             Modifier.weight(1f).fillMaxWidth().padding(horizontal = 12.dp),
+            state = listState,
             contentPadding = PaddingValues(top = 2.dp, bottom = 12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
@@ -275,12 +282,12 @@ fun ImeSettingsScreen(
                                 Row(
                                     Modifier.fillMaxWidth(),
                                     verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
                                 ) {
                                     Note(stringResource(R.string.ime_haptic_strength), modifier = Modifier.weight(1f))
-                                    listOf(5, 8, 12).forEach { ms ->
+                                    listOf(12, 20, 40, 65).forEach { ms ->
                                         FilterChip(
-                                            selected = settings.imeHapticDurationMs == ms || (ms == 5 && settings.imeHapticDurationMs == 6),
+                                            selected = settings.imeHapticDurationMs == ms || (ms == 12 && settings.imeHapticDurationMs < 12),
                                             onClick = {
                                                 prefs.setImeHapticDurationMs(ms)
                                                 pulseHaptic(ms)
@@ -479,9 +486,9 @@ fun ImeSettingsScreen(
         }
         KeyboardHintStrip(
             hints = when (page) {
-                0 -> listOf("H" to shHaptic, "L" to shLong, "Tab" to shTab, "⌫" to shBack)
-                2 -> listOf("A" to stringResource(R.string.ime_snippets_add), "Tab" to shTab, "⌫" to shBack)
-                else -> listOf("Tab" to shTab, "⌫" to shBack)
+                0 -> listOf("H" to shHaptic, "L" to shLong, "↵" to shTab, "⌫" to shBack)
+                2 -> listOf("A" to stringResource(R.string.ime_snippets_add), "↵" to shTab, "⌫" to shBack)
+                else -> listOf("↵" to shTab, "⌫" to shBack)
             },
         )
     }
@@ -653,12 +660,11 @@ private fun isKumiImeEnabled(context: Context, imm: InputMethodManager?): Boolea
     imm?.enabledInputMethodList?.any { it.packageName == context.packageName } == true
 
 private fun isKumiImeSelected(context: Context, imm: InputMethodManager?): Boolean {
-    val current = imm?.currentInputMethodInfo
-    if (current != null) return current.packageName == context.packageName
     val def = runCatching {
         Settings.Secure.getString(context.contentResolver, Settings.Secure.DEFAULT_INPUT_METHOD)
     }.getOrNull()
-    return def?.startsWith("${context.packageName}/") == true
+    if (def?.startsWith("${context.packageName}/") == true) return true
+    return imm?.currentInputMethodInfo?.packageName == context.packageName
 }
 
 @Composable

@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DropdownMenuItem
@@ -32,6 +33,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -52,11 +54,13 @@ import kotlinx.coroutines.flow.StateFlow
 import org.mindone.snapcase.R
 import org.mindone.snapcase.kumi.AudioChannel
 import org.mindone.snapcase.kumi.AudioMeters
+import org.mindone.snapcase.kumi.AudioSpectrum
 import org.mindone.snapcase.kumi.AudioStatus
 import org.mindone.snapcase.kumi.CaseError
 import org.mindone.snapcase.kumi.ClassHMode
 import org.mindone.snapcase.kumi.CrossfeedMode
 import org.mindone.snapcase.kumi.DacExtras
+import org.mindone.snapcase.kumi.DspExtras
 import org.mindone.snapcase.kumi.DspSettings
 import org.mindone.snapcase.kumi.EqMath
 import org.mindone.snapcase.kumi.EqProfile
@@ -86,6 +90,7 @@ fun kumiFriendlyError(state: KumiState): String = when (state.errorKind) {
     CaseError.HardwareFault -> stringResource(R.string.kumi_err_hardware_fault)
     CaseError.InvalidArgument -> stringResource(R.string.kumi_dev_refused_argument)
     CaseError.VerifyFailed -> stringResource(R.string.kumi_err_verify_failed)
+    CaseError.PresenceRequired -> stringResource(R.string.kumi_err_presence_required)
     else -> when (state.errorBridgeKind) {
         "NoReply" -> stringResource(R.string.kumi_err_no_reply)
         "Transport", "Link" -> stringResource(R.string.kumi_err_usb_link)
@@ -125,6 +130,7 @@ fun KumiAudioScreen(
     math: EqMath,
     onBack: () -> Unit = {},
     onOpenEq: (Int) -> Unit,
+    onLineOutToggled: (Boolean) -> Unit = {},
 ) {
     val state by kumi.state.collectAsStateWithLifecycle()
     val caps = state.device?.capabilities
@@ -138,21 +144,30 @@ fun KumiAudioScreen(
     val activeEq = state.audio?.eqActive
     if (activeEq != null) lastEqSlot = activeEq
 
+    val listState = rememberLazyListState()
+    LaunchedEffect(page) { listState.scrollToItem(0) }
+
     val shTab = stringResource(R.string.kumi_key_hint_tab)
     val shEq = stringResource(R.string.eq_title)
     val shAb = stringResource(R.string.kumi_key_hint_eq_ab)
     val shXfeed = stringResource(R.string.kumi_tile_crossfeed)
     val shLoud = stringResource(R.string.kumi_loudness)
     val shLimit = stringResource(R.string.kumi_limiter)
+    val shAutoLevel = stringResource(R.string.kumi_auto_level)
     val shClassH = stringResource(R.string.kumi_class_h_label)
     val shLineOut = stringResource(R.string.kumi_line_out)
     val shFilter = stringResource(R.string.sound_filter)
     val shMeasure = stringResource(R.string.kumi_impedance_measure)
 
     val audioShortcuts = when (page) {
-        0 -> listOf("E" to shEq, "␣" to shAb, "X" to shXfeed, "L" to shLoud, "M" to shLimit, "Tab" to shTab)
-        1 -> listOf("C" to shClassH, "O" to shLineOut, "F" to shFilter, "Tab" to shTab)
-        else -> listOf("M" to shMeasure, "Q / W / E / R" to stringResource(R.string.kumi_test_tone_title), "Tab" to shTab)
+        0 -> listOf("E" to shEq, "␣" to shAb, "X" to shXfeed, "L" to shLoud, "M" to shLimit, "N" to shAutoLevel, "↵" to shTab)
+        1 -> listOf("C" to shClassH, "O" to shLineOut, "F" to shFilter, "↵" to shTab)
+        else -> listOf("M" to shMeasure, "Q / W / E / R" to stringResource(R.string.kumi_test_tone_title), "↵" to shTab)
+    }
+
+    if (state.connected) {
+        RegisterScreenTabs(count = 3, current = page, onSelect = { page = it })
+        RegisterScreenScroll(listState)
     }
 
     RegisterScreenKeys(
@@ -163,6 +178,7 @@ fun KumiAudioScreen(
             lastEqSlot,
             state.eqSlots,
             state.dsp,
+            state.dspExtras,
             state.output,
             state.dacExtras,
             state.audio?.stream,
@@ -172,10 +188,6 @@ fun KumiAudioScreen(
         shortcuts = if (state.connected) audioShortcuts else emptyList(),
     ) { code, repeat ->
         if (repeat || !state.connected) return@RegisterScreenKeys false
-        if (code == KeyEvent.KEYCODE_TAB) {
-            page = (page + 1) % 3
-            return@RegisterScreenKeys true
-        }
         when (page) {
             0 -> when (code) {
                 KeyEvent.KEYCODE_E -> if (hasEq) { onOpenEq(activeEq ?: lastEqSlot); true } else false
@@ -200,16 +212,26 @@ fun KumiAudioScreen(
                     kumi.setDsp(dsp.copy(limiter = !dsp.limiter))
                     true
                 } ?: false
+                KeyEvent.KEYCODE_N -> state.dspExtras?.let { ex ->
+                    kumi.setDspExtras(ex.copy(autoLevel = !ex.autoLevel))
+                    true
+                } ?: false
                 else -> false
             }
             1 -> when (code) {
                 KeyEvent.KEYCODE_C -> state.dacExtras?.let { ex ->
+                    if (ex.lineOut) return@let false
                     val modes = ClassHMode.entries
                     kumi.setDacExtras(ex.copy(classH = modes[(modes.indexOf(ex.classH) + 1) % modes.size]))
                     true
                 } ?: false
                 KeyEvent.KEYCODE_O -> state.dacExtras?.let { ex ->
-                    if (ex.lineOut) kumi.setDacExtras(ex.copy(lineOut = false)) else confirmLineOut = true
+                    if (ex.lineOut) {
+                        kumi.setDacExtras(ex.copy(lineOut = false))
+                        if (!kumi.simulated) onLineOutToggled(false)
+                    } else {
+                        confirmLineOut = true
+                    }
                     true
                 } ?: false
                 KeyEvent.KEYCODE_F -> state.output?.let { out ->
@@ -268,8 +290,9 @@ fun KumiAudioScreen(
         )
         LazyColumn(
             Modifier.weight(1f).fillMaxWidth().padding(horizontal = 12.dp),
-            contentPadding = PaddingValues(top = 2.dp, bottom = 6.dp),
-            verticalArrangement = Arrangement.spacedBy(7.dp),
+            state = listState,
+            contentPadding = PaddingValues(top = 0.dp, bottom = 4.dp),
+            verticalArrangement = Arrangement.spacedBy(5.dp),
         ) {
             if (state.error != null) {
                 item { KumiErrorBanner(state, kumi::clearError) }
@@ -280,6 +303,8 @@ fun KumiAudioScreen(
                         NowPlayingAudioCard(
                             audio = state.audio,
                             liveMeters = kumi.liveMeters,
+                            liveSpectrum = kumi.liveSpectrum,
+                            autoLevelOn = state.dspExtras?.autoLevel == true,
                             uacSleeping = uacSleeping,
                             lineOutActive = state.dacExtras?.lineOut == true,
                             dismissedDacFaults = dismissedDacFaults,
@@ -291,7 +316,9 @@ fun KumiAudioScreen(
                             EqQuickCard(
                                 state = state,
                                 math = math,
-                                curveHeight = 28,
+                                curveHeight = 62,
+                                liveSpectrum = kumi.liveSpectrum,
+                                compact = true,
                                 onSelect = { kumi.selectEq(it) },
                                 onEdit = onOpenEq,
                             )
@@ -301,7 +328,9 @@ fun KumiAudioScreen(
                         item {
                             SoundEffectsCard(
                                 dsp = state.dsp,
+                                dspExtras = state.dspExtras,
                                 onChange = { kumi.setDsp(it) },
+                                onExtras = { kumi.setDspExtras(it) },
                             )
                         }
                     }
@@ -316,7 +345,12 @@ fun KumiAudioScreen(
                                 onOutput = { kumi.setOutput(it) },
                                 onExtras = { next ->
                                     val wasLineOut = state.dacExtras?.lineOut == true
-                                    if (next.lineOut && !wasLineOut) confirmLineOut = true else kumi.setDacExtras(next)
+                                    if (next.lineOut && !wasLineOut) {
+                                        confirmLineOut = true
+                                    } else {
+                                        kumi.setDacExtras(next)
+                                        if (wasLineOut && !next.lineOut && !kumi.simulated) onLineOutToggled(false)
+                                    }
                                 },
                                 onMic = { kumi.setMic(it) },
                             )
@@ -324,10 +358,12 @@ fun KumiAudioScreen(
                         item {
                             AdvancedSoundCard(
                                 dsp = state.dsp,
+                                dspExtras = state.dspExtras,
                                 output = state.output,
                                 extras = state.dacExtras,
                                 dsd = caps?.dsd == true || uacSleeping,
                                 onDsp = { kumi.setDsp(it) },
+                                onDspExtras = { kumi.setDspExtras(it) },
                                 onOutput = { kumi.setOutput(it) },
                                 onExtras = { kumi.setDacExtras(it) },
                             )
@@ -353,9 +389,9 @@ fun KumiAudioScreen(
         }
         KeyboardHintStrip(
             hints = when (page) {
-                0 -> listOf("E" to shEq, "X" to shXfeed, "L" to shLoud, "Tab" to shTab)
-                1 -> listOf("C" to shClassH, "O" to stringResource(R.string.kumi_line_out_badge), "F" to shFilter, "Tab" to shTab)
-                else -> listOf("M" to shMeasure, "Q–R" to stringResource(R.string.kumi_test_tone_title))
+                0 -> listOf("E" to shEq, "X" to shXfeed, "L" to shLoud, "↵" to shTab)
+                1 -> listOf("C" to shClassH, "O" to stringResource(R.string.kumi_line_out_badge), "F" to shFilter, "↵" to shTab)
+                else -> listOf("M" to shMeasure, "Q–R" to stringResource(R.string.kumi_test_tone_title), "↵" to shTab)
             },
         )
     }
@@ -364,7 +400,12 @@ fun KumiAudioScreen(
         ConfirmDialog(
             title = stringResource(R.string.kumi_line_out_confirm_title),
             text = stringResource(R.string.kumi_line_out_confirm_text),
-            onConfirm = { state.dacExtras?.let { kumi.setDacExtras(it.copy(lineOut = true)) } },
+            onConfirm = {
+                state.dacExtras?.let {
+                    kumi.setDacExtras(it.copy(lineOut = true))
+                    if (!kumi.simulated) onLineOutToggled(true)
+                }
+            },
             onDismiss = { confirmLineOut = false },
         )
     }
@@ -374,14 +415,34 @@ fun KumiAudioScreen(
 private fun NowPlayingAudioCard(
     audio: AudioStatus?,
     liveMeters: StateFlow<AudioMeters?>,
+    liveSpectrum: StateFlow<AudioSpectrum?>,
+    autoLevelOn: Boolean,
     uacSleeping: Boolean,
     lineOutActive: Boolean,
     dismissedDacFaults: Long,
     onDismissDacFault: () -> Unit,
 ) {
     val stream = audio?.stream
+    val spectrum by liveSpectrum.collectAsStateWithLifecycle()
+    val s = spectrum?.takeIf { it.active }
+    val lufsPill = if (s != null) {
+        val lufs = if (s.lufsShortTermCenti > KumiLimits.LUFS_FLOOR_CENTI + 50) {
+            "%.1f LUFS".format(s.lufsShortTermCenti / 100.0)
+        } else if (s.lufsMomentaryCenti > KumiLimits.LUFS_FLOOR_CENTI + 50) {
+            "%.1f LUFS".format(s.lufsMomentaryCenti / 100.0)
+        } else {
+            null
+        }
+        val tpCenti = maxOf(s.truePeakLeftCentiDb, s.truePeakRightCentiDb)
+        val tp = if (tpCenti > KumiLimits.METER_FLOOR_CENTI_DB + 100) "%.1f TP".format(tpCenti / 100.0) else null
+        val agc = if (autoLevelOn && s.autoLevelGainCentiDb != 0) centiDb(s.autoLevelGainCentiDb) else null
+        listOfNotNull(lufs, tp, agc).joinToString(" · ").takeIf { it.isNotEmpty() }
+    } else {
+        null
+    }
     SectionCard(
         title = if (stream == null) stringResource(R.string.kumi_nothing_playing) else streamTitle(stream.kind, stream.rateHz, stream.bits),
+        compact = true,
         trailing = {
             Row(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
                 if (lineOutActive) {
@@ -405,6 +466,14 @@ private fun NowPlayingAudioCard(
             Note(stringResource(R.string.kumi_audio_unplugged_hint))
         }
         LiveVuMeter(liveMeters = liveMeters, streaming = stream != null, showCounters = false)
+        if (lufsPill != null) {
+            Text(
+                lufsPill,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+            )
+        }
         if (audio != null && audio.hostMuted) {
             StatusPill(
                 stringResource(R.string.kumi_muted),
@@ -423,10 +492,19 @@ private fun NowPlayingAudioCard(
 }
 
 @Composable
-fun EqQuickCard(state: KumiState, math: EqMath, curveHeight: Int, onSelect: (Int?) -> Unit, onEdit: (Int) -> Unit) {
+fun EqQuickCard(
+    state: KumiState,
+    math: EqMath,
+    curveHeight: Int,
+    liveSpectrum: StateFlow<AudioSpectrum?>? = null,
+    compact: Boolean = false,
+    onSelect: (Int?) -> Unit,
+    onEdit: (Int) -> Unit,
+) {
     val active = state.audio?.eqActive
     SectionCard(
         title = stringResource(R.string.eq_title),
+        compact = compact,
         trailing = {
             Surface(
                 color = MaterialTheme.colorScheme.surfaceContainerHighest,
@@ -460,7 +538,7 @@ fun EqQuickCard(state: KumiState, math: EqMath, curveHeight: Int, onSelect: (Int
                     shape = CircleShape,
                     modifier = Modifier
                         .weight(1f)
-                        .height(30.dp)
+                        .height(if (compact) 26.dp else 30.dp)
                         .clip(CircleShape)
                         .clickable { if (slot == null || filled) onSelect(slot) else onEdit(slot) },
                 ) {
@@ -476,15 +554,28 @@ fun EqQuickCard(state: KumiState, math: EqMath, curveHeight: Int, onSelect: (Int
             }
         }
         val shown = active?.let { state.eqSlots.getOrNull(it) }
-        ResponseCurve(shown ?: EqProfile.FLAT, math, Modifier.fillMaxWidth().height(curveHeight.dp))
+        ResponseCurve(
+            profile = shown ?: EqProfile.FLAT,
+            math = math,
+            modifier = Modifier.fillMaxWidth().height(curveHeight.dp),
+            liveSpectrum = liveSpectrum,
+            eqBase = state.eqBase,
+            toneEq = state.toneEq,
+        )
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SoundEffectsCard(dsp: DspSettings?, onChange: (DspSettings) -> Unit) {
+private fun SoundEffectsCard(
+    dsp: DspSettings?,
+    dspExtras: DspExtras?,
+    onChange: (DspSettings) -> Unit,
+    onExtras: (DspExtras) -> Unit,
+) {
     SectionCard(
         title = stringResource(R.string.kumi_dsp_title),
+        compact = true,
         trailing = if (dsp != null) {
             {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
@@ -514,18 +605,95 @@ private fun SoundEffectsCard(dsp: DspSettings?, onChange: (DspSettings) -> Unit)
                 }
             }
         }
-        ToggleRow(
-            title = stringResource(R.string.kumi_loudness),
-            checked = dsp.loudness,
-            onCheckedChange = { onChange(dsp.copy(loudness = it)) },
-            keyHint = "L",
-        )
-        ToggleRow(
-            title = stringResource(R.string.kumi_limiter),
-            checked = dsp.limiter,
-            onCheckedChange = { onChange(dsp.copy(limiter = it)) },
-            keyHint = "M",
-        )
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            CompactEffectToggleChip(
+                label = stringResource(R.string.kumi_loudness),
+                keyHint = "L",
+                active = dsp.loudness,
+                onClick = { onChange(dsp.copy(loudness = !dsp.loudness)) },
+                modifier = Modifier.weight(1f),
+            )
+            CompactEffectToggleChip(
+                label = stringResource(R.string.kumi_limiter),
+                keyHint = "M",
+                active = dsp.limiter,
+                onClick = { onChange(dsp.copy(limiter = !dsp.limiter)) },
+                modifier = Modifier.weight(1f),
+            )
+            if (dspExtras != null) {
+                CompactEffectToggleChip(
+                    label = stringResource(R.string.kumi_auto_level),
+                    keyHint = "N",
+                    active = dspExtras.autoLevel,
+                    onClick = { onExtras(dspExtras.copy(autoLevel = !dspExtras.autoLevel)) },
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
+        if (dspExtras != null && dspExtras.autoLevel) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf(-18, -16, -14).forEach { target ->
+                    val selected = dspExtras.autoLevelTargetLufs == target
+                    Surface(
+                        color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
+                        contentColor = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                        shape = CircleShape,
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(26.dp)
+                            .clip(CircleShape)
+                            .clickable { onExtras(dspExtras.copy(autoLevelTargetLufs = target)) },
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text(
+                                stringResource(R.string.kumi_auto_level_target, target),
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                                maxLines = 1,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CompactEffectToggleChip(
+    label: String,
+    keyHint: String,
+    active: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        color = if (active) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
+        contentColor = if (active) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+        shape = RoundedCornerShape(12.dp),
+        modifier = modifier.height(44.dp).clip(RoundedCornerShape(12.dp)).clickable(onClick = onClick),
+    ) {
+        Column(
+            Modifier.fillMaxSize().padding(horizontal = 8.dp, vertical = 5.dp),
+            verticalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(
+                    if (active) stringResource(R.string.value_on).replaceFirstChar { it.uppercase() } else stringResource(R.string.kumi_crossfeed_off),
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
+                    maxLines = 1,
+                )
+                KeycapBadge(keyHint, emphasized = active)
+            }
+            Text(
+                label,
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 
@@ -541,6 +709,7 @@ private fun HeadphoneOutputCard(
 ) {
     SectionCard(stringResource(R.string.kumi_dac_title)) {
         if (extras != null) {
+            val effectiveClassH = if (extras.lineOut) ClassHMode.FixedHv else extras.classH
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 KeycapBadge("C")
                 Text(stringResource(R.string.kumi_class_h_label), style = MaterialTheme.typography.labelLarge)
@@ -548,7 +717,8 @@ private fun HeadphoneOutputCard(
             SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                 ClassHMode.entries.forEachIndexed { index, mode ->
                     SegmentedButton(
-                        selected = extras.classH == mode,
+                        selected = effectiveClassH == mode,
+                        enabled = !extras.lineOut,
                         onClick = { if (extras.classH != mode) onExtras(extras.copy(classH = mode)) },
                         shape = SegmentedButtonDefaults.itemShape(index, ClassHMode.entries.size),
                         icon = {},
@@ -616,10 +786,12 @@ private fun HeadphoneOutputCard(
 @Composable
 private fun AdvancedSoundCard(
     dsp: DspSettings?,
+    dspExtras: DspExtras?,
     output: OutputSettings?,
     extras: DacExtras?,
     dsd: Boolean,
     onDsp: (DspSettings) -> Unit,
+    onDspExtras: (DspExtras) -> Unit,
     onOutput: (OutputSettings) -> Unit,
     onExtras: (DacExtras) -> Unit,
 ) {
@@ -627,6 +799,20 @@ private fun AdvancedSoundCard(
         title = stringResource(R.string.kumi_advanced_sound_title),
         subtitle = stringResource(R.string.kumi_advanced_sound_summary),
     ) {
+        if (dspExtras != null) {
+            FrequencyChoiceRow(
+                label = stringResource(R.string.kumi_subsonic_title),
+                selectedHz = dspExtras.subsonicHz,
+                options = listOf(0, 15, 20, 30, 40),
+                onSelect = { onDspExtras(dspExtras.copy(subsonicHz = it)) },
+            )
+            FrequencyChoiceRow(
+                label = stringResource(R.string.kumi_mono_bass_title),
+                selectedHz = dspExtras.monoBassHz,
+                options = listOf(0, 80, 120, 150, 200),
+                onSelect = { onDspExtras(dspExtras.copy(monoBassHz = it)) },
+            )
+        }
         if (output != null) {
             CentiDbSlider(
                 stringResource(R.string.kumi_balance),
@@ -677,6 +863,42 @@ private fun AdvancedSoundCard(
                 checked = extras.deEmphasis,
                 onCheckedChange = { onExtras(extras.copy(deEmphasis = it)) },
             )
+        }
+    }
+}
+
+@Composable
+private fun FrequencyChoiceRow(
+    label: String,
+    selectedHz: Int,
+    options: List<Int>,
+    onSelect: (Int) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        Text(label, style = MaterialTheme.typography.labelLarge)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+            options.forEach { hz ->
+                val selected = selectedHz == hz
+                Surface(
+                    color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
+                    contentColor = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                    shape = CircleShape,
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(28.dp)
+                        .clip(CircleShape)
+                        .clickable { onSelect(hz) },
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text(
+                            if (hz == 0) stringResource(R.string.kumi_crossfeed_off) else stringResource(R.string.kumi_hz_value, hz),
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                            maxLines = 1,
+                        )
+                    }
+                }
+            }
         }
     }
 }

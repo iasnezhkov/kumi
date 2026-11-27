@@ -36,9 +36,11 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -46,10 +48,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -64,20 +72,24 @@ import org.mindone.snapcase.BuildConfig
 import org.mindone.snapcase.R
 import org.mindone.snapcase.kumi.AppReleaseAsset
 import org.mindone.snapcase.kumi.AudioMeters
+import org.mindone.snapcase.kumi.AudioSpectrum
 import org.mindone.snapcase.kumi.BootStages
 import org.mindone.snapcase.kumi.CatalogState
 import org.mindone.snapcase.kumi.CrossfeedMode
 import org.mindone.snapcase.kumi.DspSettings
+import org.mindone.snapcase.kumi.EqBaseSettings
 import org.mindone.snapcase.kumi.EqMath
 import org.mindone.snapcase.kumi.EqProfile
 import org.mindone.snapcase.kumi.FastEqCurve
 import org.mindone.snapcase.kumi.FirmwareCatalog
 import org.mindone.snapcase.kumi.Jack
+import org.mindone.snapcase.kumi.KumiLimits
 import org.mindone.snapcase.kumi.KumiSession
 import org.mindone.snapcase.kumi.KumiState
 import org.mindone.snapcase.kumi.KumiVersion
 import org.mindone.snapcase.kumi.OutputFilter
 import org.mindone.snapcase.kumi.SlotState
+import org.mindone.snapcase.kumi.ToneEqSettings
 import org.mindone.snapcase.protocol.DacFilter
 import org.mindone.snapcase.transport.CaseKind
 
@@ -174,6 +186,8 @@ fun KumiHomeScreen(
     val device = state.device
     val good = state.connected && device != null
     val stream = state.audio?.stream
+    val scrollState = rememberScrollState()
+    RegisterScreenScroll(scrollState)
 
     Column(Modifier.fillMaxSize()) {
         Row(
@@ -224,7 +238,7 @@ fun KumiHomeScreen(
             Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(scrollState)
                 .padding(horizontal = 12.dp, vertical = 2.dp),
             verticalArrangement = Arrangement.spacedBy(7.dp),
         ) {
@@ -311,6 +325,7 @@ fun KumiHomeScreen(
                         state = state,
                         math = math,
                         liveMeters = kumi.liveMeters,
+                        liveSpectrum = kumi.liveSpectrum,
                         streaming = stream != null,
                         defaultSlot = activeEq ?: lastEqSlot,
                         onSelectSlot = { kumi.selectEq(it) },
@@ -568,6 +583,7 @@ private fun HomeEqStripCard(
     state: KumiState,
     math: EqMath,
     liveMeters: StateFlow<AudioMeters?>,
+    liveSpectrum: StateFlow<AudioSpectrum?>,
     streaming: Boolean,
     defaultSlot: Int,
     onSelectSlot: (Int?) -> Unit,
@@ -581,24 +597,61 @@ private fun HomeEqStripCard(
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
     ) {
-        Column(Modifier.padding(11.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(
-                    stringResource(R.string.eq_title),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f),
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(124.dp)
+                .padding(horizontal = 10.dp, vertical = 8.dp),
+        ) {
+            Row(
+                Modifier.fillMaxSize(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                ResponseCurve(
+                    profile = shown ?: EqProfile.FLAT,
+                    math = math,
+                    modifier = Modifier.weight(1f).fillMaxHeight(),
+                    liveSpectrum = liveSpectrum,
+                    eqBase = state.eqBase,
+                    toneEq = state.toneEq,
                 )
+                HomeVerticalVuMeter(
+                    liveMeters = liveMeters,
+                    streaming = streaming,
+                    modifier = Modifier.width(30.dp).fillMaxHeight(),
+                )
+            }
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.TopStart)
+                    .padding(end = 38.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(5.dp),
+            ) {
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.72f),
+                    shape = CircleShape,
+                ) {
+                    Text(
+                        stringResource(R.string.eq_title),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp),
+                    )
+                }
+                Spacer(Modifier.weight(1f))
                 if (state.audio?.hostMuted == true) {
                     StatusPill(
                         text = stringResource(R.string.kumi_muted),
-                        containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                        containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.90f),
                         contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
                     )
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     SlotDotChip(stringResource(R.string.kumi_eq_off), active == null) { onSelectSlot(null) }
                     for (idx in 0 until EqProfile.SLOTS) {
                         val filled = state.eqSlots.getOrNull(idx) != null
@@ -608,19 +661,55 @@ private fun HomeEqStripCard(
                     }
                 }
             }
-            Row(
-                Modifier.fillMaxWidth().height(72.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                ResponseCurve(shown ?: EqProfile.FLAT, math, Modifier.weight(1f).fillMaxHeight())
-                HomeVerticalVuMeter(
-                    liveMeters = liveMeters,
-                    streaming = streaming,
-                    modifier = Modifier.width(30.dp).fillMaxHeight(),
-                )
-            }
+            HomeLoudnessBadge(
+                liveSpectrum = liveSpectrum,
+                autoLevelOn = state.dspExtras?.autoLevel == true,
+                modifier = Modifier.align(Alignment.BottomStart).padding(bottom = 1.dp),
+            )
         }
+    }
+}
+
+@Composable
+private fun HomeLoudnessBadge(
+    liveSpectrum: StateFlow<AudioSpectrum?>,
+    autoLevelOn: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val spectrum by liveSpectrum.collectAsStateWithLifecycle()
+    val s = spectrum?.takeIf { it.active } ?: return
+    val lufs = if (s.lufsShortTermCenti > KumiLimits.LUFS_FLOOR_CENTI + 50) {
+        "%.1f LUFS".format(s.lufsShortTermCenti / 100.0)
+    } else if (s.lufsMomentaryCenti > KumiLimits.LUFS_FLOOR_CENTI + 50) {
+        "%.1f LUFS".format(s.lufsMomentaryCenti / 100.0)
+    } else {
+        null
+    }
+    val tpCenti = maxOf(s.truePeakLeftCentiDb, s.truePeakRightCentiDb)
+    val tp = if (tpCenti > KumiLimits.METER_FLOOR_CENTI_DB + 100) {
+        "%.1f dBTP".format(tpCenti / 100.0)
+    } else {
+        null
+    }
+    val agc = if (autoLevelOn && s.autoLevelGainCentiDb != 0) {
+        "AGC ${centiDb(s.autoLevelGainCentiDb)}"
+    } else {
+        null
+    }
+    val text = listOfNotNull(lufs, tp, agc).joinToString(" · ")
+    if (text.isEmpty()) return
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.78f),
+        shape = CircleShape,
+        modifier = modifier,
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp),
+        )
     }
 }
 
@@ -637,12 +726,12 @@ private fun HomeVerticalVuMeter(
 @Composable
 private fun SlotDotChip(label: String, selected: Boolean, onClick: () -> Unit) {
     Surface(
-        color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
+        color = if (selected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.92f) else MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.84f),
         contentColor = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
         shape = CircleShape,
-        modifier = Modifier.height(27.dp).clip(CircleShape).clickable(onClick = onClick),
+        modifier = Modifier.height(26.dp).clip(CircleShape).clickable(onClick = onClick),
     ) {
-        Box(Modifier.padding(horizontal = 9.dp), contentAlignment = Alignment.Center) {
+        Box(Modifier.padding(horizontal = 8.dp), contentAlignment = Alignment.Center) {
             Text(label, style = MaterialTheme.typography.labelMedium, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium)
         }
     }
@@ -796,27 +885,144 @@ private val CURVE_HZ_LINES = doubleArrayOf(100.0, 1_000.0, 10_000.0)
 private val LOG_SPAN = ln(1000.0)
 
 @Composable
-fun ResponseCurve(profile: EqProfile, @Suppress("UNUSED_PARAMETER") math: EqMath, modifier: Modifier = Modifier) {
+fun rememberSmoothedSpectrum(liveSpectrum: StateFlow<AudioSpectrum?>?): Pair<FloatArray, Long> {
+    val spectrum = liveSpectrum?.collectAsStateWithLifecycle()?.value
+    val smooth = remember { FloatArray(KumiLimits.SPECTRUM_BANDS) }
+    var tick by remember { mutableLongStateOf(0L) }
+    LaunchedEffect(spectrum) {
+        val raw = spectrum?.takeIf { it.active }?.bandsDbX2
+        var changed = false
+        for (i in 0 until KumiLimits.SPECTRUM_BANDS) {
+            val target = if (raw != null && i < raw.size) (raw[i] / 160f).coerceIn(0f, 1f) else 0f
+            val cur = smooth[i]
+            val next = if (target >= cur) cur + (target - cur) * 0.58f else cur * 0.84f
+            val clamped = if (next < 0.004f) 0f else next
+            if (clamped != cur) {
+                smooth[i] = clamped
+                changed = true
+            }
+        }
+        if (changed) tick++
+    }
+    return smooth to tick
+}
+
+fun DrawScope.drawRtaSpectrum(
+    bands: FloatArray,
+    barColor: Color,
+    @Suppress("UNUSED_PARAMETER") capColor: Color,
+    minHz: Double = 20.0,
+    logSpan: Double = LOG_SPAN,
+) {
+    var any = false
+    for (v in bands) {
+        if (v > 0.01f) {
+            any = true
+            break
+        }
+    }
+    if (!any) return
+    val centers = AudioSpectrum.BAND_CENTERS_HZ
+    val count = minOf(bands.size, centers.size)
+    if (count < 2) return
+    val xs = FloatArray(count + 2)
+    val ys = FloatArray(count + 2)
+    val usableH = size.height * 0.94f
+    xs[0] = 0f
+    ys[0] = size.height - (bands[0].coerceIn(0f, 1f) * usableH * 0.72f)
+    for (i in 0 until count) {
+        xs[i + 1] = (ln((centers[i] / minHz).coerceAtLeast(1.0)) / logSpan * size.width).toFloat().coerceIn(0f, size.width)
+        ys[i + 1] = size.height - (bands[i].coerceIn(0f, 1f) * usableH)
+    }
+    xs[count + 1] = size.width
+    ys[count + 1] = size.height - (bands[count - 1].coerceIn(0f, 1f) * usableH * 0.65f)
+    val linePath = Path().apply {
+        moveTo(xs[0], ys[0])
+        for (i in 1 until xs.size - 1) {
+            val midX = (xs[i] + xs[i + 1]) * 0.5f
+            val midY = (ys[i] + ys[i + 1]) * 0.5f
+            quadraticTo(xs[i], ys[i], midX, midY)
+        }
+        lineTo(xs[xs.size - 1], ys[ys.size - 1])
+    }
+    val fillPath = Path().apply {
+        addPath(linePath)
+        lineTo(size.width, size.height)
+        lineTo(0f, size.height)
+        close()
+    }
+    drawPath(
+        path = fillPath,
+        brush = Brush.verticalGradient(
+            colors = listOf(barColor.copy(alpha = 0.28f), barColor.copy(alpha = 0.09f), barColor.copy(alpha = 0.01f)),
+        ),
+    )
+    drawPath(
+        path = linePath,
+        color = barColor.copy(alpha = 0.74f),
+        style = Stroke(width = 1.35.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
+    )
+}
+
+@Composable
+fun ResponseCurve(
+    profile: EqProfile,
+    @Suppress("UNUSED_PARAMETER") math: EqMath,
+    modifier: Modifier = Modifier,
+    liveSpectrum: StateFlow<AudioSpectrum?>? = null,
+    eqBase: EqBaseSettings? = null,
+    toneEq: ToneEqSettings? = null,
+) {
     val line = MaterialTheme.colorScheme.primary
+    val baseLine = MaterialTheme.colorScheme.secondary
+    val spectrumBar = MaterialTheme.colorScheme.tertiary
     val grid = MaterialTheme.colorScheme.outlineVariant
-    val curveDb = remember(profile) { FloatArray(FastEqCurve.POINTS).also { FastEqCurve.evaluate(profile, it) } }
+    val (spectrumBands, spectrumTick) = rememberSmoothedSpectrum(liveSpectrum)
+    val curveDb = remember(profile, eqBase, toneEq) {
+        FloatArray(FastEqCurve.POINTS).also { FastEqCurve.evaluateComposite(profile, eqBase, toneEq, it) }
+    }
+    val baseDb = remember(eqBase) {
+        if (eqBase != null && eqBase.enabled && eqBase.profile.bands.isNotEmpty()) {
+            FloatArray(FastEqCurve.POINTS).also { FastEqCurve.evaluate(eqBase.profile, it) }
+        } else {
+            null
+        }
+    }
     val path = remember { Path() }
     val fillPath = remember { Path() }
+    val basePath = remember { Path() }
+    val dashEffect = remember { PathEffect.dashPathEffect(floatArrayOf(8f, 6f), 0f) }
     Canvas(modifier) {
+        @Suppress("UNUSED_VARIABLE")
+        val rev = spectrumTick
         val range = 18.0
         val halfH = size.height / 2f
         fun y(db: Double) = (halfH - (db.coerceIn(-range, range) / range) * halfH).toFloat()
         fun x(hz: Double) = (ln(hz / 20.0) / LOG_SPAN * size.width).toFloat()
         for (db in CURVE_DB_LINES) {
-            drawLine(grid, Offset(0f, y(db)), Offset(size.width, y(db)), strokeWidth = if (db == 0.0) 2f else 1f)
+            drawLine(grid.copy(alpha = if (db == 0.0) 0.75f else 0.45f), Offset(0f, y(db)), Offset(size.width, y(db)), strokeWidth = if (db == 0.0) 2f else 1f)
         }
         for (hz in CURVE_HZ_LINES) {
-            drawLine(grid, Offset(x(hz), 0f), Offset(x(hz), size.height), strokeWidth = 1f)
+            drawLine(grid.copy(alpha = 0.45f), Offset(x(hz), 0f), Offset(x(hz), size.height), strokeWidth = 1f)
+        }
+        drawRtaSpectrum(spectrumBands, spectrumBar, line)
+        val zeroY = y(0.0)
+        val stepX = size.width / (FastEqCurve.POINTS - 1).toFloat()
+        if (baseDb != null) {
+            basePath.reset()
+            for (i in 0 until FastEqCurve.POINTS) {
+                val px = i * stepX
+                val py = y(baseDb[i].toDouble())
+                if (i == 0) basePath.moveTo(px, py) else basePath.lineTo(px, py)
+            }
+            drawPath(
+                basePath,
+                baseLine.copy(alpha = 0.60f),
+                style = Stroke(width = 1.4.dp.toPx(), cap = StrokeCap.Round, pathEffect = dashEffect),
+            )
         }
         path.reset()
         fillPath.reset()
-        val zeroY = y(0.0)
-        val stepX = size.width / (FastEqCurve.POINTS - 1).toFloat()
         for (i in 0 until FastEqCurve.POINTS) {
             val px = i * stepX
             val py = y(curveDb[i].toDouble())
@@ -837,7 +1043,7 @@ fun ResponseCurve(profile: EqProfile, @Suppress("UNUSED_PARAMETER") math: EqMath
                 colors = listOf(line.copy(alpha = 0.20f), line.copy(alpha = 0.03f), line.copy(alpha = 0.16f)),
             ),
         )
-        drawPath(path, line, style = Stroke(width = 2.2.dp.toPx(), cap = StrokeCap.Round))
+        drawPath(path, line, style = Stroke(width = 2.4.dp.toPx(), cap = StrokeCap.Round))
     }
 }
 

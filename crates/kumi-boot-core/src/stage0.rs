@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 use ed25519_dalek::VerifyingKey;
 use embedded_storage::nor_flash::NorFlash;
-use kumi_layout::{BOOT_JOURNAL, DISARM, HEADER_SIZE, ImageHeader, SegmentKind, SlotId, crc32, get32};
+use kumi_layout::{BOOT_JOURNAL, DISARM, FLAG_LAB, HEADER_SIZE, ImageHeader, SegmentKind, SlotId, crc32, get32};
 
 use kumi_diag::{AREA_SIZE, Diag, stage};
 
@@ -168,6 +168,12 @@ pub struct Stage0<'k> {
     pub dry_run: bool,
 }
 
+impl<'k> Stage0<'k> {
+    fn image_allowed(header: &ImageHeader) -> bool {
+        header.flags & FLAG_LAB == 0
+    }
+}
+
 #[derive(Clone, Copy)]
 struct Target {
     header: ImageHeader,
@@ -180,7 +186,9 @@ fn first_state<F: NorFlash>(flash: &mut F, key: Option<&VerifyingKey>) -> BootSt
     let Some(key) = key else { return state };
     let mut best: Option<(SlotId, u32)> = None;
     for slot in SlotId::BOTH {
-        if let Ok((header, _)) = verify_header(flash, slot, key) {
+        if let Ok((header, _)) = verify_header(flash, slot, key)
+            && Stage0::image_allowed(&header)
+        {
             *state.slot_mut(slot) =
                 SlotRecord { status: SlotStatus::Trial, attempts: policy::TRIAL_ATTEMPTS, generation: header.generation };
             if best.is_none_or(|(_, g)| header.generation > g) {
@@ -264,6 +272,7 @@ impl Stage0<'_> {
                 let (decision, after) = policy::decide(&before, |slot| {
                     let checked = verify_header(&mut flash, slot, key)
                         .ok()
+                        .filter(|(header, _)| Self::image_allowed(header))
                         .filter(|(header, raw)| load(&mut flash, (!dry_run).then_some(&mut *memory), slot, header, raw));
                     match checked {
                         Some((header, raw)) => {

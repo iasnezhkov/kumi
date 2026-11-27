@@ -25,9 +25,21 @@ pub enum PolicyError {
     NotBooted,
 }
 
+pub fn min_confirmed_generation(state: &BootState) -> u32 {
+    let mut floor = 0u32;
+    for slot in SlotId::BOTH {
+        let record = state.slot(slot);
+        if record.status == SlotStatus::Confirmed && record.generation > floor {
+            floor = record.generation;
+        }
+    }
+    floor
+}
+
 pub fn decide(state: &BootState, mut image: impl FnMut(SlotId) -> Option<u32>) -> (Decision, BootState) {
     let mut next = *state;
     next.boot_count = next.boot_count.wrapping_add(1);
+    let confirmed_floor = min_confirmed_generation(state);
     for slot in [state.preferred, state.preferred.other()] {
         let record = *next.slot(slot);
         let bootable = match record.status {
@@ -35,7 +47,11 @@ pub fn decide(state: &BootState, mut image: impl FnMut(SlotId) -> Option<u32>) -
             SlotStatus::Trial => record.attempts > 0,
             SlotStatus::Empty | SlotStatus::Invalid => continue,
         };
-        if let Some(generation) = if bootable { image(slot) } else { None } {
+        let verified = if bootable { image(slot) } else { None }.filter(|&generation| {
+            let matching_confirmed = record.status == SlotStatus::Confirmed && generation == record.generation;
+            matching_confirmed || (generation >= confirmed_floor && generation >= record.generation)
+        });
+        if let Some(generation) = verified {
             next.preferred = slot;
             if generation != record.generation {
                 *next.slot_mut(slot) = SlotRecord { status: SlotStatus::Trial, attempts: TRIAL_ATTEMPTS, generation };

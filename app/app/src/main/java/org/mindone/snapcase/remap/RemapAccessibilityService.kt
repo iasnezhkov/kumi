@@ -94,9 +94,9 @@ class RemapAccessibilityService : AccessibilityService() {
     @Volatile
     private var homeTypeToSearch = true
     @Volatile
-    private var backspaceAsBack = false
+    private var backspaceAsBack = true
     @Volatile
-    private var mediaDoubleTap = false
+    private var mediaDoubleTap = true
     @Volatile
     private var backspaceExcluded: Set<String> = SettingsRepository.DEFAULT_BACKSPACE_EXCLUDED
 
@@ -286,8 +286,14 @@ class RemapAccessibilityService : AccessibilityService() {
         return true
     }
 
-    private fun tryMediaDoubleTap(event: KeyEvent, editable: Boolean): Boolean {
+    private fun tryMediaDoubleTap(
+        event: KeyEvent,
+        editable: Boolean,
+        fgPkg: String?,
+        locked: Boolean,
+    ): Boolean {
         if (!mediaDoubleTap) return false
+        if (org.mindone.snapcase.kumi.SnapLiveMirror.hardwareMediaGesturesActive) return false
         val code = event.keyCode
         if (event.action == KeyEvent.ACTION_UP) {
             if (code == KeyEvent.KEYCODE_SHIFT_LEFT && shiftUsedWithOtherKey) {
@@ -308,6 +314,9 @@ class RemapAccessibilityService : AccessibilityService() {
         }
         if (event.repeatCount > 0) {
             return code in mediaConsumedKeys
+        }
+        if (code == KeyEvent.KEYCODE_SPACE && !locked && fgPkg == packageName) {
+            return false
         }
         val mediaKey = when (code) {
             KeyEvent.KEYCODE_SHIFT_LEFT -> if (!event.isCtrlPressed && !event.isAltPressed && !event.isMetaPressed) KeyEvent.KEYCODE_MEDIA_PREVIOUS else 0
@@ -335,6 +344,10 @@ class RemapAccessibilityService : AccessibilityService() {
         }
         lastMediaTapKey = code
         lastMediaTapMs = now
+        if (code == KeyEvent.KEYCODE_SPACE) {
+            mediaConsumedKeys.add(code)
+            return true
+        }
         return false
     }
 
@@ -350,7 +363,7 @@ class RemapAccessibilityService : AccessibilityService() {
         if (event.action != KeyEvent.ACTION_DOWN || event.repeatCount != 0) return false
         if (event.isCtrlPressed || event.isAltPressed || event.isMetaPressed || event.isShiftPressed) return false
         if (onHome || editable) return false
-        if (fgPkg == null || fgPkg == packageName || fgPkg in backspaceExcluded) return false
+        if (fgPkg == null || (fgPkg == packageName && keyTesterActive) || fgPkg in backspaceExcluded) return false
         val device = if (::inputManager.isInitialized) inputManager.getInputDevice(event.deviceId) else null
         if (device != null && device.isVirtual) return false
         if (mediaDoubleTap) {
@@ -374,25 +387,30 @@ class RemapAccessibilityService : AccessibilityService() {
 
     override fun onKeyEvent(event: KeyEvent): Boolean {
         if (event.deviceId != KeyCharacterMap.VIRTUAL_KEYBOARD) {
+            val locked = isKeyguardLocked()
             val controller = overlayController
-            if (controller != null && (controller.isShowing || event.action == KeyEvent.ACTION_UP)) {
-                if (controller.handleKeyEvent(event)) return true
+            if (locked) {
+                if (controller?.isShowing == true) controller.dismiss()
+            } else {
+                if (controller != null && (controller.isShowing || event.action == KeyEvent.ACTION_UP)) {
+                    if (controller.handleKeyEvent(event)) return true
+                }
+                if (tryQuickSearchHandoff(event)) return true
             }
-            if (tryQuickSearchHandoff(event)) return true
             if (event.action == KeyEvent.ACTION_UP) {
-                val handledMedia = tryMediaDoubleTap(event, editable = false)
+                val handledMedia = tryMediaDoubleTap(event, editable = false, fgPkg = null, locked = locked)
                 val handledBack = backConsumedKeys.remove(event.keyCode)
                 val handledSpeed = speedConsumedKeys.remove(event.keyCode)
                 val handledQuick = quickSearchConsumedKeys.remove(event.keyCode)
                 if (handledMedia || handledBack || handledSpeed || handledQuick) return true
             } else {
-                val locked = isKeyguardLocked()
                 val editable = !locked && isEditableInputFocused()
-                if (tryMediaDoubleTap(event, editable)) return true
+                val needWindowCheck = !locked && (mediaDoubleTap || homeTypeToSearch || backspaceAsBack || (speedKeysEnabled && speedKeys.isNotEmpty()))
+                val fgPkg = if (needWindowCheck) resolveForegroundAppPackage() else null
+                if (tryMediaDoubleTap(event, editable, fgPkg, locked)) return true
                 if (!locked) {
-                    val needWindowCheck = homeTypeToSearch || backspaceAsBack || (speedKeysEnabled && speedKeys.isNotEmpty())
-                    if (needWindowCheck) {
-                        val fgPkg = resolveForegroundAppPackage()
+                    val needHomeOrBack = homeTypeToSearch || backspaceAsBack || (speedKeysEnabled && speedKeys.isNotEmpty())
+                    if (needHomeOrBack) {
                         val onHome = isOnHomeLauncher(fgPkg)
                         val homeHandlesOwnKeys = fgPkg != null && fgPkg in cachedNativeKeyHomes
                         val onHomeClean = onHome && !editable && !homeHandlesOwnKeys
@@ -493,6 +511,9 @@ class RemapAccessibilityService : AccessibilityService() {
         @Volatile
         var active = false
             private set
+
+        @Volatile
+        var keyTesterActive = false
 
         private fun setServiceActive(value: Boolean) {
             active = value

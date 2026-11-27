@@ -25,7 +25,6 @@ object KumiKeymapPresets {
     private const val MOD_SHIFT = 0x02
     private const val MOD_ALT = 0x04
     private const val MOD_META = 0x08
-    private const val MOD_RSHIFT = 0x20
 
     val ALL: List<KumiKeymapPreset> = listOf(
         KumiKeymapPreset(
@@ -49,7 +48,7 @@ object KumiKeymapPresets {
             ),
             combos = listOf(
                 KeyCombo(0x0D, 0x0E, KeyAction.Key(0x29)),
-                KeyCombo(0xE1, 0xE5, KeyAction.CapsWord),
+                KeyCombo(0x07, 0x09, KeyAction.CapsWord),
             ),
             config = KeyConfig(tappingTermMs = 190, oneShotTimeoutMs = 3_000, comboTermMs = 45),
         ),
@@ -75,7 +74,7 @@ object KumiKeymapPresets {
                 KeymapEntry(1, 0x2A, KeyAction.Mouse(MouseAction.RightClick)),
             ),
             combos = listOf(
-                KeyCombo(0xE1, 0xE5, KeyAction.CapsWord),
+                KeyCombo(0x07, 0x09, KeyAction.CapsWord),
             ),
         ),
         KumiKeymapPreset(
@@ -106,12 +105,10 @@ object KumiKeymapPresets {
             descRes = R.string.kumi_preset_one_hand_desc,
             entries = listOf(
                 KeymapEntry(0, 0xE1, KeyAction.OneShotMod(MOD_SHIFT)),
-                KeymapEntry(0, 0xE5, KeyAction.OneShotMod(MOD_RSHIFT)),
                 KeymapEntry(0, 0xE2, KeyAction.OneShotMod(MOD_ALT)),
                 KeymapEntry(0, 0x2C, KeyAction.TapHoldLayer(0x2C, 1)),
             ),
             combos = listOf(
-                KeyCombo(0xE1, 0xE5, KeyAction.CapsWord),
                 KeyCombo(0x09, 0x0D, KeyAction.CapsWord),
             ),
             config = KeyConfig(tappingTermMs = 190, oneShotTimeoutMs = 3_000, comboTermMs = 50),

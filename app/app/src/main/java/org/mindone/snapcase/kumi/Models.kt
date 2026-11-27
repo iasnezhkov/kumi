@@ -275,6 +275,166 @@ data class AudioMeters(
     }
 }
 
+data class AudioSpectrum(
+    val active: Boolean = false,
+    val bandsDbX2: List<Int> = List(KumiLimits.SPECTRUM_BANDS) { 0 },
+    val truePeakLeftCentiDb: Int = KumiLimits.METER_FLOOR_CENTI_DB,
+    val truePeakRightCentiDb: Int = KumiLimits.METER_FLOOR_CENTI_DB,
+    val lufsMomentaryCenti: Int = KumiLimits.LUFS_FLOOR_CENTI,
+    val lufsShortTermCenti: Int = KumiLimits.LUFS_FLOOR_CENTI,
+    val autoLevelGainCentiDb: Int = 0,
+) {
+    companion object {
+        val BAND_CENTERS_HZ = doubleArrayOf(
+            25.0, 33.0, 44.0, 59.0, 78.0, 104.0, 138.0, 184.0, 245.0, 326.0, 434.0, 578.0,
+            770.0, 1_025.0, 1_365.0, 1_818.0, 2_420.0, 3_223.0, 4_292.0, 5_715.0, 7_610.0, 10_133.0, 13_493.0, 17_966.0,
+        )
+
+        fun from(j: JSONObject) = AudioSpectrum(
+            j.getBoolean("active"),
+            j.getJSONArray("bands_db_x2").ints(),
+            j.getInt("true_peak_left_centi_db"),
+            j.getInt("true_peak_right_centi_db"),
+            j.getInt("lufs_momentary_centi"),
+            j.getInt("lufs_short_term_centi"),
+            j.getInt("auto_level_gain_centi_db"),
+        )
+    }
+}
+
+data class DspExtras(
+    val autoLevel: Boolean = false,
+    val autoLevelTargetLufs: Int = -16,
+    val subsonicHz: Int = 0,
+    val monoBassHz: Int = 0,
+) {
+    val valid: Boolean
+        get() = autoLevelTargetLufs in KumiLimits.DSP_MIN_TARGET_LUFS..KumiLimits.DSP_MAX_TARGET_LUFS &&
+            (subsonicHz == 0 || subsonicHz in KumiLimits.DSP_MIN_SUBSONIC_HZ..KumiLimits.DSP_MAX_SUBSONIC_HZ) &&
+            (monoBassHz == 0 || monoBassHz in KumiLimits.DSP_MIN_MONO_BASS_HZ..KumiLimits.DSP_MAX_MONO_BASS_HZ)
+
+    fun toJson(): JSONObject = JSONObject()
+        .put("auto_level", autoLevel)
+        .put("auto_level_target_lufs", autoLevelTargetLufs)
+        .put("subsonic_hz", subsonicHz)
+        .put("mono_bass_hz", monoBassHz)
+
+    companion object {
+        fun from(j: JSONObject) = DspExtras(
+            j.optBoolean("auto_level", false),
+            j.optInt("auto_level_target_lufs", -16),
+            j.optInt("subsonic_hz", 0),
+            j.optInt("mono_bass_hz", 0),
+        )
+    }
+}
+
+data class EqBaseSettings(
+    val enabled: Boolean = false,
+    val profile: EqProfile = EqProfile.FLAT,
+) {
+    val valid: Boolean get() = profile.valid
+
+    fun toJson(): JSONObject = JSONObject()
+        .put("enabled", enabled)
+        .put("profile", profile.toJson())
+
+    companion object {
+        fun from(j: JSONObject) = EqBaseSettings(
+            j.optBoolean("enabled", false),
+            EqProfile.from(j.getJSONObject("profile")),
+        )
+    }
+}
+
+data class ToneEqSettings(
+    val enabled: Boolean = false,
+    val subBassCentiDb: Int = 0,
+    val bassCentiDb: Int = 0,
+    val midCentiDb: Int = 0,
+    val presenceCentiDb: Int = 0,
+    val trebleCentiDb: Int = 0,
+) {
+    val valid: Boolean
+        get() = listOf(subBassCentiDb, bassCentiDb, midCentiDb, presenceCentiDb, trebleCentiDb)
+            .all { kotlin.math.abs(it) <= KumiLimits.TONE_MAX_GAIN_CENTI_DB }
+
+    val active: Boolean
+        get() = enabled && (subBassCentiDb != 0 || bassCentiDb != 0 || midCentiDb != 0 || presenceCentiDb != 0 || trebleCentiDb != 0)
+
+    fun toBands(): List<ParametricBand> = if (!enabled) {
+        emptyList()
+    } else {
+        listOf(
+            ParametricBand(BandKind.LowShelf, 60, 707, subBassCentiDb),
+            ParametricBand(BandKind.Peak, 200, 900, bassCentiDb),
+            ParametricBand(BandKind.Peak, 1_000, 900, midCentiDb),
+            ParametricBand(BandKind.Peak, 3_500, 1_000, presenceCentiDb),
+            ParametricBand(BandKind.HighShelf, 10_000, 707, trebleCentiDb),
+        ).filter { it.gainCentiDb != 0 }
+    }
+
+    fun autoPreampCentiDb(): Int {
+        if (!enabled) return 0
+        val peak = maxOf(0, subBassCentiDb, bassCentiDb, midCentiDb, presenceCentiDb, trebleCentiDb)
+        return -peak
+    }
+
+    fun toJson(): JSONObject = JSONObject()
+        .put("enabled", enabled)
+        .put("sub_bass_centi_db", subBassCentiDb)
+        .put("bass_centi_db", bassCentiDb)
+        .put("mid_centi_db", midCentiDb)
+        .put("presence_centi_db", presenceCentiDb)
+        .put("treble_centi_db", trebleCentiDb)
+
+    companion object {
+        fun from(j: JSONObject) = ToneEqSettings(
+            j.optBoolean("enabled", false),
+            j.optInt("sub_bass_centi_db", 0),
+            j.optInt("bass_centi_db", 0),
+            j.optInt("mid_centi_db", 0),
+            j.optInt("presence_centi_db", 0),
+            j.optInt("treble_centi_db", 0),
+        )
+    }
+}
+
+data class MediaGestures(
+    val enabled: Boolean = false,
+    val windowMs: Int = 320,
+    val idleGuardMs: Int = 1_200,
+    val doubleShiftUsage: Int = 0xB6,
+    val doubleBackspaceUsage: Int = 0xB5,
+    val doubleSpaceUsage: Int = 0xCD,
+) {
+    val valid: Boolean
+        get() = windowMs in KumiLimits.MEDIA_MIN_WINDOW_MS..KumiLimits.MEDIA_MAX_WINDOW_MS &&
+            idleGuardMs in 0..KumiLimits.MEDIA_MAX_IDLE_GUARD_MS &&
+            doubleShiftUsage in 0..KumiLimits.CONSUMER_MAX_USAGE &&
+            doubleBackspaceUsage in 0..KumiLimits.CONSUMER_MAX_USAGE &&
+            doubleSpaceUsage in 0..KumiLimits.CONSUMER_MAX_USAGE
+
+    fun toJson(): JSONObject = JSONObject()
+        .put("enabled", enabled)
+        .put("window_ms", windowMs)
+        .put("idle_guard_ms", idleGuardMs)
+        .put("double_shift_usage", doubleShiftUsage)
+        .put("double_backspace_usage", doubleBackspaceUsage)
+        .put("double_space_usage", doubleSpaceUsage)
+
+    companion object {
+        fun from(j: JSONObject) = MediaGestures(
+            j.optBoolean("enabled", false),
+            j.optInt("window_ms", 320),
+            j.optInt("idle_guard_ms", 1_200),
+            j.optInt("double_shift_usage", 0xB6),
+            j.optInt("double_backspace_usage", 0xB5),
+            j.optInt("double_space_usage", 0xCD),
+        )
+    }
+}
+
 data class TestToneRequest(
     val channel: AudioChannel,
     val frequencyHz: Int,
@@ -325,6 +485,20 @@ data class SystemTelemetry(
             j.getLong("wfi_wakeups"),
             j.getInt("jack_adc"),
             j.getLong("uptime_ms"),
+        )
+    }
+}
+
+data class PresenceStatus(
+    val tier: Int = 0,
+    val remainingMs: Long = 0L,
+    val passthrough: Boolean = false,
+) {
+    companion object {
+        fun from(j: JSONObject) = PresenceStatus(
+            j.optInt("tier", 0),
+            j.optLong("remaining_ms", 0L),
+            j.optBoolean("passthrough", false),
         )
     }
 }
@@ -549,7 +723,7 @@ enum class RebootTarget { Normal, OtherSlot, BootRom }
 
 enum class SettingsScope { All, Audio, Keymap }
 
-enum class CaseError { Unsupported, InvalidArgument, Busy, NotUnlocked, HardwareFault, StorageFull, VerifyFailed, WrongState, Unknown }
+enum class CaseError { Unsupported, InvalidArgument, Busy, NotUnlocked, HardwareFault, StorageFull, VerifyFailed, WrongState, PresenceRequired, Unknown }
 
 enum class LogLevel { Trace, Debug, Info, Warn, Error, Unknown }
 
@@ -588,6 +762,18 @@ object KumiLimits {
     const val KEY_MIN_COMBO_TERM_MS = 15
     const val KEY_MAX_COMBO_TERM_MS = 200
     const val METER_FLOOR_CENTI_DB = -9_600
+    const val SPECTRUM_BANDS = 24
+    const val LUFS_FLOOR_CENTI = -7_000
+    const val DSP_MIN_TARGET_LUFS = -24
+    const val DSP_MAX_TARGET_LUFS = -10
+    const val DSP_MIN_SUBSONIC_HZ = 15
+    const val DSP_MAX_SUBSONIC_HZ = 40
+    const val DSP_MIN_MONO_BASS_HZ = 60
+    const val DSP_MAX_MONO_BASS_HZ = 200
+    const val TONE_MAX_GAIN_CENTI_DB = 1_200
+    const val MEDIA_MIN_WINDOW_MS = 150
+    const val MEDIA_MAX_WINDOW_MS = 600
+    const val MEDIA_MAX_IDLE_GUARD_MS = 5_000
     const val TEST_TONE_MIN_HZ = 100
     const val TEST_TONE_MAX_HZ = 12_000
     const val TEST_TONE_MIN_MS = 100
@@ -761,7 +947,7 @@ data class EventMask(val keys: Boolean, val log: Boolean, val audio: Boolean, va
 
     companion object {
         val NAMES = listOf("keys", "log", "audio", "uart")
-        val APP = EventMask(keys = true, log = true, audio = true, uart = false)
+        val APP = EventMask(keys = false, log = true, audio = false, uart = false)
 
         fun from(j: JSONObject) = EventMask(j.optBoolean("keys"), j.optBoolean("log"), j.optBoolean("audio"), j.optBoolean("uart"))
     }

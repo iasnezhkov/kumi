@@ -467,9 +467,15 @@ class FixtureSlotDeveloperTests(SlotGates, unittest.TestCase):
         slot = self.dev['slot']
         link.expect(slot['device_info'], 'release')
         link.expect(slot['poke_gpio'], 'wrong_state')
-        link.expect(self.dev['unlock'], 'ok')
+        link.expect(self.dev['unlock'], 'unsupported')
+        link.expect(self.dev['peek_chip_id'], 'unsupported')
+        link.expect(self.dev['fault']['panic'], 'unsupported')
         link.expect(slot['poke_gpio'], 'wrong_state')
         link.expect(self.dev['uart_send'], 'unsupported')
+        link.expect(self.dev['presence'], 'locked')
+        link.expect(self.dev['set_key_presence'], 'ok')
+        link.expect(self.dev['reboot_bootrom_presence'], 'presence_required')
+        link.expect(self.dev['subscribe_keys_only'], 'ok')
         for table in ('permitted_i2c', 'refused_i2c'):
             for name, entry in slot[table].items():
                 with self.subTest(name):

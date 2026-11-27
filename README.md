@@ -35,26 +35,27 @@ layer can be tested on the host and reused on other SpaceTouch SPV5048 devices.
    Android JNI bridge, and WebUSB clients share that schema and verify compatibility by endpoint key.
 3. **Standard USB classes first.** Keyboard/consumer/mouse is standard HID and audio is UAC2, so
    typing and audio work on Android, Linux, macOS, Windows, and iOS without any app. Only control
-   uses a vendor bulk interface (`FF/4B/01`) with MS OS 2.0 and WebUSB descriptors.
+   uses a vendor bulk interface (`FF/4B/01`) with MS OS 2.0 (WinUSB) descriptors and opt-in WebUSB
+   BOS (`--features webusb`).
 4. **Measured, not assumed.** Hardware statements carry evidence and confidence labels; logic has
    host and emulator tests, and hardware acceptance is tracked separately.
 5. **No vendor code or firmware images.** This repository contains our own code, hardware notes,
    and checksums — never vendor binaries, flash dumps, or signing keys.
 
-## Status (`1.0.1`)
+## Status (`1.1.0`)
 
 Prebuilt signed firmware bundles (`kumi-<ver>.kumi`), signed Android APKs (`kumi-app-<ver>.apk`),
 and checksums are published on [GitHub Releases](https://github.com/iasnezhkov/kumi/releases).
 
 | Part | State |
 |---|---|
-| Protocol `kumi-icd` (45 endpoints + ping, 4 topics, frame helper) | done, host-tested; version 1 wire protocol with additive endpoints |
-| Bootloader `firmware/stage0`: 360 MHz DC-DC + 90 MHz Quad-SPI XIP flash read (~30 ms verify+load), single-pass journal scan, Ed25519 A/B slots, rollback, crash preservation | hardware-verified (~1.3 s cold start) |
-| Runtime `firmware/runtime`: Embassy USB High Speed (UAC2 async 44.1–384 kHz PCM + DoP64/128 + Native DSD64/128/256, 10-band RV32F EQ + ISO 226 dynamic loudness + crossfeed + limiter, CS43198 soft-ramp 400 kHz I2C + Class-H/LV + HPLOAD DC/AC impedance + test tones, HID keyboard + QMK 4-layer keymaps/tap-hold/one-shot/combos/macros/mouse keys, stay-awake toggle, vendor RPC, settings V4, A/B updates, 4-tier 30–360 MHz DVFS + PLIC WFI idle, watchdog, eFuse serial) | hardware- and emulator-verified |
+| Protocol `kumi-icd` (55 endpoints + ping, 4 topics, frame helper) | done, host-tested; version 1 wire protocol with additive endpoints |
+| Bootloader `firmware/stage0`: 360 MHz DC-DC + 90 MHz Quad-SPI XIP flash read (~30 ms verify+load), single-pass journal scan, Ed25519 A/B slots, monotonic anti-rollback, `FLAG_LAB` release isolation, rollback, crash preservation | hardware-verified (~1.3 s cold start) |
+| Runtime `firmware/runtime`: Embassy USB High Speed (UAC2 async 44.1–384 kHz PCM + DoP64/128 + Native DSD64/128/256, 24-band post-DSP RTA FFT, EBU R128 LUFS / True-Peak + Auto-Level AGC, two-layer PEQ with AutoEQ base + 5-band tone + Subsonic/Mono-Bass, ISO 226 dynamic loudness + crossfeed + limiter, CS43198 soft-ramp 400 kHz I2C + Class-H/LV + true fixed 2 Vrms Line-Out + HPLOAD DC/AC impedance + test tones, HID keyboard + hardware HID Consumer media gestures + QMK 4-layer keymaps/tap-hold/one-shot/combos/macros/mouse keys, stay-awake toggle, OTA auto-mute, hardened release slots (`dev/*` `Unsupported`, `Shift + Backspace` BootROM guard), vendor RPC, settings V4, A/B updates, 4-tier 30–360 MHz DVFS + PLIC WFI idle, watchdog, SipHash-2-4 eFuse serial) | hardware- and emulator-verified |
 | Core crates (`kumi-dsp`, `kumi-keymap`, `kumi-kbdlink`, `kumi-audio`, `kumi-layout`, `kumi-chip`, `kumi-boot-core`, `kumi-diag`, `kumi-settings`, `kumi-control`, `kumi-service`, `kumi-install`, `kumi-buxx`, `kumi-flasher`) | done, host-tested (`no_std` where applicable) |
 | SDK `kumi-client` ([SDK](docs/SDK.md)) & CLI `kumi-cli` (`kumi`) | direct desktop USB (`libusb`), Android `adb` bridge, host emulator, and in-process virtual case |
 | Signed firmware bundle `.kumi` (`kumi-pack bundle`) | done, Ed25519 strict verification |
-| Companion Android app `app/` (`Kumi`, Android 15–17, no root required) | USB Host control, guided Stock → Kumi installer &amp; return-to-stock, 10-band EQ with instant interactive curve, 16 presets &amp; live vertical/horizontal VU meters, QMK layers/Clicks presets, 13 UI languages, Stable / Developer (RC) update channels, **Kumi Strip** bottom autocomplete IME (20 languages including Korean 2-beolsik and Simplified/Traditional Chinese Pinyin with offline/downloadable dictionaries, emoji/clipboard drawer), **System Shortcuts** (Home screen instant overlay type-to-search, optional Backspace-as-Back outside text fields, optional double-tap media controls, speed keys), simulated demo case |
+| Companion Android app `app/` (`Kumi`, Android 15–17, no root required) | USB Host control, guided Stock → Kumi installer &amp; return-to-stock with transient AudioFocus pause during OTA, smooth spline 24-band RTA + LUFS/dBTP + vertical/horizontal VU meters, two-layer 10-band EQ (AutoEQ + 5-band Tone) &amp; 16 presets, true 2 Vrms Line-Out with auto volume save/restore, QMK layers/36-key presets, 13 UI languages, Stable / Developer (RC) update channels, **Kumi Strip** bottom autocomplete IME (20 languages including Korean 2-beolsik and Simplified/Traditional Chinese Pinyin with offline/downloadable dictionaries, AW862xx typing haptics, emoji/RAM-only clipboard drawer), **System Shortcuts** (Home screen instant overlay type-to-search, optional Backspace-as-Back outside text fields, speed keys), signature-protected launcher bridge, simulated demo case |
 
 When loaded into RAM from the boot ROM without `stage0`, flash-backed features (persistent settings,
 boot confirmation, A/B updates) report their absence through `device/info` capabilities.

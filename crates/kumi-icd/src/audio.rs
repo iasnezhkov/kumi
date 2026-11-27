@@ -8,6 +8,8 @@ use crate::bench::AudioChannel;
 pub const EQ_SLOTS: u8 = 4;
 pub const EQ_MAX_BANDS: usize = 10;
 pub const METER_FLOOR_CENTI_DB: i16 = -9_600;
+pub const SPECTRUM_BANDS: usize = 24;
+pub const LUFS_FLOOR_CENTI: i16 = -7_000;
 
 #[derive(Serialize, Deserialize, Schema, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Jack {
@@ -197,6 +199,115 @@ impl Default for AudioMeters {
             clipped_samples: 0,
             limiter_hits: 0,
         }
+    }
+}
+
+#[derive(Serialize, Deserialize, Schema, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AudioSpectrum {
+    pub active: bool,
+    pub bands_db_x2: [u8; SPECTRUM_BANDS],
+    pub true_peak_left_centi_db: i16,
+    pub true_peak_right_centi_db: i16,
+    pub lufs_momentary_centi: i16,
+    pub lufs_short_term_centi: i16,
+    pub auto_level_gain_centi_db: i16,
+}
+
+impl Default for AudioSpectrum {
+    fn default() -> Self {
+        Self {
+            active: false,
+            bands_db_x2: [0; SPECTRUM_BANDS],
+            true_peak_left_centi_db: METER_FLOOR_CENTI_DB,
+            true_peak_right_centi_db: METER_FLOOR_CENTI_DB,
+            lufs_momentary_centi: LUFS_FLOOR_CENTI,
+            lufs_short_term_centi: LUFS_FLOOR_CENTI,
+            auto_level_gain_centi_db: 0,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Schema, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DspExtras {
+    pub auto_level: bool,
+    pub auto_level_target_lufs: i8,
+    pub subsonic_hz: u8,
+    pub mono_bass_hz: u8,
+}
+
+impl Default for DspExtras {
+    fn default() -> Self {
+        Self { auto_level: false, auto_level_target_lufs: Self::DEFAULT_TARGET_LUFS, subsonic_hz: 0, mono_bass_hz: 0 }
+    }
+}
+
+impl DspExtras {
+    pub const DEFAULT_TARGET_LUFS: i8 = -16;
+    pub const MIN_TARGET_LUFS: i8 = -24;
+    pub const MAX_TARGET_LUFS: i8 = -10;
+    pub const MIN_SUBSONIC_HZ: u8 = 15;
+    pub const MAX_SUBSONIC_HZ: u8 = 40;
+    pub const MIN_MONO_BASS_HZ: u8 = 60;
+    pub const MAX_MONO_BASS_HZ: u8 = 200;
+
+    pub const fn is_active(&self) -> bool {
+        self.auto_level || self.subsonic_hz != 0 || self.mono_bass_hz != 0
+    }
+
+    pub fn is_valid(&self) -> bool {
+        (Self::MIN_TARGET_LUFS..=Self::MAX_TARGET_LUFS).contains(&self.auto_level_target_lufs)
+            && (self.subsonic_hz == 0 || (Self::MIN_SUBSONIC_HZ..=Self::MAX_SUBSONIC_HZ).contains(&self.subsonic_hz))
+            && (self.mono_bass_hz == 0 || (Self::MIN_MONO_BASS_HZ..=Self::MAX_MONO_BASS_HZ).contains(&self.mono_bass_hz))
+    }
+}
+
+#[derive(Serialize, Deserialize, Schema, Debug, Clone, PartialEq, Eq)]
+pub struct EqBaseSettings {
+    pub enabled: bool,
+    pub profile: EqProfile,
+}
+
+impl Default for EqBaseSettings {
+    fn default() -> Self {
+        Self { enabled: false, profile: EqProfile { preamp_centi_db: 0, bands: Vec::new() } }
+    }
+}
+
+impl EqBaseSettings {
+    pub fn is_valid(&self) -> bool {
+        self.profile.is_valid()
+    }
+}
+
+#[derive(Serialize, Deserialize, Schema, Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ToneEqSettings {
+    pub enabled: bool,
+    pub sub_bass_centi_db: i16,
+    pub bass_centi_db: i16,
+    pub mid_centi_db: i16,
+    pub presence_centi_db: i16,
+    pub treble_centi_db: i16,
+}
+
+impl ToneEqSettings {
+    pub const MAX_GAIN_CENTI_DB: i16 = 1_200;
+
+    pub const fn is_active(&self) -> bool {
+        self.enabled
+            && (self.sub_bass_centi_db != 0
+                || self.bass_centi_db != 0
+                || self.mid_centi_db != 0
+                || self.presence_centi_db != 0
+                || self.treble_centi_db != 0)
+    }
+
+    pub fn is_valid(&self) -> bool {
+        let ok = |g: i16| g.unsigned_abs() <= Self::MAX_GAIN_CENTI_DB as u16;
+        ok(self.sub_bass_centi_db)
+            && ok(self.bass_centi_db)
+            && ok(self.mid_centi_db)
+            && ok(self.presence_centi_db)
+            && ok(self.treble_centi_db)
     }
 }
 

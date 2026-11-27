@@ -484,3 +484,29 @@ fn intentional_normal_reboot_clears_unhealthy_starts_on_confirmed_slot_without_c
     assert!(!health.due_for(true, 50 + CONFIRMED_HEALTHY_MS - 1, CONFIRMED_HEALTHY_MS));
     assert!(health.due_for(true, 50 + CONFIRMED_HEALTHY_MS, CONFIRMED_HEALTHY_MS));
 }
+
+#[test]
+fn update_finish_rejects_downgrade_and_lab_images() {
+    let (flash, info) = fixture(false);
+    let mut storage = Storage::open(flash, Some(info));
+    let older = kumi_install::sample::image(&key(), [0, 1, 0], 0);
+    let manifest = manifest_for(&older, &storage.slots()).unwrap();
+    storage.update_begin(manifest).unwrap();
+    upload(&mut storage, &older);
+    assert_eq!(storage.update_finish(verify), Err(CaseError::VerifyFailed));
+
+    let (mut lab, _) = update(&storage);
+    let mut header = kumi_layout::ImageHeader::decode(&lab[..kumi_layout::HEADER_SIZE].try_into().unwrap(), SLOT_A.size).unwrap();
+    header.flags |= kumi_layout::FLAG_LAB;
+    let payload = &lab[kumi_layout::HEADER_SIZE..];
+    let mut signed = [0u8; kumi_layout::SIGNED_HEADER_LEN];
+    signed.copy_from_slice(&header.encode()[..kumi_layout::SIGNED_HEADER_LEN]);
+    header.digest = kumi_boot_core::image_digest(&signed, payload);
+    use ed25519_dalek::Signer;
+    header.signature = key().sign(&header.digest).to_bytes();
+    lab[..kumi_layout::HEADER_SIZE].copy_from_slice(&header.encode());
+    let lab_manifest = manifest_for(&lab, &storage.slots()).unwrap();
+    storage.update_begin(lab_manifest).unwrap();
+    upload(&mut storage, &lab);
+    assert_eq!(storage.update_finish(verify), Err(CaseError::VerifyFailed));
+}

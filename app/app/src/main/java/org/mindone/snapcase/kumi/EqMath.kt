@@ -148,9 +148,32 @@ object FastEqCurve {
     }
 
     fun evaluate(profile: EqProfile, outDb: FloatArray) {
-        val preampDb = profile.preampCentiDb / 100.0
-        val sections = ArrayList<Coeffs>(profile.bands.size)
+        evaluateComposite(profile, null, null, outDb)
+    }
+
+    fun evaluateComposite(
+        profile: EqProfile,
+        base: EqBaseSettings?,
+        tone: ToneEqSettings?,
+        outDb: FloatArray,
+    ) {
+        val baseActive = base != null && base.enabled && base.profile.bands.isNotEmpty()
+        val toneBands = tone?.toBands().orEmpty()
+        val preampDb = (
+            profile.preampCentiDb +
+                (if (baseActive) base.profile.preampCentiDb else 0) +
+                (tone?.autoPreampCentiDb() ?: 0)
+            ) / 100.0
+        val sections = ArrayList<Coeffs>(profile.bands.size + (if (baseActive) base.profile.bands.size else 0) + toneBands.size)
+        if (baseActive) {
+            for (band in base.profile.bands) {
+                design(band)?.let(sections::add)
+            }
+        }
         for (band in profile.bands) {
+            design(band)?.let(sections::add)
+        }
+        for (band in toneBands) {
             design(band)?.let(sections::add)
         }
         if (sections.isEmpty()) {

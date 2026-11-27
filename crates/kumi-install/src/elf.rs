@@ -103,3 +103,50 @@ pub fn flatten_by_load_address(elf: &Elf, base: u32, limit: u32) -> Result<Vec<u
     }
     Ok(image)
 }
+
+pub fn has_symbol(bytes: &[u8], name: &str) -> bool {
+    const SHT_SYMTAB: u32 = 2;
+    const SHDR_LEN: usize = 40;
+    const SYM_LEN: usize = 16;
+    if bytes.len() < HEADER_LEN || bytes[..4] != MAGIC || bytes[4] != CLASS_32 || bytes[5] != LITTLE_ENDIAN {
+        return false;
+    }
+    let Ok(shoff) = u32_at(bytes, 32).map(|v| v as usize) else { return false };
+    let Ok(shentsize) = u16_at(bytes, 46).map(usize::from) else { return false };
+    let Ok(shnum) = u16_at(bytes, 48).map(usize::from) else { return false };
+    if shoff == 0 || shentsize < SHDR_LEN || shnum == 0 {
+        return false;
+    }
+    let target = name.as_bytes();
+    for i in 0..shnum {
+        let Some(at) = shoff.checked_add(i * shentsize) else { return false };
+        let Ok(sh_type) = u32_at(bytes, at + 4) else { continue };
+        if sh_type != SHT_SYMTAB {
+            continue;
+        }
+        let Ok(sym_off) = u32_at(bytes, at + 16).map(|v| v as usize) else { continue };
+        let Ok(sym_size) = u32_at(bytes, at + 20).map(|v| v as usize) else { continue };
+        let Ok(str_idx) = u32_at(bytes, at + 24).map(|v| v as usize) else { continue };
+        let Ok(entsize) = u32_at(bytes, at + 36).map(|v| v as usize) else { continue };
+        if entsize < SYM_LEN || str_idx >= shnum {
+            continue;
+        }
+        let Some(str_hdr) = shoff.checked_add(str_idx * shentsize) else { continue };
+        let Ok(str_off) = u32_at(bytes, str_hdr + 16).map(|v| v as usize) else { continue };
+        let Ok(str_size) = u32_at(bytes, str_hdr + 20).map(|v| v as usize) else { continue };
+        let Some(strtab) = bytes.get(str_off..str_off.saturating_add(str_size)) else { continue };
+        let mut cursor = 0;
+        while cursor + SYM_LEN <= sym_size {
+            let Ok(st_name) = u32_at(bytes, sym_off + cursor).map(|v| v as usize) else { break };
+            if st_name < strtab.len() {
+                let tail = &strtab[st_name..];
+                let end = tail.iter().position(|&b| b == 0).unwrap_or(tail.len());
+                if &tail[..end] == target {
+                    return true;
+                }
+            }
+            cursor += entsize;
+        }
+    }
+    false
+}

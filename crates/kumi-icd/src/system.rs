@@ -150,3 +150,10 @@ pub struct SystemTelemetry {
     pub jack_adc: u16,
     pub uptime_ms: u32,
 }
+
+#[derive(Serialize, Deserialize, Schema, Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct PresenceStatus {
+    pub tier: u8,
+    pub remaining_ms: u32,
+    pub passthrough: bool,
+}

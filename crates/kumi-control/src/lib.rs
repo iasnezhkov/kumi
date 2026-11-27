@@ -3,9 +3,9 @@
 
 use heapless::Vec;
 use kumi_icd::{
-    COMBO_SLOTS, CaseError, ComboSlotUpdate, DacExtras, DspSettings, EQ_SLOTS, EqProfile, EqSelection, EqSlotUpdate,
-    KEYMAP_CHUNK, KeyAction, KeyCombo, KeyConfig, KeymapChunk, KeymapEntry, KeymapPage, MACRO_SLOTS, MacroProgram,
-    MacroSlotUpdate, MicSettings, OutputSettings, SettingsScope,
+    COMBO_SLOTS, CaseError, ComboSlotUpdate, DacExtras, DspExtras, DspSettings, EQ_SLOTS, EqBaseSettings, EqProfile, EqSelection,
+    EqSlotUpdate, KEYMAP_CHUNK, KeyAction, KeyCombo, KeyConfig, KeymapChunk, KeymapEntry, KeymapPage, MACRO_SLOTS, MacroProgram,
+    MacroSlotUpdate, MediaGestures, MicSettings, OutputSettings, SettingsScope, ToneEqSettings,
 };
 use kumi_settings::{KEYMAP_MAX, StoredSettings};
 
@@ -76,6 +76,63 @@ impl Controls {
         }
         self.settings.dsp = dsp;
         self.dirty = true;
+        Ok(())
+    }
+
+    pub fn dsp_extras(&self) -> DspExtras {
+        self.settings.dsp_extras
+    }
+
+    pub fn set_dsp_extras(&mut self, extras: DspExtras) -> Result<(), CaseError> {
+        check(extras.is_valid())?;
+        if self.settings.dsp_extras == extras {
+            return Ok(());
+        }
+        self.settings.dsp_extras = extras;
+        self.dirty = true;
+        Ok(())
+    }
+
+    pub fn eq_base(&self) -> EqBaseSettings {
+        self.settings.eq_base.clone()
+    }
+
+    pub fn set_eq_base(&mut self, base: EqBaseSettings) -> Result<(), CaseError> {
+        check(base.is_valid())?;
+        if self.settings.eq_base == base {
+            return Ok(());
+        }
+        self.settings.eq_base = base;
+        self.dirty = true;
+        Ok(())
+    }
+
+    pub fn tone_eq(&self) -> ToneEqSettings {
+        self.settings.tone_eq
+    }
+
+    pub fn set_tone_eq(&mut self, tone: ToneEqSettings) -> Result<(), CaseError> {
+        check(tone.is_valid())?;
+        if self.settings.tone_eq == tone {
+            return Ok(());
+        }
+        self.settings.tone_eq = tone;
+        self.dirty = true;
+        Ok(())
+    }
+
+    pub fn media_gestures(&self) -> MediaGestures {
+        self.settings.media_gestures
+    }
+
+    pub fn set_media_gestures(&mut self, gestures: MediaGestures) -> Result<(), CaseError> {
+        check(gestures.is_valid())?;
+        if self.settings.media_gestures == gestures {
+            return Ok(());
+        }
+        self.settings.media_gestures = gestures;
+        self.dirty = true;
+        self.keymap_dirty = true;
         Ok(())
     }
 
@@ -245,16 +302,20 @@ impl Controls {
             SettingsScope::Audio => {
                 self.settings.output = defaults.output;
                 self.settings.dsp = defaults.dsp;
+                self.settings.dsp_extras = defaults.dsp_extras;
                 self.settings.dac_extras = defaults.dac_extras;
                 self.settings.mic = defaults.mic;
                 self.settings.eq_slots = defaults.eq_slots;
                 self.settings.active_eq = defaults.active_eq;
+                self.settings.eq_base = defaults.eq_base;
+                self.settings.tone_eq = defaults.tone_eq;
             }
             SettingsScope::Keymap => {
                 self.settings.keymap.clear();
                 self.settings.key_config = defaults.key_config;
                 self.settings.macros = defaults.macros;
                 self.settings.combos = defaults.combos;
+                self.settings.media_gestures = defaults.media_gestures;
             }
         }
         if self.settings != before {
@@ -263,6 +324,7 @@ impl Controls {
                 || before.key_config != self.settings.key_config
                 || before.macros != self.settings.macros
                 || before.combos != self.settings.combos
+                || before.media_gestures != self.settings.media_gestures
             {
                 self.keymap_dirty = true;
             }

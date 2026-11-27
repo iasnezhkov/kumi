@@ -54,9 +54,13 @@ fun AppSettingsScreen(prefs: AppPreferences) {
         }
     }
 
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    RegisterScreenScroll(listState)
+
     Column(Modifier.fillMaxSize()) {
         LazyColumn(
             Modifier.weight(1f).fillMaxWidth(),
+            state = listState,
             contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {

@@ -11,7 +11,7 @@ use kumi_icd::{
     Ack, CaseError, CountResult, RebootTarget, Slot, SlotInfo, SlotResult, SlotState, SlotTable, UpdateBlock, UpdateManifest,
     Version,
 };
-use kumi_layout::{BOOT_JOURNAL, CRASH_LOG, HEADER_SIZE, ImageHeader, PAGE, SECTOR, SlotId, WriteGuard, Writer};
+use kumi_layout::{BOOT_JOURNAL, CRASH_LOG, FLAG_LAB, HEADER_SIZE, ImageHeader, PAGE, SECTOR, SlotId, WriteGuard, Writer};
 use kumi_settings::{Store, StoredSettings};
 use sha2::{Digest, Sha256};
 
@@ -293,7 +293,13 @@ impl<F: NorFlash + WriteGuard> Storage<F> {
 
     #[inline(never)]
     #[cfg_attr(target_arch = "riscv32", unsafe(link_section = ".text.storage"))]
-    pub fn update_finish(&mut self, mut verify: impl FnMut(&mut F, SlotId) -> bool) -> SlotResult {
+    pub fn update_finish(&mut self, verify: impl FnMut(&mut F, SlotId) -> bool) -> SlotResult {
+        self.update_finish_with_policy(false, verify)
+    }
+
+    #[inline(never)]
+    #[cfg_attr(target_arch = "riscv32", unsafe(link_section = ".text.storage"))]
+    pub fn update_finish_with_policy(&mut self, allow_lab: bool, mut verify: impl FnMut(&mut F, SlotId) -> bool) -> SlotResult {
         self.ready()?;
         let incoming = self.incoming.take().ok_or(CaseError::WrongState)?;
         let manifest = incoming.manifest;
@@ -305,15 +311,19 @@ impl<F: NorFlash + WriteGuard> Storage<F> {
         let mut raw = [0u8; HEADER_SIZE];
         self.flash.read(slot.region().offset, &mut raw).map_err(|_| CaseError::HardwareFault)?;
         let header = ImageHeader::decode(&raw, slot.region().size).map_err(|_| CaseError::VerifyFailed)?;
+        let state = self.state.ok_or(CaseError::WrongState)?;
+        let confirmed_floor = policy::min_confirmed_generation(&state);
         if version(&header) != manifest.version
             || header.payload_size + HEADER_SIZE as u32 != manifest.size
             || header.signature[..32] != manifest.signature[0]
             || header.signature[32..] != manifest.signature[1]
+            || header.generation < confirmed_floor
+            || (!allow_lab && header.flags & FLAG_LAB != 0)
             || !verify(&mut self.flash, slot)
         {
             return Err(CaseError::VerifyFailed);
         }
-        self.persist(policy::finish_update(&self.state.ok_or(CaseError::WrongState)?, slot, header.generation))?;
+        self.persist(policy::finish_update(&state, slot, header.generation))?;
         let result =
             SlotInfo { slot: manifest.slot, state: SlotState::Trial, version: Some(manifest.version), size: manifest.size };
         self.table.slots[slot.index()] = result;

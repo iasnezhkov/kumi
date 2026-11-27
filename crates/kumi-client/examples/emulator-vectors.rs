@@ -85,7 +85,8 @@ fn slot_info(build: &str, running_from_ram: bool, lab: bool) -> DeviceInfo {
         flash_jedec: [0xc8, 0x65, 0x16],
         serial: EMULATOR_SERIAL,
         running_from_ram,
-        capabilities: (Capabilities::KEYMAP | Capabilities::LAYERS | Capabilities::DEVELOPER)
+        capabilities: (Capabilities::KEYMAP | Capabilities::LAYERS)
+            .with(Capabilities::DEVELOPER, running_from_ram || lab)
             .with(Capabilities::AUDIO_OUT | Capabilities::PARAMETRIC_EQ | Capabilities::DSD, audio)
             .with(Capabilities::LAB, lab),
     }
@@ -155,17 +156,42 @@ fn developer() -> Value {
     for (index, (name, kind)) in faults.into_iter().enumerate() {
         fault.insert(
             name.into(),
-            pair::<DevFault>(0x2200 + index as u16, &kind, &[("ok", Ok(())), ("not_unlocked", Err(CaseError::NotUnlocked))]),
+            pair::<DevFault>(
+                0x2200 + index as u16,
+                &kind,
+                &[("ok", Ok(())), ("not_unlocked", Err(CaseError::NotUnlocked)), ("unsupported", Err(CaseError::Unsupported))],
+            ),
         );
     }
     let report = FlashTestReport::default();
     json!({
-        "unlock": pair::<DevUnlock>(0x2100, &DevUnlockRequest { seconds: MAX_UNLOCK_SECONDS }, &[("ok", Ok(()))]),
+        "unlock": pair::<DevUnlock>(
+            0x2100,
+            &DevUnlockRequest { seconds: MAX_UNLOCK_SECONDS },
+            &[("ok", Ok(())), ("unsupported", Err(CaseError::Unsupported))],
+        ),
         "unlock_one_second": pair::<DevUnlock>(0x2101, &DevUnlockRequest { seconds: 1 }, &[("ok", Ok(()))]),
         "subscribe_keys_uart": pair::<SubscribeEvents>(0x2102, &(EventMask::KEYS | EventMask::UART), &[
             ("unlocked", Ok(EventMask::KEYS | EventMask::UART)),
             ("locked", Ok(EventMask::KEYS)),
         ]),
+        "subscribe_keys_only": pair::<SubscribeEvents>(0x2103, &EventMask::KEYS, &[
+            ("ok", Ok(EventMask::KEYS)),
+            ("presence_required", Err(CaseError::PresenceRequired)),
+        ]),
+        "presence": pair::<GetPresence>(0x2104, &(), &[
+            ("locked", PresenceStatus { tier: 0, remaining_ms: 0, passthrough: false }),
+        ]),
+        "set_key_presence": pair::<SetKey>(
+            0x2105,
+            &KeymapEntry { layer: 0, source: 4, action: KeyAction::Key(5) },
+            &[("ok", Ok(())), ("presence_required", Err(CaseError::PresenceRequired))],
+        ),
+        "reboot_bootrom_presence": pair::<Reboot>(
+            0x2106,
+            &RebootTarget::BootRom,
+            &[("ok", Ok(())), ("presence_required", Err(CaseError::PresenceRequired))],
+        ),
         "fault": fault,
         "flash_test": pair::<DevFlashTest>(0x2300, &(), &[
             ("not_unlocked", Err(CaseError::NotUnlocked)),
@@ -175,10 +201,12 @@ fn developer() -> Value {
         "peek_chip_id": pair::<DevPeek>(0x2600, &PeekRequest { address: 0x2000_0000, words: 1 }, &[
             ("ok", Ok(WordBlock { address: 0x2000_0000, words: heapless::Vec::from_slice(&[0x4901_4480]).unwrap() })),
             ("not_unlocked", Err(CaseError::NotUnlocked)),
+            ("unsupported", Err(CaseError::Unsupported)),
         ]),
         "peek_flash_head": pair::<DevPeek>(0x2602, &PeekRequest { address: 0x4800_0000, words: 1 }, &[
             ("erased", Ok(WordBlock { address: 0x4800_0000, words: heapless::Vec::from_slice(&[0xFFFF_FFFF]).unwrap() })),
             ("not_unlocked", Err(CaseError::NotUnlocked)),
+            ("unsupported", Err(CaseError::Unsupported)),
         ]),
         "poke_gpio": pair::<DevPoke>(0x2601, &PokeRequest { address: 0x2011_0120, value: 0, mask: u32::MAX }, &[
             ("ok", Ok(0)),
@@ -258,7 +286,8 @@ fn main() {
             flash_jedec: [0xc8, 0x65, 0x16],
             serial: EMULATOR_SERIAL,
             running_from_ram: audio,
-            capabilities: (Capabilities::KEYMAP | Capabilities::LAYERS | Capabilities::DEVELOPER)
+            capabilities: (Capabilities::KEYMAP | Capabilities::LAYERS)
+                .with(Capabilities::DEVELOPER, audio)
                 .with(Capabilities::AUDIO_OUT | Capabilities::PARAMETRIC_EQ | Capabilities::DSD, audio)
                 .with(Capabilities::PERSISTENT_SETTINGS | Capabilities::FIRMWARE_UPDATE, booted_image_size.is_some()),
         },
@@ -297,12 +326,11 @@ fn main() {
     add::<ResetSettings>(&mut vectors, "reset_audio", SettingsScope::Audio, Ok(()));
     let entry = KeymapEntry { layer: 0, source: 4, action: KeyAction::Key(5) };
     add::<SetKey>(&mut vectors, "remap_a_to_b", entry, Ok(()));
-    let entries = [entry].into_iter().collect();
     add::<GetKeymap>(
         &mut vectors,
         "keymap_roundtrip",
         KeymapPage { layer: 0, start: 0 },
-        Ok(KeymapChunk { entries, more: false }),
+        Ok(KeymapChunk { entries: [entry].into_iter().collect(), more: false }),
     );
     for source in 5..=16 {
         add::<SetKey>(
@@ -419,7 +447,12 @@ fn main() {
         (),
         Err(if booted_image_size.is_some() { CaseError::WrongState } else { CaseError::Unsupported }),
     );
-    add::<DevFault>(&mut vectors, "fault_locked", FaultKind::Panic, Err(CaseError::NotUnlocked));
+    add::<DevFault>(
+        &mut vectors,
+        "fault_locked",
+        FaultKind::Panic,
+        Err(if booted_image_size.is_some() { CaseError::Unsupported } else { CaseError::NotUnlocked }),
+    );
     add::<DevFlashTest>(
         &mut vectors,
         "flash_test_locked",
@@ -429,13 +462,18 @@ fn main() {
     add::<SubscribeEvents>(&mut vectors, "subscribe_uart_locked", EventMask::UART, Ok(EventMask::NONE));
     let refused = |error| Err(if booted_image_size.is_some() { CaseError::WrongState } else { error });
     add::<DevAudio>(&mut vectors, "audio_locked", AudioBenchRequest::Status, refused(CaseError::NotUnlocked));
-    add::<DevUnlock>(&mut vectors, "developer_unlock", DevUnlockRequest { seconds: 10 }, Ok(()));
+    add::<DevUnlock>(
+        &mut vectors,
+        "developer_unlock",
+        DevUnlockRequest { seconds: 10 },
+        if booted_image_size.is_some() { Err(CaseError::Unsupported) } else { Ok(()) },
+    );
     add::<DevUnlock>(&mut vectors, "bad_unlock_duration", DevUnlockRequest { seconds: 0 }, Err(CaseError::InvalidArgument));
     add::<DevPeek>(
         &mut vectors,
         "peek_usb_refused",
         PeekRequest { address: 0x200D_0000, words: 1 },
-        Err(CaseError::InvalidArgument),
+        Err(if booted_image_size.is_some() { CaseError::Unsupported } else { CaseError::InvalidArgument }),
     );
     add::<DevPoke>(
         &mut vectors,

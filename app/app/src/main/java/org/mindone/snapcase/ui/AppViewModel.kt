@@ -2,6 +2,11 @@
 package org.mindone.snapcase.ui
 
 import android.app.Application
+import android.content.Context
+import android.media.AudioAttributes
+import android.media.AudioDeviceInfo
+import android.media.AudioFocusRequest
+import android.media.AudioManager
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import java.io.File
@@ -68,6 +73,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val usbPort = UsbCasePort(application, stock::releaseForServiceMode)
     private val casePort = SwitchableCasePort(usbPort)
     private var simulated: SimulatedCase? = null
+    @Volatile private var flashFocusRequest: AudioFocusRequest? = null
 
     val kumi: KumiSession = KumiSession(viewModelScope, caseDispatcher, NativeBridge, casePort, flowBusy = { flows.busy }, onConnected = {
         if (!prefs.settings.value.kumiSeen) prefs.setKumiSeen(true)
@@ -88,6 +94,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         BackupStore(File(application.filesDir, "kumi")),
         publicKey = { catalog.publicKey },
         onFinished = { reloadCatalog() },
+        onFlashAudioFocus = ::setFlashAudioFocus,
     )
 
     val installBlocked: StateFlow<Boolean> = flows.missingGate.map { it != null }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
@@ -171,7 +178,55 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         catalog.reload(prefs.settings.value.demoMode, kumi.kind.value == CaseKind.KUMI)
     }
 
+    fun applyLineOutVolume(enabled: Boolean) {
+        val app = getApplication<Application>()
+        val am = app.getSystemService(AudioManager::class.java) ?: return
+        val store = app.getSharedPreferences(LINE_OUT_PREFS, Context.MODE_PRIVATE)
+        val usbAttached = am.getDevices(AudioManager.GET_DEVICES_OUTPUTS).any {
+            it.type == AudioDeviceInfo.TYPE_USB_HEADSET || it.type == AudioDeviceInfo.TYPE_USB_DEVICE
+        }
+        val maxVol = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+        if (enabled) {
+            if (!usbAttached || maxVol <= 0) return
+            val cur = am.getStreamVolume(AudioManager.STREAM_MUSIC)
+            if (!store.contains(KEY_PRE_LINE_OUT_VOL) && cur < maxVol) {
+                store.edit().putInt(KEY_PRE_LINE_OUT_VOL, cur).apply()
+            }
+            runCatching { am.setStreamVolume(AudioManager.STREAM_MUSIC, maxVol, AudioManager.FLAG_SHOW_UI) }
+        } else {
+            if (!store.contains(KEY_PRE_LINE_OUT_VOL)) return
+            val saved = store.getInt(KEY_PRE_LINE_OUT_VOL, -1)
+            store.edit().remove(KEY_PRE_LINE_OUT_VOL).apply()
+            if (usbAttached && saved in 0..maxVol) {
+                runCatching { am.setStreamVolume(AudioManager.STREAM_MUSIC, saved, AudioManager.FLAG_SHOW_UI) }
+            }
+        }
+    }
+
+    private fun setFlashAudioFocus(active: Boolean) {
+        val am = getApplication<Application>().getSystemService(AudioManager::class.java) ?: return
+        if (active) {
+            if (flashFocusRequest != null) return
+            val req = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
+                .setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_MEDIA)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                        .build(),
+                )
+                .setOnAudioFocusChangeListener {}
+                .build()
+            flashFocusRequest = req
+            runCatching { am.requestAudioFocus(req) }
+        } else {
+            val req = flashFocusRequest ?: return
+            flashFocusRequest = null
+            runCatching { am.abandonAudioFocusRequest(req) }
+        }
+    }
+
     override fun onCleared() {
+        setFlashAudioFocus(false)
         org.mindone.snapcase.kumi.SnapLiveMirror.bindSession(null)
         caseExecutor.execute {
             stock.close()
@@ -181,5 +236,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             simulated = null
         }
         caseDispatcher.close()
+    }
+
+    private companion object {
+        private const val LINE_OUT_PREFS = "kumi_line_out_vol"
+        private const val KEY_PRE_LINE_OUT_VOL = "pre_music_vol"
     }
 }

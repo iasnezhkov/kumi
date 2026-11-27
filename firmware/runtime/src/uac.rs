@@ -20,8 +20,8 @@ use kumi_dsp::Equalizer;
 use kumi_icd::{
     AUDIO_MONITOR_FEEDBACK, AUDIO_MONITOR_LOST_PACKETS, AUDIO_MONITOR_OVERRUNS, AUDIO_MONITOR_PACKETS, AUDIO_MONITOR_PAUSES,
     AUDIO_MONITOR_QUEUED, AUDIO_MONITOR_UNDERRUNS, AudioBenchState, AudioChannel, AudioCounters, AudioFailure, AudioFault,
-    AudioMeters, AudioPhase, AudioStart, AudioStatus, AudioStream, DacExtras, DspSettings, Jack, OutputSettings, StreamFormat,
-    StreamKind,
+    AudioMeters, AudioPhase, AudioSpectrum, AudioStart, AudioStatus, AudioStream, DacExtras, DspExtras, DspSettings,
+    EqBaseSettings, Jack, OutputSettings, StreamFormat, StreamKind, ToneEqSettings,
 };
 
 use crate::app::Shared;
@@ -131,6 +131,7 @@ pub struct Function {
     restart: bool,
     volume: bool,
     local_mute: bool,
+    ota_silence: bool,
     speed_ok: bool,
     calibration_failed: bool,
     stream: Option<StreamFormat>,
@@ -138,6 +139,9 @@ pub struct Function {
     counters: AudioCounters,
     meters: AudioMeters,
     meters_consumed: bool,
+    spectrum: AudioSpectrum,
+    spectrum_consumed: bool,
+    spectrum_until_ms: Option<u32>,
 }
 
 impl Function {
@@ -150,6 +154,7 @@ impl Function {
             restart: false,
             volume: false,
             local_mute: false,
+            ota_silence: false,
             speed_ok: true,
             calibration_failed: false,
             stream: None,
@@ -157,6 +162,9 @@ impl Function {
             counters: AudioCounters::default(),
             meters: AudioMeters::default(),
             meters_consumed: false,
+            spectrum: AudioSpectrum::default(),
+            spectrum_consumed: false,
+            spectrum_until_ms: None,
         }
     }
 
@@ -166,9 +174,24 @@ impl Function {
         self.local_mute
     }
 
+    pub fn set_ota_silence(&mut self, silence: bool) {
+        self.ota_silence = silence;
+        self.volume = true;
+    }
+
     pub fn take_meters(&mut self) -> AudioMeters {
         self.meters_consumed = true;
         self.meters
+    }
+
+    pub fn take_spectrum(&mut self, now_ms: u32) -> AudioSpectrum {
+        self.spectrum_consumed = true;
+        self.spectrum_until_ms = Some(now_ms.wrapping_add(1_500));
+        self.spectrum
+    }
+
+    fn spectrum_wanted(&self, now_ms: u32) -> bool {
+        self.spectrum_until_ms.is_some_and(|until| until.wrapping_sub(now_ms) < 0x8000_0000)
     }
 
     pub fn set_present(&mut self) {
@@ -343,6 +366,7 @@ pub struct Stream<'d> {
     volume_retries: u8,
     alternate: u8,
     suspended_alternate: Option<u8>,
+    ota_suspended: Option<u8>,
     dop_marker: u8,
     packets: u32,
     lost: u32,
@@ -353,6 +377,7 @@ pub struct Stream<'d> {
     last_packet_cycles: u32,
     publish_ms: u32,
     meter_ms: u32,
+    spectrum_ms: u32,
     pauses: u32,
 }
 
@@ -379,6 +404,7 @@ impl<'d> Stream<'d> {
             volume_retries: 0,
             alternate: 0,
             suspended_alternate: None,
+            ota_suspended: None,
             dop_marker: DOP_MARKER_A,
             packets: 0,
             lost: 0,
@@ -389,6 +415,7 @@ impl<'d> Stream<'d> {
             last_packet_cycles: 0,
             publish_ms: u32::MAX,
             meter_ms: 0,
+            spectrum_ms: 0,
             pauses: 0,
         }
     }
@@ -422,11 +449,20 @@ impl<'d> Stream<'d> {
     fn sync_settings(&mut self, shared: &Shared, rate: u32, transport: Transport) -> bool {
         let dsd = transport.is_dsd();
         let rev = shared.settings_revision.get();
-        let (output, dsp, extras, active_eq, profile) = {
+        let (output, dsp, dsp_extras, extras, active_eq, profile, eq_base, tone_eq) = {
             let controls = shared.controls.borrow();
             let active = controls.active_eq();
             let profile = active.and_then(|slot| controls.eq(slot).ok().flatten());
-            (controls.output(), controls.dsp(), controls.dac_extras(), active, profile)
+            (
+                controls.output(),
+                controls.dsp(),
+                controls.dsp_extras(),
+                controls.dac_extras(),
+                active,
+                profile,
+                controls.eq_base(),
+                controls.tone_eq(),
+            )
         };
         let host_vol = if dsd || extras.line_out {
             0
@@ -453,7 +489,7 @@ impl<'d> Stream<'d> {
                 self.volume_retries = 0;
             }
             if self.active()
-                && (previous.class_h != extras.class_h
+                && (dac::effective_class_h(previous) != dac::effective_class_h(extras)
                     || (!dsd
                         && (previous.high_pass_filter != extras.high_pass_filter || previous.de_emphasis != extras.de_emphasis)))
             {
@@ -477,7 +513,13 @@ impl<'d> Stream<'d> {
             }
         };
         let effective_dsp = if dsd { DspSettings::default() } else { dsp };
+        let effective_dsp_extras = if dsd { DspExtras::default() } else { dsp_extras };
+        let effective_base = if dsd { EqBaseSettings::default() } else { eq_base };
+        let effective_tone = if dsd { ToneEqSettings::default() } else { tone_eq };
         let _ = self.equalizer.configure_dsp(effective_dsp, rate);
+        let _ = self.equalizer.configure_dsp_extras(effective_dsp_extras, rate);
+        let _ = self.equalizer.configure_base_eq(&effective_base, rate);
+        let _ = self.equalizer.configure_tone_eq(effective_tone, rate);
         self.equalizer.set_loudness_volume(host_vol);
         self.settings_rev = rev;
         shared.uac.borrow_mut().eq_active = applied;
@@ -490,6 +532,21 @@ impl<'d> Stream<'d> {
     #[unsafe(link_section = ".text.hot")]
     #[inline(never)]
     pub fn poll(&mut self, shared: &Shared) {
+        if shared.uac.borrow().ota_silence {
+            if self.alternate != 0 || self.active() {
+                let alt = self.alternate;
+                self.stop(shared);
+                if alt != 0 && self.ota_suspended.is_none() {
+                    self.ota_suspended = Some(alt);
+                }
+            }
+            return;
+        }
+        if self.alternate == 0
+            && let Some(alt) = self.ota_suspended.take()
+        {
+            self.select(shared, alt);
+        }
         let (alternate, mut restart, volume) = shared.uac.borrow_mut().take();
         if self.settings_rev != shared.settings_revision.get() {
             let (rate, transport) = self
@@ -567,6 +624,7 @@ impl<'d> Stream<'d> {
     #[inline(never)]
     fn select(&mut self, shared: &Shared, alternate: u8) {
         self.suspended_alternate = None;
+        self.ota_suspended = None;
         self.dop.reset();
         self.dop_marker = DOP_MARKER_A;
         if alternate == uac2::RAW_ALTERNATE {
@@ -684,7 +742,11 @@ impl<'d> Stream<'d> {
             function.stream = None;
             function.meters = AudioMeters::default();
             function.meters_consumed = false;
+            function.spectrum = AudioSpectrum::default();
+            function.spectrum_consumed = false;
+            function.spectrum_until_ms = None;
         }
+        self.equalizer.set_spectrum_enabled(false);
         shared.audio.borrow_mut().set_usb(None);
     }
 
@@ -1027,14 +1089,28 @@ impl<'d> Stream<'d> {
         function.counters = counters.icd(self.dac_faults);
         let running = matches!(self.phase, Phase::Running { waiting: false, .. });
         let ms = shared.milliseconds.get();
+        let want_spectrum = running && !self.is_dsd() && function.spectrum_wanted(ms);
+        self.equalizer.set_spectrum_enabled(want_spectrum);
         if !running {
             self.equalizer.reset_meters();
             function.meters = AudioMeters::default();
             function.meters_consumed = false;
-        } else if function.meters_consumed || ms.wrapping_sub(self.meter_ms) >= 50 {
-            function.meters = self.equalizer.take_meters(true);
-            function.meters_consumed = false;
-            self.meter_ms = ms;
+            function.spectrum = AudioSpectrum::default();
+            function.spectrum_consumed = false;
+        } else {
+            if function.meters_consumed || ms.wrapping_sub(self.meter_ms) >= 50 {
+                function.meters = self.equalizer.take_meters(true);
+                function.meters_consumed = false;
+                self.meter_ms = ms;
+            }
+            if want_spectrum && (function.spectrum_consumed || ms.wrapping_sub(self.spectrum_ms) >= 40) {
+                function.spectrum = self.equalizer.take_spectrum(true);
+                function.spectrum_consumed = false;
+                self.spectrum_ms = ms;
+            } else if !want_spectrum {
+                function.spectrum = AudioSpectrum::default();
+                function.spectrum_consumed = false;
+            }
         }
     }
 

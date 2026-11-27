@@ -16,12 +16,14 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
@@ -39,6 +41,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -48,6 +51,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -107,12 +111,12 @@ fun AccessibilitySetupCard(
     if (active) {
         Surface(
             Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(16.dp),
+            shape = RoundedCornerShape(14.dp),
             color = MaterialTheme.colorScheme.primaryContainer,
             contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
         ) {
             Row(
-                Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
@@ -239,142 +243,206 @@ fun SystemShortcutsScreen(
     val settings by prefs.settings.collectAsStateWithLifecycle()
     val serviceActive = rememberAccessibilityActive()
     val detectedHome by RemapAccessibilityService.detectedHomeFlow.collectAsStateWithLifecycle()
+    var page by rememberSaveable { mutableIntStateOf(0) }
     var addingSpeedKey by remember { mutableStateOf(false) }
     var managingExcluded by remember { mutableStateOf(false) }
 
+    val shTab = stringResource(R.string.kumi_key_hint_tab)
     val shSearch = stringResource(R.string.home_search_try)
+    val shSearchToggle = stringResource(R.string.home_search_enable)
     val shBack = stringResource(R.string.shortcuts_back_toggle)
-    val shMedia = stringResource(R.string.shortcuts_media_title)
+    val shMedia = stringResource(R.string.shortcuts_media_toggle)
     val shSpeed = stringResource(R.string.ime_speed_key_add_title)
 
+    val listState = rememberLazyListState()
+    LaunchedEffect(page) { listState.scrollToItem(0) }
+    RegisterScreenTabs(count = 2, current = page, onSelect = { page = it })
+    RegisterScreenScroll(listState)
+
     RegisterScreenKeys(
-        key = listOf(settings.homeTypeToSearch, settings.backspaceAsBack, settings.mediaDoubleTap, settings.speedKeysEnabled),
-        shortcuts = listOf(
-            "Q" to stringResource(R.string.home_search_title),
-            "W" to shSearch,
-            "E" to shBack,
-            "M" to shMedia,
-            "R" to shSpeed,
-            "⌫" to stringResource(R.string.action_back),
-        ),
+        key = listOf(page, settings.homeTypeToSearch, settings.backspaceAsBack, settings.mediaDoubleTap, settings.speedKeysEnabled),
+        shortcuts = if (page == 0) {
+            listOf(
+                "Q" to shSearchToggle,
+                "W" to shSearch,
+                "E" to shBack,
+                "M" to shMedia,
+                "↵" to shTab,
+                "⌫" to stringResource(R.string.action_back),
+            )
+        } else {
+            listOf(
+                "R" to shSpeed,
+                "↵" to shTab,
+                "⌫" to stringResource(R.string.action_back),
+            )
+        },
     ) { code, repeat ->
         if (repeat) return@RegisterScreenKeys false
-        when (code) {
-            KeyEvent.KEYCODE_Q -> { prefs.setHomeTypeToSearch(!settings.homeTypeToSearch); true }
-            KeyEvent.KEYCODE_W -> { QuickSearchActivity.launch(context, null); true }
-            KeyEvent.KEYCODE_E -> { prefs.setBackspaceAsBack(!settings.backspaceAsBack); true }
-            KeyEvent.KEYCODE_M -> { prefs.setMediaDoubleTap(!settings.mediaDoubleTap); true }
-            KeyEvent.KEYCODE_R -> { addingSpeedKey = true; true }
-            else -> false
+        if (page == 0) {
+            when (code) {
+                KeyEvent.KEYCODE_Q -> { prefs.setHomeTypeToSearch(!settings.homeTypeToSearch); true }
+                KeyEvent.KEYCODE_W -> { QuickSearchActivity.launch(context, null); true }
+                KeyEvent.KEYCODE_E -> { prefs.setBackspaceAsBack(!settings.backspaceAsBack); true }
+                KeyEvent.KEYCODE_M -> { prefs.setMediaDoubleTap(!settings.mediaDoubleTap); true }
+                else -> false
+            }
+        } else {
+            when (code) {
+                KeyEvent.KEYCODE_R -> { addingSpeedKey = true; true }
+                else -> false
+            }
         }
     }
 
     Column(Modifier.fillMaxSize()) {
-        InlineTitleHeader(
-            title = stringResource(R.string.shortcuts_title),
+        InlineTabHeader(
+            tabs = listOf(
+                stringResource(R.string.shortcuts_tile),
+                stringResource(R.string.shortcuts_tab_speed_keys),
+            ),
+            selectedIndex = page,
+            onSelect = { page = it },
             onBack = onBack,
         )
         LazyColumn(
             Modifier.weight(1f).fillMaxWidth().padding(horizontal = 12.dp),
-            contentPadding = PaddingValues(top = 2.dp, bottom = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            state = listState,
+            contentPadding = PaddingValues(top = 0.dp, bottom = 6.dp),
+            verticalArrangement = Arrangement.spacedBy(5.dp),
         ) {
-            item {
-                AccessibilitySetupCard(
-                    active = serviceActive,
-                    detectedHome = detectedHome,
-                )
-            }
-            item {
-                SectionCard(title = stringResource(R.string.home_search_title)) {
-                    Note(stringResource(R.string.home_search_desc))
-                    ToggleRow(
-                        title = stringResource(R.string.home_search_enable),
-                        checked = settings.homeTypeToSearch,
-                        onCheckedChange = prefs::setHomeTypeToSearch,
-                        keyHint = "Q",
+            if (page == 0 || !serviceActive) {
+                item {
+                    AccessibilitySetupCard(
+                        active = serviceActive,
+                        detectedHome = detectedHome,
                     )
-                    OutlinedButton(
-                        onClick = { QuickSearchActivity.launch(context, null) },
-                        modifier = Modifier.fillMaxWidth(),
+                }
+            }
+            if (page == 0) {
+                item {
+                    SectionCard(
+                        title = stringResource(R.string.home_search_title),
+                        compact = true,
+                        trailing = {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                KeycapBadge("Q")
+                                Switch(
+                                    checked = settings.homeTypeToSearch,
+                                    onCheckedChange = prefs::setHomeTypeToSearch,
+                                )
+                            }
+                        },
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            KeycapBadge("W")
-                            Text(stringResource(R.string.home_search_try))
+                        Note(stringResource(R.string.home_search_desc))
+                        OutlinedButton(
+                            onClick = { QuickSearchActivity.launch(context, null) },
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                            modifier = Modifier.fillMaxWidth().height(34.dp),
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                KeycapBadge("W")
+                                Text(stringResource(R.string.home_search_try), style = MaterialTheme.typography.labelLarge)
+                            }
                         }
                     }
                 }
-            }
-            item {
-                SectionCard(title = stringResource(R.string.shortcuts_back_title)) {
-                    Note(stringResource(R.string.shortcuts_back_desc))
-                    ToggleRow(
-                        title = stringResource(R.string.shortcuts_back_toggle),
-                        checked = settings.backspaceAsBack,
-                        onCheckedChange = prefs::setBackspaceAsBack,
-                        keyHint = "E",
-                    )
-                    OutlinedButton(
-                        onClick = { managingExcluded = true },
-                        modifier = Modifier.fillMaxWidth(),
+                item {
+                    SectionCard(
+                        title = stringResource(R.string.shortcuts_back_title),
+                        compact = true,
+                        trailing = {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                KeycapBadge("E")
+                                Switch(
+                                    checked = settings.backspaceAsBack,
+                                    onCheckedChange = prefs::setBackspaceAsBack,
+                                )
+                            }
+                        },
                     ) {
-                        Text(stringResource(R.string.shortcuts_back_excluded_btn, settings.backspaceBackExcluded.size))
-                    }
-                }
-            }
-            item {
-                SectionCard(title = stringResource(R.string.shortcuts_media_title)) {
-                    Note(stringResource(R.string.shortcuts_media_desc))
-                    ToggleRow(
-                        title = stringResource(R.string.shortcuts_media_toggle),
-                        checked = settings.mediaDoubleTap,
-                        onCheckedChange = prefs::setMediaDoubleTap,
-                        keyHint = "M",
-                    )
-                }
-            }
-            item {
-                SectionCard(
-                    title = stringResource(R.string.ime_speed_keys_title),
-                    trailing = { Note(stringResource(R.string.ime_speed_keys_summary, settings.speedKeys.size)) },
-                ) {
-                    Note(stringResource(R.string.ime_speed_keys_desc))
-                    ToggleRow(
-                        title = stringResource(R.string.ime_speed_keys_enable),
-                        checked = settings.speedKeysEnabled,
-                        onCheckedChange = prefs::setSpeedKeysEnabled,
-                    )
-                    if (settings.speedKeys.isEmpty()) {
-                        Note(stringResource(R.string.ime_speed_keys_empty))
-                    } else {
-                        settings.speedKeys.sortedBy { it.keyCode }.forEach { binding ->
-                            ListItem(
-                                headlineContent = { Text("${QuickLauncher.keyLetter(binding.keyCode)}  →  ${binding.label}") },
-                                supportingContent = { Text(binding.packageName) },
-                                trailingContent = {
-                                    IconButton(onClick = { prefs.removeSpeedKey(binding.keyCode) }) {
-                                        Icon(painterResource(R.drawable.ic_delete), contentDescription = stringResource(R.string.action_remove))
-                                    }
-                                },
-                                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                        Note(stringResource(R.string.shortcuts_back_desc))
+                        OutlinedButton(
+                            onClick = { managingExcluded = true },
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                            modifier = Modifier.fillMaxWidth().height(34.dp),
+                        ) {
+                            Text(
+                                stringResource(R.string.shortcuts_back_excluded_btn, settings.backspaceBackExcluded.size),
+                                style = MaterialTheme.typography.labelLarge,
                             )
                         }
                     }
-                    FilledTonalButton(onClick = { addingSpeedKey = true }, modifier = Modifier.fillMaxWidth()) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            KeycapBadge("R")
-                            Text(stringResource(R.string.ime_speed_key_add_title))
+                }
+                item {
+                    SectionCard(
+                        title = stringResource(R.string.shortcuts_media_title),
+                        compact = true,
+                        trailing = {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                KeycapBadge("M")
+                                Switch(
+                                    checked = settings.mediaDoubleTap,
+                                    onCheckedChange = prefs::setMediaDoubleTap,
+                                )
+                            }
+                        },
+                    ) {
+                        Note(stringResource(R.string.shortcuts_media_desc))
+                    }
+                }
+            } else {
+                item {
+                    SectionCard(
+                        title = stringResource(R.string.ime_speed_keys_title),
+                        trailing = { Note(stringResource(R.string.ime_speed_keys_summary, settings.speedKeys.size)) },
+                    ) {
+                        Note(stringResource(R.string.ime_speed_keys_desc))
+                        ToggleRow(
+                            title = stringResource(R.string.ime_speed_keys_enable),
+                            checked = settings.speedKeysEnabled,
+                            onCheckedChange = prefs::setSpeedKeysEnabled,
+                        )
+                        if (settings.speedKeys.isEmpty()) {
+                            Note(stringResource(R.string.ime_speed_keys_empty))
+                        } else {
+                            settings.speedKeys.sortedBy { it.keyCode }.forEach { binding ->
+                                ListItem(
+                                    headlineContent = { Text("${QuickLauncher.keyLetter(binding.keyCode)}  →  ${binding.label}") },
+                                    supportingContent = { Text(binding.packageName) },
+                                    trailingContent = {
+                                        IconButton(onClick = { prefs.removeSpeedKey(binding.keyCode) }) {
+                                            Icon(painterResource(R.drawable.ic_delete), contentDescription = stringResource(R.string.action_remove))
+                                        }
+                                    },
+                                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                                )
+                            }
+                        }
+                        FilledTonalButton(onClick = { addingSpeedKey = true }, modifier = Modifier.fillMaxWidth()) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                KeycapBadge("R")
+                                Text(stringResource(R.string.ime_speed_key_add_title))
+                            }
                         }
                     }
                 }
             }
         }
         KeyboardHintStrip(
-            hints = listOf(
-                "W" to shSearch,
-                "E" to stringResource(R.string.shortcuts_back_title),
-                "⌫" to stringResource(R.string.action_back),
-            ),
+            hints = if (page == 0) {
+                listOf(
+                    "W" to shSearch,
+                    "E" to stringResource(R.string.shortcuts_back_title),
+                    "↵" to shTab,
+                )
+            } else {
+                listOf(
+                    "R" to shSpeed,
+                    "↵" to shTab,
+                    "⌫" to stringResource(R.string.action_back),
+                )
+            },
         )
     }
 

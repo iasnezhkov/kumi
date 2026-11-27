@@ -4,17 +4,18 @@
 use kumi_control::Controls;
 use kumi_icd::frame;
 use kumi_icd::{
-    Ack, AudioBenchRequest, AudioBenchResult, AudioMeters, AudioStatus, ByteBlock, CaseError, CountResult, DevUnlockRequest,
-    DeviceInfo, DiagnosticsResult, EventMask, EventsResult, FaultKind, FlashTestResult, I2cRequest, I2cResult, ImpedanceResult,
-    KeyboardStatus, PeekRequest, PokeRequest, RebootTarget, SettingsScope, SlotResult, SlotTable, TelemetryResult,
-    TestToneRequest, UpdateBlock, UpdateManifest, WordsResult,
+    Ack, AudioBenchRequest, AudioBenchResult, AudioMeters, AudioSpectrum, AudioStatus, ByteBlock, CaseError, CountResult,
+    DevUnlockRequest, DeviceInfo, DiagnosticsResult, EventMask, EventsResult, FaultKind, FlashTestResult, I2cRequest, I2cResult,
+    ImpedanceResult, KeyboardStatus, PeekRequest, PokeRequest, PresenceStatus, RebootTarget, SettingsScope, SlotResult,
+    SlotTable, TelemetryResult, TestToneRequest, UpdateBlock, UpdateManifest, WordsResult,
 };
 use kumi_icd::{
     ClearKeymap, ConfirmBoot, DevAudio, DevFault, DevFlashTest, DevI2c, DevPeek, DevPoke, DevUartSend, DevUnlock, GetAudioMeters,
-    GetAudioStatus, GetCombo, GetDacExtras, GetDeviceInfo, GetDiagnostics, GetDspSettings, GetEq, GetKeyConfig,
-    GetKeyboardStatus, GetKeymap, GetMacro, GetMic, GetOutputSettings, GetSlots, GetTelemetry, MeasureImpedance, PingEndpoint,
-    PlayTestTone, Reboot, ResetSettings, SaveSettings, SelectEq, SetCombo, SetDacExtras, SetDspSettings, SetEq, SetKey,
-    SetKeyConfig, SetMacro, SetMic, SetOutputSettings, SubscribeEvents, UpdateBegin, UpdateChunk, UpdateFinish,
+    GetAudioSpectrum, GetAudioStatus, GetCombo, GetDacExtras, GetDeviceInfo, GetDiagnostics, GetDspExtras, GetDspSettings, GetEq,
+    GetEqBase, GetKeyConfig, GetKeyboardStatus, GetKeymap, GetMacro, GetMediaGestures, GetMic, GetOutputSettings, GetPresence,
+    GetSlots, GetTelemetry, GetToneEq, MeasureImpedance, PingEndpoint, PlayTestTone, Reboot, ResetSettings, SaveSettings,
+    SelectEq, SetCombo, SetDacExtras, SetDspExtras, SetDspSettings, SetEq, SetEqBase, SetKey, SetKeyConfig, SetMacro,
+    SetMediaGestures, SetMic, SetOutputSettings, SetToneEq, SubscribeEvents, UpdateBegin, UpdateChunk, UpdateFinish,
 };
 use kumi_settings::StoredSettings;
 use postcard_rpc::header::VarKey;
@@ -61,11 +62,20 @@ pub trait Provider {
     fn telemetry(&mut self) -> TelemetryResult {
         Err(CaseError::Unsupported)
     }
+    fn presence(&mut self) -> PresenceStatus {
+        PresenceStatus::default()
+    }
+    fn require_tier1(&mut self) -> Ack {
+        Ok(())
+    }
     fn measure_impedance(&mut self) -> ImpedanceResult {
         Err(CaseError::Unsupported)
     }
     fn audio_meters(&mut self) -> AudioMeters {
         AudioMeters::default()
+    }
+    fn audio_spectrum(&mut self) -> AudioSpectrum {
+        AudioSpectrum::default()
     }
     fn play_test_tone(&mut self, request: TestToneRequest) -> Ack {
         let _ = request;
@@ -169,6 +179,7 @@ fn route<P: Provider>(
         k if is::<GetDeviceInfo>(k) => reply::<GetDeviceInfo, _>(payload, out, |()| provider.device_info()),
         k if is::<GetDiagnostics>(k) => reply::<GetDiagnostics, _>(payload, out, |()| provider.diagnostics()),
         k if is::<GetTelemetry>(k) => reply::<GetTelemetry, _>(payload, out, |()| provider.telemetry()),
+        k if is::<GetPresence>(k) => reply::<GetPresence, _>(payload, out, |()| provider.presence()),
         k if is::<SubscribeEvents>(k) => reply::<SubscribeEvents, _>(payload, out, |events| provider.subscribe(events)),
         k if is::<GetAudioStatus>(k) => reply::<GetAudioStatus, _>(payload, out, |()| provider.audio_status()),
         k if is::<GetOutputSettings>(k) => reply::<GetOutputSettings, _>(payload, out, |()| controls.output()),
@@ -187,8 +198,23 @@ fn route<P: Provider>(
             reply::<MeasureImpedance, _>(payload, out, |()| audio(provider).and_then(|()| provider.measure_impedance()))
         }
         k if is::<GetAudioMeters>(k) => reply::<GetAudioMeters, _>(payload, out, |()| provider.audio_meters()),
+        k if is::<GetAudioSpectrum>(k) => reply::<GetAudioSpectrum, _>(payload, out, |()| provider.audio_spectrum()),
+        k if is::<GetDspExtras>(k) => reply::<GetDspExtras, _>(payload, out, |()| controls.dsp_extras()),
+        k if is::<SetDspExtras>(k) => {
+            reply::<SetDspExtras, _>(payload, out, |value| audio(provider).and_then(|()| controls.set_dsp_extras(value)))
+        }
+        k if is::<GetEqBase>(k) => reply::<GetEqBase, _>(payload, out, |()| controls.eq_base()),
+        k if is::<SetEqBase>(k) => {
+            reply::<SetEqBase, _>(payload, out, |value| audio(provider).and_then(|()| controls.set_eq_base(value)))
+        }
+        k if is::<GetToneEq>(k) => reply::<GetToneEq, _>(payload, out, |()| controls.tone_eq()),
+        k if is::<SetToneEq>(k) => {
+            reply::<SetToneEq, _>(payload, out, |value| audio(provider).and_then(|()| controls.set_tone_eq(value)))
+        }
         k if is::<PlayTestTone>(k) => reply::<PlayTestTone, _>(payload, out, |request: TestToneRequest| {
-            audio(provider).and_then(|()| valid(request.is_valid())).and_then(|()| provider.play_test_tone(request))
+            audio(provider)?;
+            valid(request.is_valid())?;
+            provider.play_test_tone(request)
         }),
         k if is::<GetEq>(k) => reply::<GetEq, _>(payload, out, |slot| controls.eq(slot)),
         k if is::<SetEq>(k) => reply::<SetEq, _>(payload, out, |value| audio(provider).and_then(|()| controls.set_eq(value))),
@@ -206,6 +232,8 @@ fn route<P: Provider>(
         k if is::<SetCombo>(k) => reply::<SetCombo, _>(payload, out, |update| controls.set_combo(update)),
         k if is::<GetKeyConfig>(k) => reply::<GetKeyConfig, _>(payload, out, |()| controls.key_config()),
         k if is::<SetKeyConfig>(k) => reply::<SetKeyConfig, _>(payload, out, |value| controls.set_key_config(value)),
+        k if is::<GetMediaGestures>(k) => reply::<GetMediaGestures, _>(payload, out, |()| controls.media_gestures()),
+        k if is::<SetMediaGestures>(k) => reply::<SetMediaGestures, _>(payload, out, |value| controls.set_media_gestures(value)),
         k if is::<GetKeyboardStatus>(k) => reply::<GetKeyboardStatus, _>(payload, out, |()| provider.keyboard_status()),
         k if is::<SaveSettings>(k) => reply::<SaveSettings, _>(payload, out, |()| {
             let res = provider.save(controls.settings());

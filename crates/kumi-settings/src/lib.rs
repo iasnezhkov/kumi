@@ -4,13 +4,13 @@
 use embedded_storage::nor_flash::NorFlash;
 use heapless::Vec;
 use kumi_icd::{
-    COMBO_SLOTS, ClassHMode, CrossfeedMode, DacExtras, DacFilter, DspSettings, EQ_SLOTS, EqProfile, KeyCombo, KeyConfig,
-    KeymapEntry, MACRO_SLOTS, MacroProgram, MicSettings, OutputSettings,
+    COMBO_SLOTS, ClassHMode, CrossfeedMode, DacExtras, DacFilter, DspExtras, DspSettings, EQ_SLOTS, EqBaseSettings, EqProfile,
+    KeyCombo, KeyConfig, KeymapEntry, MACRO_SLOTS, MacroProgram, MediaGestures, MicSettings, OutputSettings, ToneEqSettings,
 };
 use kumi_layout::{SECTOR, SETTINGS, crc32_update, get32};
 use serde::{Deserialize, Serialize};
 
-pub const FORMAT: u8 = 5;
+pub const FORMAT: u8 = 6;
 pub const KEYMAP_MAX: usize = 96;
 pub const MAX_RECORD: usize = 2048;
 
@@ -123,6 +123,20 @@ struct StoredSettingsV4 {
     combos: [Option<KeyCombo>; COMBO_SLOTS as usize],
 }
 
+#[derive(Deserialize)]
+struct StoredSettingsV5 {
+    output: OutputSettings,
+    mic: MicSettings,
+    active_eq: Option<u8>,
+    eq_slots: [Option<EqProfile>; EQ_SLOTS as usize],
+    keymap: Vec<KeymapEntry, KEYMAP_MAX>,
+    dsp: DspSettings,
+    dac_extras: DacExtras,
+    key_config: KeyConfig,
+    macros: [Option<MacroProgram>; MACRO_SLOTS as usize],
+    combos: [Option<KeyCombo>; COMBO_SLOTS as usize],
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct StoredSettings {
     pub output: OutputSettings,
@@ -135,6 +149,10 @@ pub struct StoredSettings {
     pub key_config: KeyConfig,
     pub macros: [Option<MacroProgram>; MACRO_SLOTS as usize],
     pub combos: [Option<KeyCombo>; COMBO_SLOTS as usize],
+    pub dsp_extras: DspExtras,
+    pub eq_base: EqBaseSettings,
+    pub tone_eq: ToneEqSettings,
+    pub media_gestures: MediaGestures,
 }
 
 impl Default for StoredSettings {
@@ -155,6 +173,10 @@ impl Default for StoredSettings {
             key_config: KeyConfig::default(),
             macros: core::array::from_fn(|_| None),
             combos: [None; COMBO_SLOTS as usize],
+            dsp_extras: DspExtras::default(),
+            eq_base: EqBaseSettings::default(),
+            tone_eq: ToneEqSettings::default(),
+            media_gestures: MediaGestures::default(),
         }
     }
 }
@@ -167,11 +189,7 @@ impl StoredSettings {
             active_eq: v1.active_eq,
             eq_slots: v1.eq_slots,
             keymap: v1.keymap,
-            dsp: DspSettings::default(),
-            dac_extras: DacExtras::default(),
-            key_config: KeyConfig::default(),
-            macros: core::array::from_fn(|_| None),
-            combos: [None; COMBO_SLOTS as usize],
+            ..Self::default()
         }
     }
 
@@ -183,10 +201,7 @@ impl StoredSettings {
             eq_slots: v2.eq_slots,
             keymap: v2.keymap,
             dsp: v2.dsp.into(),
-            dac_extras: DacExtras::default(),
-            key_config: KeyConfig::default(),
-            macros: core::array::from_fn(|_| None),
-            combos: [None; COMBO_SLOTS as usize],
+            ..Self::default()
         }
     }
 
@@ -201,7 +216,7 @@ impl StoredSettings {
             dac_extras: v3.dac_extras.into(),
             key_config: v3.key_config.into(),
             macros: v3.macros,
-            combos: [None; COMBO_SLOTS as usize],
+            ..Self::default()
         }
     }
 
@@ -217,6 +232,23 @@ impl StoredSettings {
             key_config: v4.key_config,
             macros: v4.macros,
             combos: v4.combos,
+            ..Self::default()
+        }
+    }
+
+    fn from_v5(v5: StoredSettingsV5) -> Self {
+        Self {
+            output: v5.output,
+            mic: v5.mic,
+            active_eq: v5.active_eq,
+            eq_slots: v5.eq_slots,
+            keymap: v5.keymap,
+            dsp: v5.dsp,
+            dac_extras: v5.dac_extras,
+            key_config: v5.key_config,
+            macros: v5.macros,
+            combos: v5.combos,
+            ..Self::default()
         }
     }
 }
@@ -252,7 +284,10 @@ pub fn decode(format: u8, payload: &[u8]) -> Option<StoredSettings> {
         4 => postcard::take_from_bytes::<StoredSettingsV4>(payload)
             .ok()
             .and_then(|(v, rest)| rest.is_empty().then(|| StoredSettings::from_v4(v))),
-        5 => postcard::take_from_bytes::<StoredSettings>(payload).ok().and_then(|(v, rest)| rest.is_empty().then_some(v)),
+        5 => postcard::take_from_bytes::<StoredSettingsV5>(payload)
+            .ok()
+            .and_then(|(v, rest)| rest.is_empty().then(|| StoredSettings::from_v5(v))),
+        6 => postcard::take_from_bytes::<StoredSettings>(payload).ok().and_then(|(v, rest)| rest.is_empty().then_some(v)),
         _ => None,
     }
 }

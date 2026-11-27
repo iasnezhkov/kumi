@@ -53,6 +53,8 @@ class KumiClient(private val bridge: KumiBridge, private val link: KumiLink, pri
 
     fun telemetry(): SystemTelemetry = SystemTelemetry.from(obj(Replies.caseResult(call("system/telemetry"))))
 
+    fun presence(): PresenceStatus = PresenceStatus.from(obj(call("system/presence")))
+
     fun subscribe(events: EventMask): EventMask = EventMask.from(obj(Replies.caseResult(call("events/subscribe", events.toJson()))))
 
     fun audioStatus(): AudioStatus = AudioStatus.from(obj(call("audio/status")))
@@ -72,6 +74,20 @@ class KumiClient(private val bridge: KumiBridge, private val link: KumiLink, pri
     fun measureImpedance(): ImpedanceReport = ImpedanceReport.from(obj(Replies.caseResult(call("audio/impedance"))))
 
     fun audioMeters(): AudioMeters = AudioMeters.from(obj(call("audio/meters")))
+
+    fun audioSpectrum(): AudioSpectrum = AudioSpectrum.from(obj(call("audio/spectrum")))
+
+    fun dspExtras(): DspExtras = DspExtras.from(obj(call("audio/dsp-extras/get")))
+
+    fun setDspExtras(value: DspExtras) = ack("audio/dsp-extras/set", value.toJson())
+
+    fun eqBase(): EqBaseSettings = EqBaseSettings.from(obj(call("audio/eq/base/get")))
+
+    fun setEqBase(value: EqBaseSettings) = ack("audio/eq/base/set", value.toJson())
+
+    fun toneEq(): ToneEqSettings = ToneEqSettings.from(obj(call("audio/eq/tone/get")))
+
+    fun setToneEq(value: ToneEqSettings) = ack("audio/eq/tone/set", value.toJson())
 
     fun playTestTone(request: TestToneRequest) = ack("audio/test-tone", request.toJson())
 
@@ -112,6 +128,10 @@ class KumiClient(private val bridge: KumiBridge, private val link: KumiLink, pri
     fun keyConfig(): KeyConfig = KeyConfig.from(obj(call("keys/config/get")))
 
     fun setKeyConfig(value: KeyConfig) = ack("keys/config/set", value.toJson())
+
+    fun mediaGestures(): MediaGestures = MediaGestures.from(obj(call("keys/media/get")))
+
+    fun setMediaGestures(value: MediaGestures) = ack("keys/media/set", value.toJson())
 
     fun keyboardStatus(): KeyboardStatus = KeyboardStatus.from(obj(call("keys/status")))
 

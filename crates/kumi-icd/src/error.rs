@@ -16,11 +16,12 @@ pub enum CaseError {
     StorageFull,
     VerifyFailed,
     WrongState,
+    PresenceRequired,
     Unknown(u16),
 }
 
 impl CaseError {
-    pub const KNOWN: [CaseError; 8] = [
+    pub const KNOWN: [CaseError; 9] = [
         CaseError::Unsupported,
         CaseError::InvalidArgument,
         CaseError::Busy,
@@ -29,9 +30,19 @@ impl CaseError {
         CaseError::StorageFull,
         CaseError::VerifyFailed,
         CaseError::WrongState,
+        CaseError::PresenceRequired,
     ];
-    pub const NAMES: [&'static str; 8] =
-        ["Unsupported", "InvalidArgument", "Busy", "NotUnlocked", "HardwareFault", "StorageFull", "VerifyFailed", "WrongState"];
+    pub const NAMES: [&'static str; 9] = [
+        "Unsupported",
+        "InvalidArgument",
+        "Busy",
+        "NotUnlocked",
+        "HardwareFault",
+        "StorageFull",
+        "VerifyFailed",
+        "WrongState",
+        "PresenceRequired",
+    ];
 
     pub const fn code(self) -> u16 {
         match self {
@@ -43,6 +54,7 @@ impl CaseError {
             CaseError::StorageFull => 5,
             CaseError::VerifyFailed => 6,
             CaseError::WrongState => 7,
+            CaseError::PresenceRequired => 8,
             CaseError::Unknown(code) => code,
         }
     }

@@ -223,20 +223,21 @@ fun KumiFirmwareScreen(
     val shTab = stringResource(R.string.kumi_key_hint_tab)
     val shBack = stringResource(R.string.action_back)
     val shDetails = stringResource(R.string.kumi_details_title)
+    if (!stockOnboarding && !busy) {
+        RegisterScreenTabs(count = 3, current = page, onSelect = { page = it })
+        RegisterScreenScroll(listState)
+    }
     RegisterScreenKeys(
         key = listOf(page, stockOnboarding, busy, kind),
         shortcuts = when {
             busy -> emptyList()
             stockOnboarding -> listOf("⌫" to shBack)
-            page == 0 && kind == CaseKind.KUMI -> listOf("D" to shDetails, "Tab" to shTab, "⌫" to shBack)
-            else -> listOf("Tab" to shTab, "⌫" to shBack)
+            page == 0 && kind == CaseKind.KUMI -> listOf("D" to shDetails, "↵" to shTab, "⌫" to shBack)
+            else -> listOf("↵" to shTab, "⌫" to shBack)
         },
     ) { code, repeat ->
         if (repeat || busy) return@RegisterScreenKeys false
-        if (!stockOnboarding && code == KeyEvent.KEYCODE_TAB) {
-            page = (page + 1) % 3
-            true
-        } else if (!stockOnboarding && page == 0 && kind == CaseKind.KUMI && code == KeyEvent.KEYCODE_D) {
+        if (!stockOnboarding && page == 0 && kind == CaseKind.KUMI && code == KeyEvent.KEYCODE_D) {
             onOpenDetails()
             true
         } else {
@@ -560,9 +561,9 @@ fun KumiFirmwareScreen(
             }
             KeyboardHintStrip(
                 hints = if (page == 0 && kind == CaseKind.KUMI) {
-                    listOf("D" to shDetails, "Tab" to shTab, "⌫" to shBack)
+                    listOf("D" to shDetails, "↵" to shTab, "⌫" to shBack)
                 } else {
-                    listOf("Tab" to shTab, "⌫" to shBack)
+                    listOf("↵" to shTab, "⌫" to shBack)
                 },
             )
         }

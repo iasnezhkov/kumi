@@ -18,21 +18,28 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.annotation.StringRes
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -87,7 +94,13 @@ class MainActivity : ComponentActivity() {
         consumeRouteIntent(intent)
         setContent {
             SnapTheme {
-                SnapApp(appViewModel, keyBus, deepLink) { _deepLink.value = null }
+                SnapApp(
+                    appViewModel,
+                    keyBus,
+                    deepLink,
+                    onDeepLinkConsumed = { _deepLink.value = null },
+                    onExit = { finish() },
+                )
             }
         }
     }
@@ -116,7 +129,7 @@ class MainActivity : ComponentActivity() {
     private fun consumeRouteIntent(intent: Intent?) {
         if (intent?.action != KumiBridgeProvider.ACTION_OPEN_SCREEN) return
         val target = intent.getStringExtra(KumiBridgeProvider.EXTRA_SCREEN)?.trim()?.lowercase().orEmpty()
-        if (target.isEmpty()) return
+        if (target !in ALLOWED_DEEP_LINKS) return
         val slot = intent.getIntExtra(KumiBridgeProvider.EXTRA_EQ_SLOT, -1).takeIf { it in 0..3 }
         _deepLink.value = DeepLinkRoute(target, slot)
     }
@@ -162,6 +175,7 @@ fun SnapApp(
     keyBus: ScreenKeyBus = remember { ScreenKeyBus() },
     deepLinkFlow: StateFlow<DeepLinkRoute?> = remember { MutableStateFlow(null) },
     onDeepLinkConsumed: () -> Unit = {},
+    onExit: () -> Unit = {},
 ) {
     var screen by rememberSaveable { mutableStateOf(Screen.HOME) }
     var testerReturn by rememberSaveable { mutableStateOf(Screen.HOME) }
@@ -205,6 +219,7 @@ fun SnapApp(
     val catalogState by viewModel.catalog.state.collectAsStateWithLifecycle()
     val appUpdate = catalogState.appUpdate(BuildConfig.VERSION_NAME)
     val home by viewModel.home.collectAsStateWithLifecycle()
+    val kumiState by viewModel.kumi.state.collectAsStateWithLifecycle()
     val kind by viewModel.kumi.kind.collectAsStateWithLifecycle()
     val legacy by viewModel.legacyVisible.collectAsStateWithLifecycle()
     val streaming by viewModel.kumiStreaming.collectAsStateWithLifecycle()
@@ -226,10 +241,14 @@ fun SnapApp(
         else -> Screen.HOME
     }
 
-    DisposableEffect(keyBus, screen, back, busy) {
+    DisposableEffect(keyBus, screen, back, busy, onExit) {
         keyBus.globalBackHandler = {
-            if (!busy && screen != Screen.HOME && screen != Screen.TESTER) {
-                screen = back
+            if (!busy && screen != Screen.TESTER) {
+                if (screen == Screen.HOME) {
+                    onExit()
+                } else {
+                    screen = back
+                }
                 true
             } else {
                 false
@@ -260,7 +279,9 @@ fun SnapApp(
         }
     }
     LaunchedEffect(lifecycleOwner, home, screen, streaming) {
-        if (home != HomeKind.KUMI || !streaming || (screen != Screen.HOME && screen != Screen.KUMI_AUDIO)) return@LaunchedEffect
+        if (home != HomeKind.KUMI || !streaming || (screen != Screen.HOME && screen != Screen.KUMI_AUDIO && screen != Screen.KUMI_EQ)) {
+            return@LaunchedEffect
+        }
         lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
             while (true) {
                 viewModel.kumi.pollMetersNow()
@@ -276,6 +297,10 @@ fun SnapApp(
     }
 
     if (screen == Screen.TESTER) {
+        DisposableEffect(Unit) {
+            viewModel.kumi.setKeyEventsSubscribed(true)
+            onDispose { viewModel.kumi.setKeyEventsSubscribed(false) }
+        }
         BackHandler { screen = testerReturn }
         KeyTesterScreen(onClose = { screen = testerReturn })
         return
@@ -437,6 +462,7 @@ fun SnapApp(
                             eqReturn = Screen.KUMI_AUDIO
                             screen = Screen.KUMI_EQ
                         },
+                        onLineOutToggled = viewModel::applyLineOutVolume,
                     )
                     Screen.LEGACY -> stockHome()
                     Screen.KEYS -> KeysScreen(viewModel.prefs)
@@ -502,7 +528,33 @@ fun SnapApp(
                 if (keyBus.helpVisible && keyBus.shortcuts.isNotEmpty()) {
                     KeyboardShortcutOverlay(
                         shortcuts = keyBus.shortcuts,
+                        hasScroll = keyBus.hasScroll,
+                        mediaDoubleTap = settings.mediaDoubleTap,
                         onDismiss = { keyBus.helpVisible = false },
+                    )
+                }
+
+                kumiState.presencePrompt?.let { prompt ->
+                    AlertDialog(
+                        onDismissRequest = { viewModel.kumi.dismissPresencePrompt() },
+                        title = { Text(stringResource(R.string.kumi_presence_title)) },
+                        text = {
+                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Text(
+                                    stringResource(
+                                        if (prompt.tier >= 2) R.string.kumi_presence_tier2_body else R.string.kumi_presence_tier1_body,
+                                    ),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
+                                LinearProgressIndicator(Modifier.fillMaxWidth())
+                            }
+                        },
+                        confirmButton = {},
+                        dismissButton = {
+                            TextButton(onClick = { viewModel.kumi.dismissPresencePrompt() }) {
+                                Text(stringResource(R.string.action_cancel))
+                            }
+                        },
                     )
                 }
             }
@@ -510,6 +562,7 @@ fun SnapApp(
     }
 }
 
+private val ALLOWED_DEEP_LINKS = setOf("home", "audio", "eq", "keys", "firmware", "ime", "shortcuts", "settings")
 private val LEGACY_SCREENS = setOf(Screen.LEGACY, Screen.TECH)
 
 private const val POLL_MS = 3500L

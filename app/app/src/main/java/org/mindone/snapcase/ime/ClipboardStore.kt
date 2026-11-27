@@ -33,10 +33,13 @@ class ClipboardStore(private val file: File) {
         load()
     }
 
+    private fun pruneExpired(list: List<ClipboardItem>, nowMs: Long): List<ClipboardItem> =
+        list.filter { it.pinned || (nowMs - it.timestampMs) in 0L..UNPINNED_TTL_MS }
+
     fun record(raw: String, nowMs: Long = System.currentTimeMillis()) {
         val text = raw.trim()
         if (text.isEmpty() || text.length > MAX_ITEM_CHARS) return
-        val current = _items.value
+        val current = pruneExpired(_items.value, nowMs)
         val existing = current.firstOrNull { it.text == text }
         val updated = ClipboardItem(text, nowMs, pinned = existing?.pinned == true)
         val rest = current.filterNot { it.text == text }
@@ -44,23 +47,24 @@ class ClipboardStore(private val file: File) {
         val unpinned = (listOf(updated).filterNot { it.pinned } + rest.filterNot { it.pinned })
             .take((MAX_ITEMS - pinned.size).coerceAtLeast(0))
         _items.value = pinned + unpinned
-        save()
+        if (updated.pinned) save()
     }
 
     fun togglePin(text: String) {
-        val updated = _items.value.map { if (it.text == text) it.copy(pinned = !it.pinned) else it }
+        val nowMs = System.currentTimeMillis()
+        val updated = pruneExpired(_items.value, nowMs).map { if (it.text == text) it.copy(pinned = !it.pinned) else it }
         _items.value = updated.filter { it.pinned } + updated.filterNot { it.pinned }
         save()
     }
 
     fun remove(text: String) {
-        _items.value = _items.value.filterNot { it.text == text }
-        save()
+        val removedPinned = _items.value.any { it.text == text && it.pinned }
+        _items.value = pruneExpired(_items.value.filterNot { it.text == text }, System.currentTimeMillis())
+        if (removedPinned) save()
     }
 
     fun clearUnpinned() {
         _items.value = _items.value.filter { it.pinned }
-        save()
     }
 
     fun attachSystemClipboard(context: Context): () -> Unit {
@@ -86,20 +90,22 @@ class ClipboardStore(private val file: File) {
             (0 until array.length()).mapNotNull { i ->
                 val obj = array.optJSONObject(i) ?: return@mapNotNull null
                 val text = obj.optString("t").takeIf { it.isNotEmpty() } ?: return@mapNotNull null
-                ClipboardItem(text, obj.optLong("ts", 0L), obj.optBoolean("p", false))
+                val pinned = obj.optBoolean("p", false)
+                if (!pinned) return@mapNotNull null
+                ClipboardItem(text, obj.optLong("ts", 0L), true)
             }
         }.getOrDefault(emptyList())
         _items.value = parsed.take(MAX_ITEMS)
     }
 
     private fun save() {
-        val snapshot = _items.value
+        val snapshot = _items.value.filter { it.pinned }
         writer.execute {
             runCatching {
                 file.parentFile?.mkdirs()
                 val array = JSONArray()
                 snapshot.forEach { item ->
-                    array.put(JSONObject().put("t", item.text).put("ts", item.timestampMs).put("p", item.pinned))
+                    array.put(JSONObject().put("t", item.text).put("ts", item.timestampMs).put("p", true))
                 }
                 val tmp = File(file.parentFile, "${file.name}.tmp")
                 tmp.writeText(array.toString())
@@ -114,6 +120,7 @@ class ClipboardStore(private val file: File) {
     companion object {
         const val MAX_ITEMS = 20
         const val MAX_ITEM_CHARS = 2_000
+        const val UNPINNED_TTL_MS = 3_600_000L
 
         fun defaultFile(context: Context) = File(File(context.filesDir, "ime"), "clipboard.json")
 

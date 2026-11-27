@@ -80,9 +80,27 @@ class ContractTest {
         assertEquals(53, imp.rightAcOhms)
         val meters = AudioMeters.from(fixture.getJSONObject("audio_meters"))
         assertTrue(meters.active && meters.limiterHits == 3L)
+        val spectrum = AudioSpectrum.from(fixture.getJSONObject("audio_spectrum"))
+        assertTrue(spectrum.active && spectrum.bandsDbX2.size == KumiLimits.SPECTRUM_BANDS && spectrum.autoLevelGainCentiDb == -120)
+        val dspExtras = DspExtras.from(fixture.getJSONObject("dsp_extras"))
+        assertTrue(dspExtras.valid && dspExtras.autoLevel && dspExtras.monoBassHz == 120)
+        assertTrue(same(dspExtras.toJson(), fixture.getJSONObject("dsp_extras")))
+        val eqBase = EqBaseSettings.from(fixture.getJSONObject("eq_base"))
+        assertTrue(eqBase.valid && eqBase.enabled && eqBase.profile.bands.size == 2)
+        assertTrue(same(eqBase.toJson(), fixture.getJSONObject("eq_base")))
+        val toneEq = ToneEqSettings.from(fixture.getJSONObject("tone_eq"))
+        assertTrue(toneEq.valid && toneEq.enabled && toneEq.subBassCentiDb == 250)
+        assertTrue(same(toneEq.toJson(), fixture.getJSONObject("tone_eq")))
+        val mediaGestures = MediaGestures.from(fixture.getJSONObject("media_gestures"))
+        assertTrue(mediaGestures.valid && mediaGestures.enabled && mediaGestures.doubleSpaceUsage == 205)
+        assertTrue(same(mediaGestures.toJson(), fixture.getJSONObject("media_gestures")))
         val telemetry = SystemTelemetry.from(Replies.caseResult(fixture.getJSONObject("system_telemetry")) as JSONObject)
         assertEquals(90, telemetry.cpuMhz)
         assertTrue(telemetry.dcdcActive)
+        val presence = PresenceStatus.from(fixture.getJSONObject("presence_status"))
+        assertEquals(1, presence.tier)
+        assertEquals(90_000L, presence.remainingMs)
+        assertFalse(presence.passthrough)
 
         val profile = EqProfile.from(fixture.getJSONObject("eq_profile"))
         assertEquals(2, profile.bands.size)
@@ -140,6 +158,20 @@ class ContractTest {
         assertTrue(same(bridge.last("audio/output/set"), fixture.get("output")))
         client.setDsp(DspSettings.from(fixture.getJSONObject("dsp")))
         assertTrue(same(bridge.last("audio/dsp/set"), fixture.get("dsp")))
+        client.setDspExtras(DspExtras.from(fixture.getJSONObject("dsp_extras")))
+        assertTrue(same(bridge.last("audio/dsp-extras/set"), fixture.get("dsp_extras")))
+        client.setEqBase(EqBaseSettings.from(fixture.getJSONObject("eq_base")))
+        assertTrue(same(bridge.last("audio/eq/base/set"), fixture.get("eq_base")))
+        client.setToneEq(ToneEqSettings.from(fixture.getJSONObject("tone_eq")))
+        assertTrue(same(bridge.last("audio/eq/tone/set"), fixture.get("tone_eq")))
+        client.setMediaGestures(MediaGestures.from(fixture.getJSONObject("media_gestures")))
+        assertTrue(same(bridge.last("keys/media/set"), fixture.get("media_gestures")))
+        assertTrue(client.audioSpectrum().active)
+        assertTrue(client.dspExtras().autoLevel)
+        assertTrue(client.eqBase().enabled)
+        assertTrue(client.toneEq().enabled)
+        assertTrue(client.mediaGestures().enabled)
+        assertEquals(1, client.presence().tier)
         client.setDacExtras(DacExtras.from(fixture.getJSONObject("dac_extras")))
         assertTrue(same(bridge.last("audio/dac-extras/set"), fixture.get("dac_extras")))
         client.playTestTone(TestToneRequest.from(fixture.getJSONObject("test_tone_request")))
@@ -370,11 +402,14 @@ class ContractTest {
         val paths = fixture.getJSONArray("endpoints").strings().toSet()
         val used = setOf(
             "device/info", "audio/status", "audio/output/get", "audio/output/set", "audio/dsp/get", "audio/dsp/set",
-            "audio/dac-extras/get", "audio/dac-extras/set", "audio/impedance", "audio/meters", "audio/test-tone",
+            "audio/dac-extras/get", "audio/dac-extras/set", "audio/impedance", "audio/meters", "audio/spectrum",
+            "audio/dsp-extras/get", "audio/dsp-extras/set", "audio/eq/base/get", "audio/eq/base/set",
+            "audio/eq/tone/get", "audio/eq/tone/set", "audio/test-tone",
             "audio/eq/get", "audio/eq/set", "audio/eq/select", "audio/mic/get", "audio/mic/set",
             "keys/map/get", "keys/map/set", "keys/map/clear", "keys/macro/get", "keys/macro/set",
-            "keys/combo/get", "keys/combo/set", "keys/config/get", "keys/config/set", "keys/status", "settings/reset",
-            "system/slots", "system/reboot", "system/confirm", "system/diagnostics", "system/telemetry",
+            "keys/combo/get", "keys/combo/set", "keys/config/get", "keys/config/set",
+            "keys/media/get", "keys/media/set", "keys/status", "settings/reset",
+            "system/slots", "system/reboot", "system/confirm", "system/diagnostics", "system/telemetry", "system/presence",
             "dev/unlock", "dev/peek", "dev/poke", "dev/i2c", "dev/audio", "events/subscribe",
         )
         assertTrue((used - paths).toString(), paths.containsAll(used))
@@ -424,6 +459,12 @@ class ContractTest {
                 "dev/audio" -> """{"ok":${fixture.getJSONObject("audio_bench_running")}}"""
                 "events/subscribe" -> """{"ok":{"Ok":{"keys":true,"log":false,"audio":false,"uart":false}}}"""
                 "audio/eq/get" -> """{"ok":{"Ok":null}}"""
+                "audio/spectrum" -> """{"ok":${fixture.getJSONObject("audio_spectrum")}}"""
+                "audio/dsp-extras/get" -> """{"ok":${fixture.getJSONObject("dsp_extras")}}"""
+                "audio/eq/base/get" -> """{"ok":${fixture.getJSONObject("eq_base")}}"""
+                "audio/eq/tone/get" -> """{"ok":${fixture.getJSONObject("tone_eq")}}"""
+                "keys/media/get" -> """{"ok":${fixture.getJSONObject("media_gestures")}}"""
+                "system/presence" -> """{"ok":${fixture.getJSONObject("presence_status")}}"""
                 "keys/macro/get" -> """{"ok":{"Ok":null}}"""
                 "keys/combo/get" -> """{"ok":{"Ok":null}}"""
                 else -> """{"ok":{"Ok":null}}"""
@@ -474,6 +515,18 @@ class ContractTest {
             "key_min_combo_term_ms" to KumiLimits.KEY_MIN_COMBO_TERM_MS.toLong(),
             "key_max_combo_term_ms" to KumiLimits.KEY_MAX_COMBO_TERM_MS.toLong(),
             "meter_floor_centi_db" to KumiLimits.METER_FLOOR_CENTI_DB.toLong(),
+            "spectrum_bands" to KumiLimits.SPECTRUM_BANDS.toLong(),
+            "lufs_floor_centi" to KumiLimits.LUFS_FLOOR_CENTI.toLong(),
+            "dsp_min_target_lufs" to KumiLimits.DSP_MIN_TARGET_LUFS.toLong(),
+            "dsp_max_target_lufs" to KumiLimits.DSP_MAX_TARGET_LUFS.toLong(),
+            "dsp_min_subsonic_hz" to KumiLimits.DSP_MIN_SUBSONIC_HZ.toLong(),
+            "dsp_max_subsonic_hz" to KumiLimits.DSP_MAX_SUBSONIC_HZ.toLong(),
+            "dsp_min_mono_bass_hz" to KumiLimits.DSP_MIN_MONO_BASS_HZ.toLong(),
+            "dsp_max_mono_bass_hz" to KumiLimits.DSP_MAX_MONO_BASS_HZ.toLong(),
+            "tone_max_gain_centi_db" to KumiLimits.TONE_MAX_GAIN_CENTI_DB.toLong(),
+            "media_min_window_ms" to KumiLimits.MEDIA_MIN_WINDOW_MS.toLong(),
+            "media_max_window_ms" to KumiLimits.MEDIA_MAX_WINDOW_MS.toLong(),
+            "media_max_idle_guard_ms" to KumiLimits.MEDIA_MAX_IDLE_GUARD_MS.toLong(),
             "test_tone_min_hz" to KumiLimits.TEST_TONE_MIN_HZ.toLong(),
             "test_tone_max_hz" to KumiLimits.TEST_TONE_MAX_HZ.toLong(),
             "test_tone_min_ms" to KumiLimits.TEST_TONE_MIN_MS.toLong(),

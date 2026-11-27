@@ -33,11 +33,14 @@ object AppUpdateInstaller {
         }
         val installed = runCatching {
             pm.getPackageInfo(context.packageName, PackageManager.PackageInfoFlags.of(flags.toLong()))
-        }.getOrNull()
+        }.getOrNull() ?: return AppInstallResult.InvalidApk
         val archiveSigners = archive.signingInfo?.apkContentsSigners
-        val installedSigners = installed?.signingInfo?.apkContentsSigners
-        if (archiveSigners != null && installedSigners != null && !signaturesMatch(archiveSigners, installedSigners)) {
+        val installedSigners = installed.signingInfo?.apkContentsSigners
+        if (archiveSigners.isNullOrEmpty() || installedSigners.isNullOrEmpty() || !signaturesMatch(archiveSigners, installedSigners)) {
             return AppInstallResult.SignatureMismatch(BuildConfig.SYSTEM_BUILD)
+        }
+        if (archive.longVersionCode < installed.longVersionCode) {
+            return AppInstallResult.InvalidApk
         }
         if (!pm.canRequestPackageInstalls()) {
             val perm = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {

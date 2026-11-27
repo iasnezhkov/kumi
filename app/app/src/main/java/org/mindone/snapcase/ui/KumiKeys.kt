@@ -4,6 +4,7 @@ package org.mindone.snapcase.ui
 import android.view.KeyEvent
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -17,6 +18,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -104,25 +106,27 @@ fun KumiKeysScreen(
     val keyConfig = state.keyConfig ?: KeyConfig()
     val freeComboSlot = state.combos.indexOfFirst { it == null }
 
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    androidx.compose.runtime.LaunchedEffect(page) { listState.scrollToItem(0) }
+
     val shTab = stringResource(R.string.kumi_key_hint_tab)
     val shStrip = stringResource(R.string.kumi_tile_strip)
     val shShortcuts = stringResource(R.string.shortcuts_tile)
     val shAndroidKeys = stringResource(R.string.keys_title)
     val shTester = stringResource(R.string.kb_tester_title)
 
+    RegisterScreenTabs(count = 3, current = page, onSelect = { page = it })
+    RegisterScreenScroll(listState)
+
     RegisterScreenKeys(
         key = Pair(page, layer),
         shortcuts = if (page == 0) {
-            listOf("Q" to shStrip, "F" to shShortcuts, "W" to shAndroidKeys, "E" to shTester, "Tab" to shTab)
+            listOf("Q" to shStrip, "F" to shShortcuts, "W" to shAndroidKeys, "E" to shTester, "↵" to shTab)
         } else {
-            listOf("Tab" to shTab, "⌫" to stringResource(R.string.action_back))
+            listOf("↵" to shTab, "⌫" to stringResource(R.string.action_back))
         },
     ) { code, repeat ->
         if (repeat) return@RegisterScreenKeys false
-        if (code == KeyEvent.KEYCODE_TAB) {
-            page = (page + 1) % 3
-            return@RegisterScreenKeys true
-        }
         if (page == 0) {
             when (code) {
                 KeyEvent.KEYCODE_Q -> { onOpenIme(); true }
@@ -149,6 +153,7 @@ fun KumiKeysScreen(
         )
         LazyColumn(
             Modifier.weight(1f).fillMaxWidth().padding(horizontal = 12.dp),
+            state = listState,
             contentPadding = PaddingValues(top = 2.dp, bottom = 8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
@@ -362,6 +367,55 @@ fun KumiKeysScreen(
                                 }
                             }
                         }
+                        state.mediaGestures?.let { media ->
+                            item {
+                                SectionCard(stringResource(R.string.kumi_keys_media_title)) {
+                                    ToggleRow(
+                                        title = stringResource(R.string.kumi_keys_media_toggle),
+                                        subtitle = stringResource(R.string.kumi_keys_media_desc),
+                                        checked = media.enabled,
+                                        onCheckedChange = { kumi.setMediaGestures(media.copy(enabled = it)) },
+                                    )
+                                    if (media.enabled) {
+                                        Row(
+                                            Modifier.fillMaxWidth(),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                        ) {
+                                            Text(
+                                                stringResource(R.string.kumi_keys_media_guard),
+                                                style = MaterialTheme.typography.labelLarge,
+                                                modifier = Modifier.weight(1f),
+                                            )
+                                            listOf(0, 1_200, 2_500).forEach { guardMs ->
+                                                val selected = media.idleGuardMs == guardMs
+                                                Surface(
+                                                    color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
+                                                    contentColor = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    shape = CircleShape,
+                                                    modifier = Modifier
+                                                        .height(28.dp)
+                                                        .clip(CircleShape)
+                                                        .clickable { kumi.setMediaGestures(media.copy(idleGuardMs = guardMs)) },
+                                                ) {
+                                                    Box(Modifier.padding(horizontal = 10.dp), contentAlignment = Alignment.Center) {
+                                                        Text(
+                                                            if (guardMs == 0) {
+                                                                stringResource(R.string.kumi_crossfeed_off)
+                                                            } else {
+                                                                stringResource(R.string.kumi_keys_media_guard_sec, guardMs / 1000.0)
+                                                            },
+                                                            style = MaterialTheme.typography.labelSmall,
+                                                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                         item {
                             SectionCard(stringResource(R.string.kumi_keys_timing_title)) {
                                 MillisSlider(
@@ -408,9 +462,9 @@ fun KumiKeysScreen(
         }
         KeyboardHintStrip(
             hints = if (page == 0) {
-                listOf("Q" to shStrip, "F" to shShortcuts, "E" to shTester, "Tab" to shTab)
+                listOf("Q" to shStrip, "F" to shShortcuts, "E" to shTester, "↵" to shTab)
             } else {
-                listOf("Tab" to shTab, "⌫" to stringResource(R.string.action_back))
+                listOf("↵" to shTab, "⌫" to stringResource(R.string.action_back))
             },
         )
     }

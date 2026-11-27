@@ -172,6 +172,40 @@
     "Unmute",
     "Stop"
   ],
+  "audio_spectrum": {
+    "active": true,
+    "auto_level_gain_centi_db": -120,
+    "bands_db_x2": [
+      92,
+      98,
+      108,
+      118,
+      124,
+      120,
+      114,
+      110,
+      106,
+      104,
+      100,
+      96,
+      94,
+      92,
+      90,
+      88,
+      84,
+      80,
+      76,
+      72,
+      68,
+      62,
+      54,
+      46
+    ],
+    "lufs_momentary_centi": -1520,
+    "lufs_short_term_centi": -1580,
+    "true_peak_left_centi_db": -480,
+    "true_peak_right_centi_db": -510
+  },
   "audio_status": {
     "counters": {
       "dac_faults": 0,
@@ -412,7 +446,8 @@
     "HardwareFault",
     "StorageFull",
     "VerifyFailed",
-    "WrongState"
+    "WrongState",
+    "PresenceRequired"
   ],
   "case_hotkeys": [
     "CycleEq",
@@ -590,11 +625,18 @@
     "mono": false,
     "swap_channels": false
   },
+  "dsp_extras": {
+    "auto_level": true,
+    "auto_level_target_lufs": -16,
+    "mono_bass_hz": 120,
+    "subsonic_hz": 20
+  },
   "endpoints": [
     "postcard-rpc/ping",
     "device/info",
     "system/diagnostics",
     "system/telemetry",
+    "system/presence",
     "events/subscribe",
     "audio/status",
     "audio/output/get",
@@ -605,6 +647,13 @@
     "audio/dac-extras/set",
     "audio/impedance",
     "audio/meters",
+    "audio/spectrum",
+    "audio/dsp-extras/get",
+    "audio/dsp-extras/set",
+    "audio/eq/base/get",
+    "audio/eq/base/set",
+    "audio/eq/tone/get",
+    "audio/eq/tone/set",
     "audio/test-tone",
     "audio/eq/get",
     "audio/eq/set",
@@ -620,6 +669,8 @@
     "keys/combo/set",
     "keys/config/get",
     "keys/config/set",
+    "keys/media/get",
+    "keys/media/set",
     "keys/status",
     "settings/save",
     "settings/reset",
@@ -635,6 +686,26 @@
     "dev/flash/test",
     "dev/audio"
   ],
+  "eq_base": {
+    "enabled": true,
+    "profile": {
+      "bands": [
+        {
+          "frequency_hz": 90,
+          "gain_centi_db": 450,
+          "kind": "LowShelf",
+          "q_milli": 707
+        },
+        {
+          "frequency_hz": 20,
+          "gain_centi_db": 0,
+          "kind": "HighPass",
+          "q_milli": 500
+        }
+      ],
+      "preamp_centi_db": -450
+    }
+  },
   "eq_profile": {
     "bands": [
       {
@@ -916,6 +987,14 @@
         "request": "3c177c41b9c166c9",
         "response": "387090264b76a2b8"
       },
+      "audio/dsp-extras/get": {
+        "request": "edc18576b4c12907",
+        "response": "45171be6b7b7af22"
+      },
+      "audio/dsp-extras/set": {
+        "request": "59c576a3bcc3705a",
+        "response": "87620ca67ce31dbe"
+      },
       "audio/dsp/get": {
         "request": "ab56ef1f0467efee",
         "response": "891b5e4d1e12f8ef"
@@ -923,6 +1002,14 @@
       "audio/dsp/set": {
         "request": "9580d87bb96bbd5b",
         "response": "c9788cb60c09f753"
+      },
+      "audio/eq/base/get": {
+        "request": "7c0b2bbb9ed7777f",
+        "response": "f90b9e33263622bc"
+      },
+      "audio/eq/base/set": {
+        "request": "b531226c96423808",
+        "response": "56effc4796a6cdbe"
       },
       "audio/eq/get": {
         "request": "22d9eded2f7a0e5d",
@@ -935,6 +1022,14 @@
       "audio/eq/set": {
         "request": "fe650bd30068dbee",
         "response": "3ef645f1333fc182"
+      },
+      "audio/eq/tone/get": {
+        "request": "97f55bd44c0a0b46",
+        "response": "d99f872a5111564f"
+      },
+      "audio/eq/tone/set": {
+        "request": "0d5b0df032e1979a",
+        "response": "05b660ae1ec444cf"
       },
       "audio/impedance": {
         "request": "e35293b8ac1c609a",
@@ -959,6 +1054,10 @@
       "audio/output/set": {
         "request": "0153be669b921984",
         "response": "7f8acf6a070050b8"
+      },
+      "audio/spectrum": {
+        "request": "8e8ee1cdce2511a8",
+        "response": "7c674f448ccfcd42"
       },
       "audio/status": {
         "request": "31d7818016195545",
@@ -1044,6 +1143,14 @@
         "request": "a03ca4c46487c421",
         "response": "f29a18f3eac3f765"
       },
+      "keys/media/get": {
+        "request": "76d7de0f751e6718",
+        "response": "52e43c5f2d25d379"
+      },
+      "keys/media/set": {
+        "request": "06286eaffc6c6a94",
+        "response": "dcad5618a4b3dfe6"
+      },
       "keys/status": {
         "request": "bda21bca79c00feb",
         "response": "42a8ca33e16b509f"
@@ -1071,6 +1178,10 @@
       "system/diagnostics": {
         "request": "a4596e12f2d6f74b",
         "response": "7e6c1e8f6c74fac6"
+      },
+      "system/presence": {
+        "request": "4d65265aa760a6f9",
+        "response": "871da084f8260a2f"
       },
       "system/reboot": {
         "request": "a709888021f171cc",
@@ -1115,6 +1226,12 @@
     "combo_slots": 8,
     "consumer_max_usage": 1023,
     "crash_message_len": 96,
+    "dsp_max_mono_bass_hz": 200,
+    "dsp_max_subsonic_hz": 40,
+    "dsp_max_target_lufs": -10,
+    "dsp_min_mono_bass_hz": 60,
+    "dsp_min_subsonic_hz": 15,
+    "dsp_min_target_lufs": -24,
     "eq_max_bands": 10,
     "eq_max_gain_centi_db": 1800,
     "eq_max_hz": 40000,
@@ -1136,19 +1253,25 @@
     "keymap_chunk": 32,
     "layers": 4,
     "log_line_len": 96,
+    "lufs_floor_centi": -7000,
     "macro_max_steps": 16,
     "macro_slots": 8,
     "max_payload": 512,
     "max_unlock_seconds": 600,
+    "media_max_idle_guard_ms": 5000,
+    "media_max_window_ms": 600,
+    "media_min_window_ms": 150,
     "meter_floor_centi_db": -9600,
     "mic_max_gain_centi_db": 3000,
     "output_max_balance_centi_db": 600,
     "output_min_volume_limit_centi_db": -6000,
     "protocol": 1,
+    "spectrum_bands": 24,
     "test_tone_max_hz": 12000,
     "test_tone_max_ms": 5000,
     "test_tone_min_hz": 100,
     "test_tone_min_ms": 100,
+    "tone_max_gain_centi_db": 1200,
     "update_block": 256,
     "word_block": 32
   },
@@ -1197,6 +1320,14 @@
     },
     "slot": 0
   },
+  "media_gestures": {
+    "double_backspace_usage": 181,
+    "double_shift_usage": 182,
+    "double_space_usage": 205,
+    "enabled": true,
+    "idle_guard_ms": 1200,
+    "window_ms": 320
+  },
   "mic": {
     "gain_centi_db": 1200
   },
@@ -1225,6 +1356,11 @@
     "address": 537985312,
     "mask": 255,
     "value": 165
+  },
+  "presence_status": {
+    "passthrough": false,
+    "remaining_ms": 90000,
+    "tier": 1
   },
   "reboot_targets": [
     "Normal",
@@ -1356,6 +1492,14 @@
     "duration_ms": 1500,
     "frequency_hz": 1000,
     "invert_right": true
+  },
+  "tone_eq": {
+    "bass_centi_db": 100,
+    "enabled": true,
+    "mid_centi_db": 0,
+    "presence_centi_db": 150,
+    "sub_bass_centi_db": 250,
+    "treble_centi_db": -100
   },
   "topic_messages": [
     {

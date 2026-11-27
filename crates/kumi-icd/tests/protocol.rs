@@ -323,7 +323,8 @@ fn unknown_error_codes_and_flags_survive_a_round_trip() {
         assert_eq!(json, error);
     }
     assert_eq!(CaseError::from_code(2), CaseError::Busy);
-    assert_eq!(CaseError::from_code(8), CaseError::Unknown(8));
+    assert_eq!(CaseError::from_code(8), CaseError::PresenceRequired);
+    assert_eq!(CaseError::from_code(9), CaseError::Unknown(9));
     assert_eq!(serde_json::to_value(CaseError::NotUnlocked).unwrap(), serde_json::json!("NotUnlocked"));
     assert_eq!(serde_json::to_value(CaseError::Unknown(42)).unwrap(), serde_json::json!(42));
     assert_eq!(CaseError::KNOWN.iter().map(|e| e.name().unwrap()).collect::<std::vec::Vec<_>>(), CaseError::NAMES);

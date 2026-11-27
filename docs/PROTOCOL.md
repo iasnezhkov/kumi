@@ -73,7 +73,7 @@ Android. CDC-ACM remains an optional console in developer mode.
 | `system/reboot` | normal, other slot, boot ROM | |
 | `system/confirm` | — | confirms the running trial image |
 | `update/begin`, `update/chunk`, `update/finish` | manifest / block / — | signed update into the inactive slot; the slot becomes a trial |
-| `dev/unlock`, `dev/peek`, `dev/poke`, `dev/i2c`, `dev/uart/send` | | developer mode, time-limited |
+| `dev/unlock`, `dev/peek`, `dev/poke`, `dev/i2c`, `dev/uart/send` | | lab/RAM builds only (`Unsupported` on release slots); time-limited developer mode |
 | `dev/audio` | calibrate, start (rate, channel, level, tone or silence), stop, status | the M4 bring-up bench: state, calibration report, stream with the addresses to peek, last failure, last halt; RAM-loaded runtime only |
 
 Requests outside these limits get `InvalidArgument` before anything changes: EQ slot below 4,

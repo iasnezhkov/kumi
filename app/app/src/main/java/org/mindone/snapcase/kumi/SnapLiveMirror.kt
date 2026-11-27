@@ -55,6 +55,8 @@ object SnapLiveMirror {
     @Volatile private var appContext: Context? = null
     @Volatile private var sessionRef: WeakReference<KumiSession>? = null
     @Volatile private var updatePending: Boolean = false
+    @Volatile var hardwareMediaGesturesActive: Boolean = false
+        private set
 
     fun bindContext(context: Context) {
         appContext = context.applicationContext
@@ -83,9 +85,10 @@ object SnapLiveMirror {
     }
 
     fun controlsAllowed(context: Context): Boolean =
-        context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getBoolean(KEY_CONTROLS_ALLOWED, true)
+        context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getBoolean(KEY_CONTROLS_ALLOWED, false)
 
     fun update(state: KumiState, kind: CaseKind = if (state.connected) CaseKind.KUMI else CaseKind.NONE) {
+        hardwareMediaGesturesActive = state.connected && state.mediaGestures?.enabled == true
         val kb = state.keyboard
         val audio = state.audio
         val stream = audio?.stream
@@ -121,6 +124,7 @@ object SnapLiveMirror {
     }
 
     fun clear() {
+        hardwareMediaGesturesActive = false
         val prev = _snapshot.value
         _snapshot.value = KumiLiveSnapshot(
             fwVersion = prev.fwVersion,

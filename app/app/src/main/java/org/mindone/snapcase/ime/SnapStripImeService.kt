@@ -65,7 +65,7 @@ class SnapStripImeService : InputMethodService() {
     @Volatile private var showOnTypingOnly = true
     @Volatile private var shiftSpaceSwitch = true
     @Volatile private var hapticMode = HapticMode.EVENTS
-    @Volatile private var hapticDurationMs = 5
+    @Volatile private var hapticDurationMs = 20
     private var editableInput = false
     private var typingActive = false
     private var userDismissed = false
@@ -185,7 +185,8 @@ class SnapStripImeService : InputMethodService() {
         if (powerManager?.isPowerSaveMode == true) return
         val vib = vibrator ?: return
         if (!vib.hasVibrator()) return
-        val ms = hapticDurationMs.coerceIn(4, 15).toLong()
+        val clamped = hapticDurationMs.coerceIn(8, 100)
+        val ms = (if (vib.hasAmplitudeControl()) clamped else clamped.coerceAtLeast(14)).toLong()
         val effect = VibrationEffect.createOneShot(ms, VibrationEffect.DEFAULT_AMPLITUDE)
         val attrs = VibrationAttributes.Builder()
             .setUsage(VibrationAttributes.USAGE_TOUCH)
@@ -208,11 +209,16 @@ class SnapStripImeService : InputMethodService() {
 
     override fun onComputeInsets(outInsets: Insets) {
         super.onComputeInsets(outInsets)
-        val root = inputRoot ?: return
-        if (root.visibility == View.VISIBLE && root.height > 0) {
-            val loc = IntArray(2)
-            root.getLocationInWindow(loc)
-            val top = loc[1].coerceAtLeast(0)
+        val decorHeight = window?.window?.decorView?.height ?: 0
+        val root = inputRoot
+        val visible = root != null && isInputViewShown && root.visibility == View.VISIBLE && root.height > 0
+        val top = computeImeContentTopInsets(
+            decorHeight = decorHeight,
+            rootHeight = root?.height ?: 0,
+            displayHeight = resources.displayMetrics.heightPixels,
+            shown = visible,
+        )
+        if (visible || decorHeight > 0) {
             outInsets.contentTopInsets = top
             outInsets.visibleTopInsets = top
             outInsets.touchableInsets = Insets.TOUCHABLE_INSETS_VISIBLE
@@ -621,14 +627,20 @@ class SnapStripImeService : InputMethodService() {
         }
 
         if (keyCode == KeyEvent.KEYCODE_DEL) {
-            if (event.repeatCount == 0) triggerHaptic(isKeyPress = true)
+            if (event.repeatCount == 0) {
+                revealStripForTyping()
+                triggerHaptic(isKeyPress = true)
+            }
             val handled = processor.onBackspace(inputTarget)
             publishState()
             return handled
         }
 
         if (keyCode == KeyEvent.KEYCODE_ENTER) {
-            if (event.repeatCount == 0) triggerHaptic(isKeyPress = true)
+            if (event.repeatCount == 0) {
+                revealStripForTyping()
+                triggerHaptic(isKeyPress = true)
+            }
             val handled = processor.onEnter(inputTarget)
             publishState()
             return handled
@@ -656,7 +668,10 @@ class SnapStripImeService : InputMethodService() {
             if (event.repeatCount > 1 && longPressConsumedKeyCode == keyCode) {
                 return true
             }
-            if (event.repeatCount == 0) triggerHaptic(isKeyPress = true)
+            if (event.repeatCount == 0) {
+                revealStripForTyping()
+                triggerHaptic(isKeyPress = true)
+            }
             val handled = processor.onCharTyped(
                 translated,
                 event.isShiftPressed || event.isCapsLockOn,
@@ -839,5 +854,17 @@ class SnapStripImeService : InputMethodService() {
         @Volatile
         var editableInputActive: Boolean = false
             private set
+
+        internal fun computeImeContentTopInsets(
+            decorHeight: Int,
+            rootHeight: Int,
+            displayHeight: Int,
+            shown: Boolean,
+        ): Int {
+            if (!shown || rootHeight <= 0) return decorHeight.coerceAtLeast(0)
+            val maxBar = if (displayHeight > 0) (displayHeight * 3) / 5 else rootHeight
+            val barHeight = rootHeight.coerceAtMost(maxBar)
+            return if (decorHeight > 0) (decorHeight - barHeight).coerceAtLeast(0) else 0
+        }
     }
 }

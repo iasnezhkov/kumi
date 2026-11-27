@@ -231,6 +231,10 @@ impl Provider for Firmware {
         })
     }
 
+    fn presence(&mut self) -> PresenceStatus {
+        PresenceStatus { tier: 1, remaining_ms: 120_000, passthrough: false }
+    }
+
     fn measure_impedance(&mut self) -> ImpedanceResult {
         Ok(ImpedanceReport {
             left_ohms: Some(32),
@@ -254,6 +258,25 @@ impl Provider for Firmware {
             rms_right_centi_db: -2_550 + phase * 40,
             clipped_samples: 0,
             limiter_hits: 0,
+        }
+    }
+
+    fn audio_spectrum(&mut self) -> AudioSpectrum {
+        let t = (self.uptime_ms / 40) as usize;
+        let mut bands = [0u8; SPECTRUM_BANDS];
+        for (i, slot) in bands.iter_mut().enumerate() {
+            let slope = 132i32 - (i as i32 * 3);
+            let wave = ((((t * 3 + i * 7) % 16) as i32) - 8).abs() * 3;
+            *slot = (slope - wave).clamp(24, 152) as u8;
+        }
+        AudioSpectrum {
+            active: true,
+            bands_db_x2: bands,
+            true_peak_left_centi_db: -1_150,
+            true_peak_right_centi_db: -1_220,
+            lufs_momentary_centi: -1_520,
+            lufs_short_term_centi: -1_580,
+            auto_level_gain_centi_db: -20,
         }
     }
 

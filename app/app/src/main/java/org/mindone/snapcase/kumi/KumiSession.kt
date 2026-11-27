@@ -18,14 +18,19 @@ import org.mindone.snapcase.transport.CaseKind
 import org.mindone.snapcase.transport.CasePort
 import org.mindone.snapcase.transport.PermissionDeniedException
 
+data class PresencePrompt(val tier: Int)
+
 data class KumiState(
     val connected: Boolean = false,
     val device: DeviceInfo? = null,
     val audio: AudioStatus? = null,
     val output: OutputSettings? = null,
     val dsp: DspSettings? = null,
+    val dspExtras: DspExtras? = null,
     val dacExtras: DacExtras? = null,
     val meters: AudioMeters? = null,
+    val eqBase: EqBaseSettings? = null,
+    val toneEq: ToneEqSettings? = null,
     val impedance: ImpedanceReport? = null,
     val measuringImpedance: Boolean = false,
     val testTonePlaying: Boolean = false,
@@ -33,6 +38,7 @@ data class KumiState(
     val eqSlots: List<EqProfile?> = List(EqProfile.SLOTS) { null },
     val keymap: List<KeymapEntry> = emptyList(),
     val keyConfig: KeyConfig? = null,
+    val mediaGestures: MediaGestures? = null,
     val macros: List<MacroProgram?> = List(KumiLimits.MACRO_SLOTS) { null },
     val combos: List<KeyCombo?> = List(KumiLimits.COMBO_SLOTS) { null },
     val keyboard: KeyboardStatus? = null,
@@ -47,6 +53,7 @@ data class KumiState(
     val errorKind: CaseError? = null,
     val errorBridgeKind: String? = null,
     val permissionDenied: Boolean = false,
+    val presencePrompt: PresencePrompt? = null,
     val unlockedUntil: Long = 0,
     val peek: WordBlock? = null,
     val developer: DeveloperResult? = null,
@@ -82,6 +89,11 @@ class KumiSession(
     private val _liveMeters = MutableStateFlow<AudioMeters?>(null)
     val liveMeters: StateFlow<AudioMeters?> = _liveMeters.asStateFlow()
 
+    private val _liveSpectrum = MutableStateFlow<AudioSpectrum?>(null)
+    val liveSpectrum: StateFlow<AudioSpectrum?> = _liveSpectrum.asStateFlow()
+
+    @Volatile private var spectrumSupported: Boolean = false
+
     private class EqSnapshot(val profile: EqProfile?)
 
     @Volatile private var client: KumiClient? = null
@@ -91,10 +103,52 @@ class KumiSession(
     private val eqJobs = ConcurrentHashMap<Int, Job>()
     private val eqBefore = ConcurrentHashMap<Int, EqSnapshot>()
     @Volatile private var toneJob: Job? = null
+    @Volatile private var presenceJob: Job? = null
 
     val simulated: Boolean get() = port.simulated
 
     val isLiveConnected: Boolean get() = client != null && _state.value.connected && !flowBusy()
+
+    fun dismissPresencePrompt() {
+        presenceJob?.cancel()
+        presenceJob = null
+        _state.update { it.copy(presencePrompt = null) }
+    }
+
+    private fun requestPresence(tier: Int, retry: () -> Unit) {
+        presenceJob?.cancel()
+        _state.update { it.copy(loading = false, error = null, errorKind = null, errorBridgeKind = null, presencePrompt = PresencePrompt(tier)) }
+        presenceJob = scope.launch(dispatcher) {
+            repeat(PRESENCE_POLL_ATTEMPTS) {
+                delay(PRESENCE_POLL_MS)
+                val c = client ?: run {
+                    _state.update { it.copy(presencePrompt = null) }
+                    return@launch
+                }
+                val status = runCatching { c.presence() }.getOrNull()
+                if (status != null && status.tier >= tier) {
+                    _state.update { it.copy(presencePrompt = null) }
+                    presenceJob = null
+                    retry()
+                    return@launch
+                }
+            }
+            _state.update { it.copy(presencePrompt = null) }
+            presenceJob = null
+        }
+    }
+
+    fun setKeyEventsSubscribed(enabled: Boolean): Job = scope.launch(dispatcher) {
+        val c = client ?: return@launch
+        val mask = EventMask(keys = enabled, log = true, audio = false, uart = false)
+        val result = runCatching { c.subscribe(mask) }
+        result.onSuccess { granted -> _state.update { it.copy(events = granted) } }
+        result.onFailure { error ->
+            if (enabled && error is CaseErrorException && error.error == CaseError.PresenceRequired) {
+                requestPresence(1) { setKeyEventsSubscribed(true) }
+            }
+        }
+    }
 
     fun enqueueBridgeCommand(command: String, value: Int): Boolean {
         if (!isLiveConnected) return false
@@ -115,10 +169,6 @@ class KumiSession(
                 val modes = CrossfeedMode.entries
                 val next = modes[(modes.indexOf(cur.crossfeed) + 1) % modes.size]
                 setDsp(cur.copy(crossfeed = next))
-            }
-            "toggle_line_out" -> {
-                val cur = st.dacExtras ?: DacExtras()
-                setDacExtras(cur.copy(lineOut = !cur.lineOut))
             }
             "toggle_stay_awake" -> {
                 val cur = st.dacExtras ?: DacExtras()
@@ -169,13 +219,17 @@ class KumiSession(
         eqBefore.clear()
         toneJob?.cancel()
         toneJob = null
+        presenceJob?.cancel()
+        presenceJob = null
         client = null
         connectedDeviceKey = null
         channel?.let { runCatching { it.close() } }
         channel = null
         runCatching { bridge.resetSession() }
         SnapLiveMirror.clear()
+        spectrumSupported = false
         _liveMeters.value = null
+        _liveSpectrum.value = null
         _state.update {
             KumiState(
                 log = it.log,
@@ -229,24 +283,32 @@ class KumiSession(
             val slots = runCatching { c.slots() }.getOrNull()
             val output = if (readAudio) runCatching { c.output() }.getOrNull() else null
             val dsp = if (readAudio) runCatching { c.dsp() }.getOrNull() else null
+            val dspExtras = if (readAudio) runCatching { c.dspExtras() }.getOrNull() else null
             val dacExtras = if (readAudio) runCatching { c.dacExtras() }.getOrNull() else null
             val mic = if (caps.audioIn) runCatching { c.mic() }.getOrNull() else null
             val eq = if (readEq) (0 until EqProfile.SLOTS).map { runCatching { c.eq(it) }.getOrNull() } else List(EqProfile.SLOTS) { null }
+            val eqBase = if (readEq) runCatching { c.eqBase() }.getOrNull() else null
+            val toneEq = if (readEq) runCatching { c.toneEq() }.getOrNull() else null
             val keymap = if (caps.keymap) (0 until KeymapEntry.LAYERS).flatMap { runCatching { c.keymap(it) }.getOrDefault(emptyList()) } else emptyList()
             val keyConfig = if (caps.keymap) runCatching { c.keyConfig() }.getOrNull() else null
+            val mediaGestures = if (caps.keymap) runCatching { c.mediaGestures() }.getOrNull() else null
             val macros = if (caps.keymap) (0 until KumiLimits.MACRO_SLOTS).map { runCatching { c.macroSlot(it) }.getOrNull() } else List(KumiLimits.MACRO_SLOTS) { null }
             val combos = if (caps.keymap) (0 until KumiLimits.COMBO_SLOTS).map { runCatching { c.comboSlot(it) }.getOrNull() } else List(KumiLimits.COMBO_SLOTS) { null }
             val audio = runCatching { c.audioStatus() }.getOrNull()
             val meters = if (caps.audioOut && audio?.stream != null) runCatching { c.audioMeters() }.getOrNull() else null
+            val initialSpectrum = if (caps.audioOut) runCatching { c.audioSpectrum() }.getOrNull() else null
+            spectrumSupported = initialSpectrum != null
             val keyboard = runCatching { c.keyboardStatus() }.getOrNull()
             val diagnostics = runCatching { c.diagnostics() }.getOrNull()
             val telemetry = runCatching { c.telemetry() }.getOrNull()
             val events = runCatching { c.subscribe(EventMask.APP) }.getOrNull()
             _liveMeters.value = meters
+            _liveSpectrum.value = initialSpectrum?.takeIf { audio?.stream != null }
             _state.update {
                 it.copy(
-                    connected = true, device = device, slots = slots, output = output, dsp = dsp, dacExtras = dacExtras,
-                    meters = meters, mic = mic, eqSlots = eq, keymap = keymap, keyConfig = keyConfig, macros = macros, combos = combos,
+                    connected = true, device = device, slots = slots, output = output, dsp = dsp, dspExtras = dspExtras,
+                    dacExtras = dacExtras, meters = meters, mic = mic, eqSlots = eq, eqBase = eqBase, toneEq = toneEq,
+                    keymap = keymap, keyConfig = keyConfig, mediaGestures = mediaGestures, macros = macros, combos = combos,
                     audio = audio, keyboard = keyboard, diagnostics = diagnostics, telemetry = telemetry, events = events,
                     loading = false,
                 )
@@ -260,7 +322,10 @@ class KumiSession(
         runCatching {
             val audio = c.audioStatus()
             val keyboard = c.keyboardStatus()
-            if (audio.stream == null) _liveMeters.value = null
+            if (audio.stream == null) {
+                _liveMeters.value = null
+                _liveSpectrum.value = null
+            }
             c.pollTopics()
             val prev = _state.value
             val clearTransient = prev.error != null && prev.errorKind == null
@@ -284,6 +349,9 @@ class KumiSession(
         val c = client ?: return@withContext
         if (_state.value.audio?.stream == null) return@withContext
         runCatching { c.audioMeters() }.getOrNull()?.let { m -> _liveMeters.value = m }
+        if (spectrumSupported) {
+            runCatching { c.audioSpectrum() }.getOrNull()?.let { s -> _liveSpectrum.value = s }
+        }
     }
 
     private fun fail(error: Throwable) {
@@ -308,19 +376,32 @@ class KumiSession(
         }
     }
 
-    private fun change(optimistic: (KumiState) -> KumiState, send: (KumiClient) -> Unit, recover: (KumiClient?) -> (KumiState) -> KumiState): Job {
+    private fun change(
+        optimistic: (KumiState) -> KumiState,
+        send: (KumiClient) -> Unit,
+        retry: (() -> Unit)? = null,
+        recover: (KumiClient?) -> (KumiState) -> KumiState,
+    ): Job {
         _state.update { optimistic(it).copy(error = null, errorKind = null, errorBridgeKind = null) }
         SnapLiveMirror.update(_state.value, _kind.value)
-        return scope.launch(dispatcher) { perform(send, recover) }
+        return scope.launch(dispatcher) { perform(send, retry, recover) }
     }
 
-    private fun perform(send: (KumiClient) -> Unit, recover: (KumiClient?) -> (KumiState) -> KumiState) {
+    private fun perform(
+        send: (KumiClient) -> Unit,
+        retry: (() -> Unit)? = null,
+        recover: (KumiClient?) -> (KumiState) -> KumiState,
+    ) {
         val c = client
         val error = if (c == null) IllegalStateException("The case is not connected") else runCatching { send(c) }.exceptionOrNull()
         if (error != null) {
             _state.update(recover(c))
             SnapLiveMirror.update(_state.value, _kind.value)
-            fail(error)
+            if (retry != null && error is CaseErrorException && error.error == CaseError.PresenceRequired) {
+                requestPresence(1, retry)
+            } else {
+                fail(error)
+            }
         } else {
             SnapLiveMirror.update(_state.value, _kind.value)
         }
@@ -331,7 +412,7 @@ class KumiSession(
 
     fun setOutput(value: OutputSettings): Job {
         val before = _state.value.output
-        return change({ it.copy(output = value) }, { it.setOutput(value) }) { c ->
+        return change({ it.copy(output = value) }, { it.setOutput(value) }, retry = { setOutput(value) }) { c ->
             val output = reread(c, KumiClient::output, before)
             return@change { s -> s.copy(output = output) }
         }
@@ -345,9 +426,41 @@ class KumiSession(
         }
     }
 
+    fun setDspExtras(value: DspExtras): Job {
+        val before = _state.value.dspExtras
+        return change({ it.copy(dspExtras = value) }, { it.setDspExtras(value) }) { c ->
+            val extras = reread(c, KumiClient::dspExtras, before)
+            return@change { s -> s.copy(dspExtras = extras) }
+        }
+    }
+
+    fun setEqBase(value: EqBaseSettings): Job {
+        val before = _state.value.eqBase
+        return change({ it.copy(eqBase = value) }, { it.setEqBase(value) }) { c ->
+            val base = reread(c, KumiClient::eqBase, before)
+            return@change { s -> s.copy(eqBase = base) }
+        }
+    }
+
+    fun setToneEq(value: ToneEqSettings): Job {
+        val before = _state.value.toneEq
+        return change({ it.copy(toneEq = value) }, { it.setToneEq(value) }) { c ->
+            val tone = reread(c, KumiClient::toneEq, before)
+            return@change { s -> s.copy(toneEq = tone) }
+        }
+    }
+
+    fun setMediaGestures(value: MediaGestures): Job {
+        val before = _state.value.mediaGestures
+        return change({ it.copy(mediaGestures = value) }, { it.setMediaGestures(value) }, retry = { setMediaGestures(value) }) { c ->
+            val gestures = reread(c, KumiClient::mediaGestures, before)
+            return@change { s -> s.copy(mediaGestures = gestures) }
+        }
+    }
+
     fun setDacExtras(value: DacExtras): Job {
         val before = _state.value.dacExtras
-        return change({ it.copy(dacExtras = value) }, { it.setDacExtras(value) }) { c ->
+        return change({ it.copy(dacExtras = value) }, { it.setDacExtras(value) }, retry = { setDacExtras(value) }) { c ->
             val extras = reread(c, KumiClient::dacExtras, before)
             return@change { s -> s.copy(dacExtras = extras) }
         }
@@ -379,14 +492,18 @@ class KumiSession(
                 }
                 .onFailure { error ->
                     _state.update { it.copy(testTonePlaying = false) }
-                    fail(error)
+                    if (error is CaseErrorException && error.error == CaseError.PresenceRequired) {
+                        requestPresence(1) { playTestTone(request) }
+                    } else {
+                        fail(error)
+                    }
                 }
         }.also { toneJob = it }
     }
 
     fun setKeyConfig(value: KeyConfig): Job {
         val before = _state.value.keyConfig
-        return change({ it.copy(keyConfig = value) }, { it.setKeyConfig(value) }) { c ->
+        return change({ it.copy(keyConfig = value) }, { it.setKeyConfig(value) }, retry = { setKeyConfig(value) }) { c ->
             val config = reread(c, KumiClient::keyConfig, before)
             return@change { s -> s.copy(keyConfig = config) }
         }
@@ -398,6 +515,7 @@ class KumiSession(
         return change(
             { s -> s.copy(macros = s.macros.mapIndexed { i, p -> if (i == slot) stored else p }) },
             { it.setMacro(slot, program) },
+            retry = { setMacro(slot, program) },
         ) { c ->
             val restored = reread(c, { it.macroSlot(slot) }, before.getOrNull(slot))
             return@change { s -> s.copy(macros = s.macros.mapIndexed { i, p -> if (i == slot) restored else p }) }
@@ -409,6 +527,7 @@ class KumiSession(
         return change(
             { s -> s.copy(combos = s.combos.mapIndexed { i, item -> if (i == slot) combo else item }) },
             { it.setCombo(slot, combo) },
+            retry = { setCombo(slot, combo) },
         ) { c ->
             val restored = reread(c, { it.comboSlot(slot) }, before.getOrNull(slot))
             return@change { s -> s.copy(combos = s.combos.mapIndexed { i, item -> if (i == slot) restored else item }) }
@@ -488,7 +607,7 @@ class KumiSession(
 
     fun setKey(entry: KeymapEntry): Job {
         val before = _state.value.keymap
-        return change({ s -> s.copy(keymap = s.keymap.withEntry(entry)) }, { it.setKey(entry) }) { c ->
+        return change({ s -> s.copy(keymap = s.keymap.withEntry(entry)) }, { it.setKey(entry) }, retry = { setKey(entry) }) { c ->
             val layer = c?.let { runCatching { it.keymap(entry.layer) }.getOrNull() }
             return@change { s ->
                 s.copy(keymap = if (layer != null) (s.keymap.filterNot { it.layer == entry.layer } + layer).sortedWith(KEY_ORDER) else before)
@@ -498,7 +617,7 @@ class KumiSession(
 
     fun clearKeymap(): Job {
         val before = _state.value.keymap
-        return change({ it.copy(keymap = emptyList()) }, { it.clearKeymap() }) { c ->
+        return change({ it.copy(keymap = emptyList()) }, { it.clearKeymap() }, retry = { clearKeymap() }) { c ->
             val keymap = reread(c, { client -> (0 until KeymapEntry.LAYERS).flatMap { client.keymap(it) } }, before)
             return@change { s -> s.copy(keymap = keymap) }
         }
@@ -542,7 +661,13 @@ class KumiSession(
                     loading = false,
                 )
             }
-        }.onFailure(::fail)
+        }.onFailure { error ->
+            if (error is CaseErrorException && error.error == CaseError.PresenceRequired) {
+                requestPresence(1) { applyKeymapPreset(preset, replaceExisting) }
+            } else {
+                fail(error)
+            }
+        }
     }
 
     private fun command(action: (KumiClient) -> Unit): Job = scope.launch(dispatcher) {
@@ -550,9 +675,18 @@ class KumiSession(
         runCatching { action(c) }.onFailure(::fail)
     }
 
-    fun resetSettings(settingsScope: SettingsScope): Job = command {
-        it.resetSettings(settingsScope)
-        scope.launch(dispatcher) { loadAll(it) }
+    fun resetSettings(settingsScope: SettingsScope): Job = scope.launch(dispatcher) {
+        val c = client ?: return@launch
+        runCatching {
+            c.resetSettings(settingsScope)
+            loadAll(c)
+        }.onFailure { error ->
+            if (error is CaseErrorException && error.error == CaseError.PresenceRequired) {
+                requestPresence(1) { resetSettings(settingsScope) }
+            } else {
+                fail(error)
+            }
+        }
     }
 
     fun unlockDeveloper(seconds: Int): Job = command {
@@ -602,6 +736,8 @@ class KumiSession(
 
     companion object {
         const val EQ_SETTLE_MS = 250L
+        const val PRESENCE_POLL_MS = 350L
+        private const val PRESENCE_POLL_ATTEMPTS = 180
         private const val KEY_EVENTS = 32
         private const val LOG_LINES = 200
         private val KEY_ORDER = compareBy<KeymapEntry>({ it.layer }, { it.source })

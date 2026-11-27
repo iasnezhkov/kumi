@@ -86,11 +86,33 @@ class KumiSessionTest {
     fun connectingSubscribesToEventsAndReadsDiagnostics() = runTest {
         val rig = connected()
         assertEquals(EventMask.APP, rig.bridge.subscriptions.single())
-        assertEquals(EventMask(keys = true, log = true, audio = false, uart = false), rig.state.events)
+        assertEquals(EventMask(keys = false, log = true, audio = false, uart = false), rig.state.events)
         assertTrue(rig.state.diagnostics!!.safeMode)
         assertNotNull(rig.state.eqSlots[0])
         assertTrue("empty slots are null, not errors", rig.state.eqSlots.drop(1).all { it == null })
         assertNull(rig.state.error)
+    }
+
+    @Test
+    fun presenceRequiredOpensPromptAndAutoRetriesOnceConfirmed() = runTest {
+        val rig = connected()
+        var unlocked = false
+        rig.bridge.handlers["keys/map/set"] = {
+            if (unlocked) """{"ok":{"Ok":null}}""" else """{"ok":{"Err":"PresenceRequired"}}"""
+        }
+        rig.bridge.handlers["system/presence"] = {
+            if (unlocked) """{"ok":{"tier":1,"remaining_ms":120000,"passthrough":false}}"""
+            else """{"ok":{"tier":0,"remaining_ms":0,"passthrough":false}}"""
+        }
+        rig.session.setKey(KeymapEntry(0, 0x04, KeyAction.Disabled))
+        testScheduler.advanceTimeBy(100)
+        assertEquals(PresencePrompt(1), rig.state.presencePrompt)
+        assertNull(rig.state.error)
+        unlocked = true
+        advanceUntilIdle()
+        assertNull(rig.state.presencePrompt)
+        assertNull(rig.state.error)
+        assertTrue(rig.state.keymap.any { it.source == 0x04 && it.action == KeyAction.Disabled })
     }
 
     @Test

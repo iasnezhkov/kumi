@@ -3,14 +3,14 @@ ENTRY(_start)
 SECTIONS {
   .storage : ALIGN(4) {
     *(.text.storage .text.storage.* .text.cold .text.cold.*)
-    *(.text.*kumi_audio* .text.*kumi_dsp* .text.*kumi_icd* .text.*sha2* .text.*libm*)
-    *(.text.*kumi_settings* .text.*kumi_service* .text.*kumi_control* .text.*kumi_diag* .text.*kumi_boot_core* .text.*kumi_runtime_core*)
-    *(.text.*kumi_keymap* .text.*kumi_kbdlink* .text.*kumi_chip* .text.*kumi_layout*)
+    *(.text.*kumi_audio* .text.*kumi_dsp* .rodata.*kumi_dsp* .text.*kumi_icd* .rodata.*kumi_icd* .text.*sha2* .text.*libm*)
+    *(.text.*kumi_settings* .rodata.*kumi_settings* .text.*kumi_service* .rodata.*kumi_service* .text.*kumi_control* .text.*kumi_diag* .text.*kumi_boot_core* .text.*kumi_runtime_core*)
+    *(.text.*kumi_keymap* .rodata.*kumi_keymap* .text.*kumi_kbdlink* .text.*kumi_chip* .text.*kumi_layout*)
     *(.text.*serde_core* .text.*core3fmt* .text.*core..fmt..* .text.*df3* .text.*df2* .text.*extendsfdf2* .text.*truncdfsf2*)
     *(.text.*kumi_fw3uac* .text.*kumi_fw..uac..* .rodata.*kumi_fw3uac*)
-    *(.text.*kumi_fw3app* .text.*kumi_fw..app..*)
+    *(.text.*kumi_fw3app* .text.*kumi_fw..app..* .rodata.*kumi_fw3app* .rodata.*kumi_fw..app..*)
     *(.text.*kumi_fw3lab* .text.*kumi_fw..lab..* .text.*kumi_fw5audio* .text.*kumi_fw..audio..*)
-    *(.text.*embassy_usb* .text.*postcard*)
+    *(.text.*embassy_usb* .text.*postcard* .rodata.*postcard*)
     *(.text.*kumi_fw3usb6Driver* .text.*kumi_fw..usb..Driver$u20*)
     . = ALIGN(4);
   } > RT40

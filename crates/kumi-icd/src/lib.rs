@@ -60,6 +60,7 @@ endpoints! {
     | GetDeviceInfo        | ()               | DeviceInfo        | "device/info"           |
     | GetDiagnostics       | ()               | DiagnosticsResult | "system/diagnostics"    |
     | GetTelemetry         | ()               | TelemetryResult   | "system/telemetry"      |
+    | GetPresence          | ()               | PresenceStatus    | "system/presence"       |
     | SubscribeEvents      | EventMask        | EventsResult      | "events/subscribe"      |
     | GetAudioStatus       | ()               | AudioStatus       | "audio/status"          |
     | GetOutputSettings    | ()               | OutputSettings    | "audio/output/get"      |
@@ -70,6 +71,13 @@ endpoints! {
     | SetDacExtras         | DacExtras        | Ack               | "audio/dac-extras/set"  |
     | MeasureImpedance     | ()               | ImpedanceResult   | "audio/impedance"       |
     | GetAudioMeters       | ()               | AudioMeters       | "audio/meters"          |
+    | GetAudioSpectrum     | ()               | AudioSpectrum     | "audio/spectrum"        |
+    | GetDspExtras         | ()               | DspExtras         | "audio/dsp-extras/get"  |
+    | SetDspExtras         | DspExtras        | Ack               | "audio/dsp-extras/set"  |
+    | GetEqBase            | ()               | EqBaseSettings    | "audio/eq/base/get"     |
+    | SetEqBase            | EqBaseSettings   | Ack               | "audio/eq/base/set"     |
+    | GetToneEq            | ()               | ToneEqSettings    | "audio/eq/tone/get"     |
+    | SetToneEq            | ToneEqSettings   | Ack               | "audio/eq/tone/set"     |
     | PlayTestTone         | TestToneRequest  | Ack               | "audio/test-tone"       |
     | GetEq                | u8               | EqResult          | "audio/eq/get"          |
     | SetEq                | EqSlotUpdate     | Ack               | "audio/eq/set"          |
@@ -85,6 +93,8 @@ endpoints! {
     | SetCombo             | ComboSlotUpdate  | Ack               | "keys/combo/set"        |
     | GetKeyConfig         | ()               | KeyConfig         | "keys/config/get"       |
     | SetKeyConfig         | KeyConfig        | Ack               | "keys/config/set"       |
+    | GetMediaGestures     | ()               | MediaGestures     | "keys/media/get"        |
+    | SetMediaGestures     | MediaGestures    | Ack               | "keys/media/set"        |
     | GetKeyboardStatus    | ()               | KeyboardStatus    | "keys/status"           |
     | SaveSettings         | ()               | Ack               | "settings/save"         |
     | ResetSettings        | SettingsScope    | Ack               | "settings/reset"        |

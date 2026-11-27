@@ -52,7 +52,7 @@ data class AppSettings(
     val imeStickyShift: Boolean = false,
     val imeLongPressBehavior: LongPressBehavior = LongPressBehavior.ALT_SYMBOL,
     val imeHapticMode: HapticMode = HapticMode.EVENTS,
-    val imeHapticDurationMs: Int = 5,
+    val imeHapticDurationMs: Int = 20,
     val imeShowQuickExtras: Boolean = true,
     val imeDefaultLang: String = "en",
     val imeEnabledLangs: List<String> = listOf("en", "ru"),
@@ -61,8 +61,8 @@ data class AppSettings(
     val speedKeysEnabled: Boolean = true,
     val speedKeys: List<SpeedKeyBinding> = emptyList(),
     val homeTypeToSearch: Boolean = true,
-    val backspaceAsBack: Boolean = false,
-    val mediaDoubleTap: Boolean = false,
+    val backspaceAsBack: Boolean = true,
+    val mediaDoubleTap: Boolean = true,
     val backspaceBackExcluded: Set<String> = SettingsRepository.DEFAULT_BACKSPACE_EXCLUDED,
     val quickSearchRecent: List<String> = emptyList(),
     val launcherBridgeEnabled: Boolean = true,
@@ -102,7 +102,7 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
             imeHapticMode = runCatching {
                 HapticMode.valueOf(prefs[IME_HAPTIC_MODE] ?: HapticMode.EVENTS.name)
             }.getOrDefault(HapticMode.EVENTS),
-            imeHapticDurationMs = (prefs[IME_HAPTIC_MS] ?: 5).coerceIn(4, 15),
+            imeHapticDurationMs = (prefs[IME_HAPTIC_MS] ?: 20).coerceIn(8, 100),
             imeShowQuickExtras = prefs[IME_SHOW_QUICK_EXTRAS] ?: true,
             imeDefaultLang = prefs[IME_DEFAULT_LANG] ?: "en",
             imeEnabledLangs = parseLangList(prefs[IME_ENABLED_LANGS]),
@@ -111,8 +111,8 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
             speedKeysEnabled = prefs[SPEED_KEYS_ENABLED] ?: true,
             speedKeys = QuickLauncher.parseBindings(prefs[SPEED_KEYS]),
             homeTypeToSearch = prefs[HOME_TYPE_TO_SEARCH] ?: true,
-            backspaceAsBack = prefs[BACKSPACE_AS_BACK] ?: false,
-            mediaDoubleTap = prefs[MEDIA_DOUBLE_TAP] ?: false,
+            backspaceAsBack = prefs[BACKSPACE_AS_BACK] ?: true,
+            mediaDoubleTap = prefs[MEDIA_DOUBLE_TAP] ?: true,
             backspaceBackExcluded = parsePackageSet(prefs[BACKSPACE_BACK_EXCLUDED]),
             quickSearchRecent = parseRecentList(prefs[QUICK_SEARCH_RECENT]),
             launcherBridgeEnabled = prefs[LAUNCHER_BRIDGE_ENABLED] ?: true,
@@ -168,7 +168,7 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
     suspend fun setImeStickyShift(value: Boolean) = store.edit { it[IME_STICKY_SHIFT] = value }
     suspend fun setImeLongPressBehavior(value: LongPressBehavior) = store.edit { it[IME_LONG_PRESS] = value.name }
     suspend fun setImeHapticMode(value: HapticMode) = store.edit { it[IME_HAPTIC_MODE] = value.name }
-    suspend fun setImeHapticDurationMs(value: Int) = store.edit { it[IME_HAPTIC_MS] = value.coerceIn(4, 15) }
+    suspend fun setImeHapticDurationMs(value: Int) = store.edit { it[IME_HAPTIC_MS] = value.coerceIn(8, 100) }
     suspend fun setImeShowQuickExtras(value: Boolean) = store.edit { it[IME_SHOW_QUICK_EXTRAS] = value }
     suspend fun setImeDefaultLang(value: String) = store.edit { it[IME_DEFAULT_LANG] = value }
     suspend fun setImeEnabledLangs(langs: List<String>) = store.edit {

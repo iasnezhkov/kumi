@@ -6,13 +6,13 @@ use std::process::ExitCode;
 use kumi_install::elf;
 use kumi_install::pack::{self, ImageCheck, ImageSpec};
 use kumi_install::spv::{self, Verdict};
-use kumi_layout::FLAG_SAFE_MODE_CAPABLE;
+use kumi_layout::{FLAG_LAB, FLAG_SAFE_MODE_CAPABLE};
 
 const USAGE: &str = "usage:
   kumi-pack keygen <secret-key-file>
   kumi-pack public <secret-key-file>
   kumi-pack stage0 <stage0-elf> <out> [<public-key-hex>]
-  kumi-pack image <firmware-elf> <out> <secret-key-file> <major.minor.patch> <generation>
+  kumi-pack image [--lab] <firmware-elf> <out> <secret-key-file> <major.minor.patch> <generation>
   kumi-pack bundle <stage0.bin> <image.bin> <secret-key-file> <build-name> <out.kumi>
   kumi-pack inspect <file> [<public-key-hex>]";
 
@@ -37,7 +37,8 @@ fn run(args: &[&str]) -> Result<(), String> {
         }
         ["stage0", input, output] => stage0(input, output, None),
         ["stage0", input, output, public] => stage0(input, output, Some(public)),
-        ["image", input, output, secret, version, generation] => image(input, output, secret, version, generation),
+        ["image", input, output, secret, version, generation] => image(input, output, secret, version, generation, false),
+        ["image", "--lab", input, output, secret, version, generation] => image(input, output, secret, version, generation, true),
         ["bundle", stage0, image, secret, build, output] => bundle(stage0, image, secret, build, output),
         ["inspect", file] => inspect(file, None),
         ["inspect", file, public] => inspect(file, Some(public)),
@@ -91,14 +92,23 @@ fn parse_version(text: &str) -> Result<[u8; 3], String> {
     parts.try_into().map_err(|_| format!("version {text}: expected major.minor.patch"))
 }
 
-fn image(input: &str, output: &str, secret: &str, version: &str, generation: &str) -> Result<(), String> {
-    let elf = elf::parse(&read(input)?).map_err(|e| format!("{input}: {e:?}"))?;
+fn image(input: &str, output: &str, secret: &str, version: &str, generation: &str, force_lab: bool) -> Result<(), String> {
+    let raw = read(input)?;
+    let elf = elf::parse(&raw).map_err(|e| format!("{input}: {e:?}"))?;
     let key = read_secret(secret)?;
     let generation = generation.parse().map_err(|_| format!("generation {generation}"))?;
-    let spec = ImageSpec { flags: FLAG_SAFE_MODE_CAPABLE, version: parse_version(version)?, generation };
+    let is_lab = force_lab || elf::has_symbol(&raw, "KUMI_LAB_BOOT");
+    let flags = FLAG_SAFE_MODE_CAPABLE | if is_lab { FLAG_LAB } else { 0 };
+    let spec = ImageSpec { flags, version: parse_version(version)?, generation };
     let image = pack::pack_image(&elf, &spec, &key).map_err(|e| format!("{input}: {e:?}"))?;
     write_new(output, &image, false)?;
-    println!("image {} bytes, entry 0x{:08x}, sha256 {}", image.len(), elf.entry, pack::hex(&kumi_install::sha256(&image)));
+    println!(
+        "image {} bytes, entry 0x{:08x}, flags 0x{:04x}, sha256 {}",
+        image.len(),
+        elf.entry,
+        flags,
+        pack::hex(&kumi_install::sha256(&image))
+    );
     Ok(())
 }
 

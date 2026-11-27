@@ -217,6 +217,54 @@ object KumiEqPresets {
 
     val ALL: List<BuiltInEqPreset> = STANDARDS + GENRES
 
+    val AUTOEQ_BASES: List<Pair<String, List<ParametricBand>>> = listOf(
+        "Sennheiser HD 600" to listOf(
+            ParametricBand(BandKind.LowShelf, 85, 710, 550),
+            ParametricBand(BandKind.Peak, 3_400, 2_200, -250),
+            ParametricBand(BandKind.Peak, 5_800, 3_000, 200),
+            ParametricBand(BandKind.HighShelf, 10_000, 710, 200),
+        ),
+        "Sennheiser HD 650" to listOf(
+            ParametricBand(BandKind.LowShelf, 80, 710, 500),
+            ParametricBand(BandKind.Peak, 200, 800, -150),
+            ParametricBand(BandKind.Peak, 3_200, 1_800, 150),
+            ParametricBand(BandKind.HighShelf, 9_500, 710, 300),
+        ),
+        "Beyerdynamic DT 770 Pro" to listOf(
+            ParametricBand(BandKind.LowShelf, 70, 710, 200),
+            ParametricBand(BandKind.Peak, 210, 1_500, 300),
+            ParametricBand(BandKind.Peak, 3_900, 2_500, 250),
+            ParametricBand(BandKind.Peak, 8_400, 3_500, -550),
+        ),
+        "Moondrop Chu II" to listOf(
+            ParametricBand(BandKind.LowShelf, 100, 710, 150),
+            ParametricBand(BandKind.Peak, 2_600, 1_800, -150),
+            ParametricBand(BandKind.Peak, 4_800, 2_600, -200),
+            ParametricBand(BandKind.HighShelf, 12_000, 710, 150),
+        ),
+        "Truthear Zero:RED" to listOf(
+            ParametricBand(BandKind.LowShelf, 90, 710, 200),
+            ParametricBand(BandKind.Peak, 2_400, 1_500, 150),
+            ParametricBand(BandKind.Peak, 6_200, 2_800, -200),
+            ParametricBand(BandKind.HighShelf, 11_000, 710, 150),
+        ),
+        "Koss Porta Pro" to listOf(
+            ParametricBand(BandKind.LowShelf, 60, 710, 350),
+            ParametricBand(BandKind.Peak, 150, 900, -400),
+            ParametricBand(BandKind.Peak, 3_000, 1_300, 350),
+            ParametricBand(BandKind.HighShelf, 9_000, 710, 350),
+        ),
+        "Apple EarPods" to listOf(
+            ParametricBand(BandKind.LowShelf, 90, 710, 600),
+            ParametricBand(BandKind.Peak, 250, 1_000, -250),
+            ParametricBand(BandKind.Peak, 2_500, 1_400, -200),
+            ParametricBand(BandKind.HighShelf, 8_000, 710, 450),
+        ),
+    )
+
     fun toProfile(preset: BuiltInEqPreset, math: EqMath): EqProfile =
         if (preset.bands.isEmpty()) EqProfile.FLAT else math.withAutoPreamp(EqProfile(0, preset.bands))
+
+    fun toProfile(bands: List<ParametricBand>, math: EqMath): EqProfile =
+        if (bands.isEmpty()) EqProfile.FLAT else math.withAutoPreamp(EqProfile(0, bands))
 }

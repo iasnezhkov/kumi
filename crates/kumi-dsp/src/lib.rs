@@ -1,9 +1,16 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 #![cfg_attr(not(test), no_std)]
 
+mod analyze;
+
 use core::f64::consts::PI;
 
-use kumi_icd::{AudioMeters, CrossfeedMode, DspSettings, EqBand, EqProfile, FilterKind, METER_FLOOR_CENTI_DB};
+use analyze::Analyzer;
+pub use analyze::BAND_CENTERS_HZ;
+use kumi_icd::{
+    AudioMeters, AudioSpectrum, CrossfeedMode, DspExtras, DspSettings, EqBand, EqBaseSettings, EqProfile, FilterKind,
+    METER_FLOOR_CENTI_DB, ToneEqSettings,
+};
 
 pub const MAX_BANDS: usize = kumi_icd::EQ_MAX_BANDS;
 pub const MIN_SAMPLE_RATE: u32 = 8_000;
@@ -451,6 +458,18 @@ fn fade_frames(sample_rate: u32) -> u32 {
 struct Chain {
     cascade: Cascade,
     state: [[[f32; 2]; MAX_BANDS]; 2],
+    base_cascade: Cascade,
+    base_state: [[[f32; 2]; MAX_BANDS]; 2],
+    base_preamp: f32,
+    tone_sections: [Option<Section>; 5],
+    tone_state: [[[f32; 2]; 5]; 2],
+    tone_preamp: f32,
+    tone: ToneEqSettings,
+    subsonic: Option<Section>,
+    subsonic_state: [[f32; 2]; 2],
+    mono_bass: Option<Section>,
+    mono_bass_state: [[f32; 2]; 2],
+    extras: DspExtras,
     loudness_sections: [Option<Section>; 2],
     loudness_state: [[[f32; 2]; 2]; 2],
     loudness_preamp: f32,
@@ -459,10 +478,42 @@ struct Chain {
     crossfeed: Crossfeed,
 }
 
+const TONE_BAND_SPECS: [(Kind, f32, f32); 5] = [
+    (Kind::LowShelf, 60.0, 0.707),
+    (Kind::Peak, 200.0, 0.9),
+    (Kind::Peak, 1_000.0, 0.9),
+    (Kind::Peak, 3_500.0, 1.0),
+    (Kind::HighShelf, 10_000.0, 0.707),
+];
+
 impl Chain {
     const EMPTY: Self = Self {
         cascade: Cascade::EMPTY,
         state: [[[0.0; 2]; MAX_BANDS]; 2],
+        base_cascade: Cascade::EMPTY,
+        base_state: [[[0.0; 2]; MAX_BANDS]; 2],
+        base_preamp: 1.0,
+        tone_sections: [None; 5],
+        tone_state: [[[0.0; 2]; 5]; 2],
+        tone_preamp: 1.0,
+        tone: ToneEqSettings {
+            enabled: false,
+            sub_bass_centi_db: 0,
+            bass_centi_db: 0,
+            mid_centi_db: 0,
+            presence_centi_db: 0,
+            treble_centi_db: 0,
+        },
+        subsonic: None,
+        subsonic_state: [[0.0; 2]; 2],
+        mono_bass: None,
+        mono_bass_state: [[0.0; 2]; 2],
+        extras: DspExtras {
+            auto_level: false,
+            auto_level_target_lufs: DspExtras::DEFAULT_TARGET_LUFS,
+            subsonic_hz: 0,
+            mono_bass_hz: 0,
+        },
         loudness_sections: [None; 2],
         loudness_state: [[[0.0; 2]; 2]; 2],
         loudness_preamp: 1.0,
@@ -478,90 +529,43 @@ impl Chain {
         crossfeed: Crossfeed::OFF,
     };
 
+    fn active_section_count(&self) -> usize {
+        self.cascade.count
+            + self.base_cascade.count
+            + self.tone_sections.iter().filter(|s| s.is_some()).count()
+            + usize::from(self.subsonic.is_some())
+            + usize::from(self.mono_bass.is_some())
+    }
+
     #[cfg_attr(target_arch = "riscv32", unsafe(link_section = ".text.hot"))]
-    fn process_chunk(&mut self, chunk: &[i32], buf: &mut [[f32; 2]], limiter_hits: &mut u32) {
-        const INV_SCALE: f32 = 1.0 / 2_147_483_648.0;
-        let count = self.cascade.count;
-        let base_gain = self.preamp * self.loudness_preamp * INV_SCALE;
-        let gain = if self.dsp.invert_phase { -base_gain } else { base_gain };
-        let swap = self.dsp.swap_channels;
-        let mono = self.dsp.mono;
-        let use_crossfeed = !mono && !matches!(self.dsp.crossfeed, CrossfeedMode::Off);
-        let limiter = self.dsp.limiter;
-        if swap {
-            for (slot, pair) in buf.iter_mut().zip(chunk.chunks_exact(2)) {
-                slot[0] = pair[1] as f32 * gain;
-                slot[1] = pair[0] as f32 * gain;
+    #[inline(never)]
+    fn run_stereo_section(section: Section, state_l: &mut [f32; 2], state_r: &mut [f32; 2], buf: &mut [[f32; 2]]) {
+        let (a1, a2, a3) = (section.a1, section.a2, section.a3);
+        let (m0, m1, m2) = (section.m0, section.m1, section.m2);
+        let [mut l0, mut l1] = *state_l;
+        let [mut r0, mut r1] = *state_r;
+        if m0 == 1.0 && m2 == 0.0 {
+            for slot in buf.iter_mut() {
+                let xl = slot[0];
+                let xr = slot[1];
+                let t1l = a1 * l0;
+                let t1r = a1 * r0;
+                let t2l = mul_add(a2, l0, l1);
+                let t2r = mul_add(a2, r0, r1);
+                let v3l = xl - l1;
+                let v3r = xr - r1;
+                let v1l = mul_add(a2, v3l, t1l);
+                let v1r = mul_add(a2, v3r, t1r);
+                let v2l = mul_add(a3, v3l, t2l);
+                let v2r = mul_add(a3, v3r, t2r);
+                l0 = mul_sub(2.0, v1l, l0);
+                r0 = mul_sub(2.0, v1r, r0);
+                l1 = mul_sub(2.0, v2l, l1);
+                r1 = mul_sub(2.0, v2r, r1);
+                slot[0] = mul_add(m1, v1l, xl);
+                slot[1] = mul_add(m1, v1r, xr);
             }
         } else {
-            for (slot, pair) in buf.iter_mut().zip(chunk.chunks_exact(2)) {
-                slot[0] = pair[0] as f32 * gain;
-                slot[1] = pair[1] as f32 * gain;
-            }
-        }
-        for band in 0..count {
-            let Some(section) = self.cascade.sections[band] else { continue };
-            let (a1, a2, a3) = (section.a1, section.a2, section.a3);
-            let (m0, m1, m2) = (section.m0, section.m1, section.m2);
-            let [mut l0, mut l1] = self.state[0][band];
-            let [mut r0, mut r1] = self.state[1][band];
-            if m0 == 1.0 && m2 == 0.0 {
-                for slot in buf.iter_mut() {
-                    let xl = slot[0];
-                    let xr = slot[1];
-                    let t1l = a1 * l0;
-                    let t1r = a1 * r0;
-                    let t2l = mul_add(a2, l0, l1);
-                    let t2r = mul_add(a2, r0, r1);
-                    let v3l = xl - l1;
-                    let v3r = xr - r1;
-                    let v1l = mul_add(a2, v3l, t1l);
-                    let v1r = mul_add(a2, v3r, t1r);
-                    let v2l = mul_add(a3, v3l, t2l);
-                    let v2r = mul_add(a3, v3r, t2r);
-                    l0 = mul_sub(2.0, v1l, l0);
-                    r0 = mul_sub(2.0, v1r, r0);
-                    l1 = mul_sub(2.0, v2l, l1);
-                    r1 = mul_sub(2.0, v2r, r1);
-                    slot[0] = mul_add(m1, v1l, xl);
-                    slot[1] = mul_add(m1, v1r, xr);
-                }
-            } else {
-                for slot in buf.iter_mut() {
-                    let xl = slot[0];
-                    let xr = slot[1];
-                    let t1l = a1 * l0;
-                    let t1r = a1 * r0;
-                    let t2l = mul_add(a2, l0, l1);
-                    let t2r = mul_add(a2, r0, r1);
-                    let v3l = xl - l1;
-                    let v3r = xr - r1;
-                    let y0l = m0 * xl;
-                    let y0r = m0 * xr;
-                    let v1l = mul_add(a2, v3l, t1l);
-                    let v1r = mul_add(a2, v3r, t1r);
-                    let v2l = mul_add(a3, v3l, t2l);
-                    let v2r = mul_add(a3, v3r, t2r);
-                    l0 = mul_sub(2.0, v1l, l0);
-                    r0 = mul_sub(2.0, v1r, r0);
-                    let y1l = mul_add(m1, v1l, y0l);
-                    let y1r = mul_add(m1, v1r, y0r);
-                    l1 = mul_sub(2.0, v2l, l1);
-                    r1 = mul_sub(2.0, v2r, r1);
-                    slot[0] = mul_add(m2, v2l, y1l);
-                    slot[1] = mul_add(m2, v2r, y1r);
-                }
-            }
-            let clean = |v: f32| if !v.is_finite() || v.abs() < STATE_FLOOR { 0.0 } else { v };
-            self.state[0][band] = [clean(l0), clean(l1)];
-            self.state[1][band] = [clean(r0), clean(r1)];
-        }
-        for shelf in 0..2 {
-            let Some(section) = self.loudness_sections[shelf] else { continue };
-            let (a1, a2, a3) = (section.a1, section.a2, section.a3);
-            let (m0, m1, m2) = (section.m0, section.m1, section.m2);
-            let [mut l0, mut l1] = self.loudness_state[0][shelf];
-            let [mut r0, mut r1] = self.loudness_state[1][shelf];
             for slot in buf.iter_mut() {
                 let xl = slot[0];
                 let xr = slot[1];
@@ -586,9 +590,55 @@ impl Chain {
                 slot[0] = mul_add(m2, v2l, y1l);
                 slot[1] = mul_add(m2, v2r, y1r);
             }
-            let clean = |v: f32| if !v.is_finite() || v.abs() < STATE_FLOOR { 0.0 } else { v };
-            self.loudness_state[0][shelf] = [clean(l0), clean(l1)];
-            self.loudness_state[1][shelf] = [clean(r0), clean(r1)];
+        }
+        let clean = |v: f32| if !v.is_finite() || v.abs() < STATE_FLOOR { 0.0 } else { v };
+        *state_l = [clean(l0), clean(l1)];
+        *state_r = [clean(r0), clean(r1)];
+    }
+
+    #[cfg_attr(target_arch = "riscv32", unsafe(link_section = ".text.hot"))]
+    fn process_chunk(&mut self, chunk: &[i32], buf: &mut [[f32; 2]], agc_gain: f32, limiter_hits: &mut u32) {
+        const INV_SCALE: f32 = 1.0 / 2_147_483_648.0;
+        let base_gain = self.preamp * self.base_preamp * self.tone_preamp * self.loudness_preamp * agc_gain * INV_SCALE;
+        let gain = if self.dsp.invert_phase { -base_gain } else { base_gain };
+        let swap = self.dsp.swap_channels;
+        let mono = self.dsp.mono;
+        let use_crossfeed = !mono && !matches!(self.dsp.crossfeed, CrossfeedMode::Off);
+        let limiter = self.dsp.limiter || (self.extras.auto_level && agc_gain > 1.0);
+        if swap {
+            for (slot, pair) in buf.iter_mut().zip(chunk.chunks_exact(2)) {
+                slot[0] = pair[1] as f32 * gain;
+                slot[1] = pair[0] as f32 * gain;
+            }
+        } else {
+            for (slot, pair) in buf.iter_mut().zip(chunk.chunks_exact(2)) {
+                slot[0] = pair[0] as f32 * gain;
+                slot[1] = pair[1] as f32 * gain;
+            }
+        }
+        if let Some(subsonic) = self.subsonic {
+            let (sl, sr) = self.subsonic_state.split_at_mut(1);
+            Self::run_stereo_section(subsonic, &mut sl[0], &mut sr[0], buf);
+        }
+        for band in 0..self.base_cascade.count {
+            let Some(section) = self.base_cascade.sections[band] else { continue };
+            let (sl, sr) = self.base_state.split_at_mut(1);
+            Self::run_stereo_section(section, &mut sl[0][band], &mut sr[0][band], buf);
+        }
+        for band in 0..self.cascade.count {
+            let Some(section) = self.cascade.sections[band] else { continue };
+            let (sl, sr) = self.state.split_at_mut(1);
+            Self::run_stereo_section(section, &mut sl[0][band], &mut sr[0][band], buf);
+        }
+        for idx in 0..5 {
+            let Some(section) = self.tone_sections[idx] else { continue };
+            let (sl, sr) = self.tone_state.split_at_mut(1);
+            Self::run_stereo_section(section, &mut sl[0][idx], &mut sr[0][idx], buf);
+        }
+        for shelf in 0..2 {
+            let Some(section) = self.loudness_sections[shelf] else { continue };
+            let (sl, sr) = self.loudness_state.split_at_mut(1);
+            Self::run_stereo_section(section, &mut sl[0][shelf], &mut sr[0][shelf], buf);
         }
         if mono {
             for slot in buf.iter_mut() {
@@ -596,21 +646,49 @@ impl Chain {
                 slot[0] = mid;
                 slot[1] = mid;
             }
-        } else if use_crossfeed {
-            let alpha = self.crossfeed.alpha;
-            let direct = self.crossfeed.direct;
-            let cross = self.crossfeed.cross;
-            let [mut lp_l, mut lp_r] = self.crossfeed.lp;
-            for slot in buf.iter_mut() {
-                let l = slot[0];
-                let r = slot[1];
-                lp_l = mul_add(alpha, l - lp_l, lp_l);
-                lp_r = mul_add(alpha, r - lp_r, lp_r);
-                slot[0] = mul_add(cross, lp_r, direct * l);
-                slot[1] = mul_add(cross, lp_l, direct * r);
+        } else {
+            if let Some(mb) = self.mono_bass {
+                let (a1, a2, a3) = (mb.a1, mb.a2, mb.a3);
+                let [mut m0, mut m1] = self.mono_bass_state[0];
+                let [mut s0, mut s1] = self.mono_bass_state[1];
+                for slot in buf.iter_mut() {
+                    let mid = 0.5 * (slot[0] + slot[1]);
+                    let side = 0.5 * (slot[0] - slot[1]);
+                    let v3m = mid - m1;
+                    let v1m = mul_add(a2, v3m, a1 * m0);
+                    let v2m = mul_add(a3, v3m, mul_add(a2, m0, m1));
+                    m0 = mul_sub(2.0, v1m, m0);
+                    m1 = mul_sub(2.0, v2m, m1);
+                    let mid_ap = mid - 2.0 * (v1m + v2m);
+                    let v3s = side - s1;
+                    let v1s = mul_add(a2, v3s, a1 * s0);
+                    let v2s = mul_add(a3, v3s, mul_add(a2, s0, s1));
+                    s0 = mul_sub(2.0, v1s, s0);
+                    s1 = mul_sub(2.0, v2s, s1);
+                    let side_hp = side - 2.0 * v1s - v2s;
+                    slot[0] = mid_ap + side_hp;
+                    slot[1] = mid_ap - side_hp;
+                }
+                let clean = |v: f32| if !v.is_finite() || v.abs() < STATE_FLOOR { 0.0 } else { v };
+                self.mono_bass_state[0] = [clean(m0), clean(m1)];
+                self.mono_bass_state[1] = [clean(s0), clean(s1)];
             }
-            let clean = |v: f32| if !v.is_finite() || v.abs() < STATE_FLOOR { 0.0 } else { v };
-            self.crossfeed.lp = [clean(lp_l), clean(lp_r)];
+            if use_crossfeed {
+                let alpha = self.crossfeed.alpha;
+                let direct = self.crossfeed.direct;
+                let cross = self.crossfeed.cross;
+                let [mut lp_l, mut lp_r] = self.crossfeed.lp;
+                for slot in buf.iter_mut() {
+                    let l = slot[0];
+                    let r = slot[1];
+                    lp_l = mul_add(alpha, l - lp_l, lp_l);
+                    lp_r = mul_add(alpha, r - lp_r, lp_r);
+                    slot[0] = mul_add(cross, lp_r, direct * l);
+                    slot[1] = mul_add(cross, lp_l, direct * r);
+                }
+                let clean = |v: f32| if !v.is_finite() || v.abs() < STATE_FLOOR { 0.0 } else { v };
+                self.crossfeed.lp = [clean(lp_l), clean(lp_r)];
+            }
         }
         if limiter {
             for slot in buf.iter_mut() {
@@ -645,6 +723,7 @@ pub struct Equalizer {
     sum_sq_r: f32,
     meter_frames: u32,
     limiter_hits: u32,
+    analyzer: Analyzer,
 }
 
 impl Default for Equalizer {
@@ -680,11 +759,15 @@ impl Equalizer {
             sum_sq_r: 0.0,
             meter_frames: 0,
             limiter_hits: 0,
+            analyzer: Analyzer::new(),
         }
     }
 
     fn begin_transition(&mut self) {
         if !self.has_processed || !(MIN_SAMPLE_RATE..=MAX_SAMPLE_RATE).contains(&self.sample_rate) {
+            return;
+        }
+        if self.sample_rate >= 352_800 && self.active.active_section_count() > 10 {
             return;
         }
         if self.fade_len == 0 {
@@ -777,10 +860,12 @@ impl Equalizer {
         self.active.cascade = cascade;
         self.active.preamp = preamp;
         self.sample_rate = sample_rate;
+        self.analyzer.configure_rate(sample_rate);
         if rate_changed {
             self.active.crossfeed = Crossfeed::design(self.active.dsp.crossfeed, sample_rate);
             self.active.loudness_state = [[[0.0; 2]; 2]; 2];
             self.update_loudness(false);
+            self.rebuild_tone_and_extras(sample_rate);
         }
         Ok(())
     }
@@ -788,6 +873,158 @@ impl Equalizer {
     pub fn configure_profile(&mut self, profile: &EqProfile, sample_rate: u32) -> Result<(), DesignError> {
         let (bands, count) = profile_bands(profile);
         self.configure(&bands[..count], f32::from(profile.preamp_centi_db) / 100.0, sample_rate)
+    }
+
+    #[cfg_attr(target_arch = "riscv32", unsafe(link_section = ".text.cold"))]
+    pub fn configure_base_eq(&mut self, base: &EqBaseSettings, sample_rate: u32) -> Result<(), DesignError> {
+        if !(MIN_SAMPLE_RATE..=MAX_SAMPLE_RATE).contains(&sample_rate) {
+            return Err(DesignError::SampleRate);
+        }
+        let (cascade, preamp) = if base.enabled && !base.profile.bands.is_empty() {
+            let (bands, count) = profile_bands(&base.profile);
+            let c = Cascade::design(&bands[..count], sample_rate)?;
+            let p = db_to_gain(f32::from(base.profile.preamp_centi_db) / 100.0);
+            (c, p)
+        } else {
+            (Cascade::EMPTY, 1.0)
+        };
+        let rate_changed = sample_rate != self.sample_rate;
+        if !rate_changed && cascade == self.active.base_cascade && preamp == self.active.base_preamp {
+            return Ok(());
+        }
+        if rate_changed {
+            self.clear_transition();
+        } else {
+            self.begin_transition();
+        }
+        for index in 0..MAX_BANDS {
+            let same = |a: Option<(usize, Kind, f32)>, b: Option<(usize, Kind, f32)>| matches!((a, b), (Some((ia, ka, _)), Some((ib, kb, _))) if ia == ib && ka == kb);
+            if rate_changed || !same(cascade.origins[index], self.active.base_cascade.origins[index]) {
+                self.active.base_state[0][index] = [0.0; 2];
+                self.active.base_state[1][index] = [0.0; 2];
+            }
+        }
+        self.active.base_cascade = cascade;
+        self.active.base_preamp = preamp;
+        self.sample_rate = sample_rate;
+        self.analyzer.configure_rate(sample_rate);
+        Ok(())
+    }
+
+    #[cfg_attr(target_arch = "riscv32", unsafe(link_section = ".text.cold"))]
+    fn rebuild_tone_and_extras(&mut self, sample_rate: u32) {
+        let gains = [
+            self.active.tone.sub_bass_centi_db,
+            self.active.tone.bass_centi_db,
+            self.active.tone.mid_centi_db,
+            self.active.tone.presence_centi_db,
+            self.active.tone.treble_centi_db,
+        ];
+        let mut max_boost = 0.0f32;
+        for i in 0..5 {
+            let g = if self.active.tone.enabled { f32::from(gains[i]) / 100.0 } else { 0.0 };
+            if g == 0.0 {
+                self.active.tone_sections[i] = None;
+                self.active.tone_state[0][i] = [0.0; 2];
+                self.active.tone_state[1][i] = [0.0; 2];
+            } else {
+                let (kind, frequency_hz, q) = TONE_BAND_SPECS[i];
+                let band = Band { kind, frequency_hz, q, gain_db: g };
+                let sec = if band.above_band_limit(sample_rate) { None } else { Section::design(&band, sample_rate).ok() };
+                if self.active.tone_sections[i].is_none() && sec.is_some() {
+                    self.active.tone_state[0][i] = [0.0; 2];
+                    self.active.tone_state[1][i] = [0.0; 2];
+                }
+                self.active.tone_sections[i] = sec;
+                if g > max_boost {
+                    max_boost = g;
+                }
+            }
+        }
+        self.active.tone_preamp = if max_boost > 0.0 { db_to_gain(-max_boost) } else { 1.0 };
+
+        let sub = if self.active.extras.subsonic_hz != 0 {
+            let band = Band {
+                kind: Kind::HighPass,
+                frequency_hz: f32::from(self.active.extras.subsonic_hz),
+                q: core::f32::consts::FRAC_1_SQRT_2,
+                gain_db: 0.0,
+            };
+            Section::design(&band, sample_rate).ok()
+        } else {
+            None
+        };
+        if sub.is_none() || self.active.subsonic.is_none() {
+            self.active.subsonic_state = [[0.0; 2]; 2];
+        }
+        self.active.subsonic = sub;
+
+        let mb = if self.active.extras.mono_bass_hz != 0 {
+            let band =
+                Band { kind: Kind::HighPass, frequency_hz: f32::from(self.active.extras.mono_bass_hz), q: 0.5, gain_db: 0.0 };
+            Section::design(&band, sample_rate).ok()
+        } else {
+            None
+        };
+        if mb.is_none() || self.active.mono_bass.is_none() {
+            self.active.mono_bass_state = [[0.0; 2]; 2];
+        }
+        self.active.mono_bass = mb;
+    }
+
+    #[cfg_attr(target_arch = "riscv32", unsafe(link_section = ".text.cold"))]
+    pub fn configure_tone_eq(&mut self, tone: ToneEqSettings, sample_rate: u32) -> Result<(), DesignError> {
+        if !(MIN_SAMPLE_RATE..=MAX_SAMPLE_RATE).contains(&sample_rate) {
+            return Err(DesignError::SampleRate);
+        }
+        if !tone.is_valid() {
+            return Err(DesignError::Gain);
+        }
+        let rate_changed = sample_rate != self.sample_rate;
+        if !rate_changed && tone == self.active.tone {
+            return Ok(());
+        }
+        if rate_changed {
+            self.clear_transition();
+        } else {
+            self.begin_transition();
+        }
+        self.active.tone = tone;
+        self.sample_rate = sample_rate;
+        self.analyzer.configure_rate(sample_rate);
+        self.rebuild_tone_and_extras(sample_rate);
+        Ok(())
+    }
+
+    #[cfg_attr(target_arch = "riscv32", unsafe(link_section = ".text.cold"))]
+    pub fn configure_dsp_extras(&mut self, extras: DspExtras, sample_rate: u32) -> Result<(), DesignError> {
+        if !(MIN_SAMPLE_RATE..=MAX_SAMPLE_RATE).contains(&sample_rate) {
+            return Err(DesignError::SampleRate);
+        }
+        if !extras.is_valid() {
+            return Err(DesignError::Gain);
+        }
+        let rate_changed = sample_rate != self.sample_rate;
+        if !rate_changed && extras == self.active.extras {
+            return Ok(());
+        }
+        if rate_changed {
+            self.clear_transition();
+        } else {
+            self.begin_transition();
+        }
+        if !extras.auto_level {
+            self.analyzer.reset_agc();
+        }
+        self.active.extras = extras;
+        self.sample_rate = sample_rate;
+        self.analyzer.configure_rate(sample_rate);
+        self.rebuild_tone_and_extras(sample_rate);
+        Ok(())
+    }
+
+    pub fn set_spectrum_enabled(&mut self, enabled: bool) {
+        self.analyzer.set_spectrum_enabled(enabled);
     }
 
     pub fn configure_dsp(&mut self, dsp: DspSettings, sample_rate: u32) -> Result<(), DesignError> {
@@ -811,8 +1048,10 @@ impl Equalizer {
         }
         self.active.dsp = dsp;
         self.sample_rate = sample_rate;
+        self.analyzer.configure_rate(sample_rate);
         if rate_changed {
             self.active.loudness_state = [[[0.0; 2]; 2]; 2];
+            self.rebuild_tone_and_extras(sample_rate);
         }
         self.update_loudness(false);
         Ok(())
@@ -822,8 +1061,16 @@ impl Equalizer {
         self.active.dsp
     }
 
+    pub fn dsp_extras(&self) -> DspExtras {
+        self.active.extras
+    }
+
     pub fn band_count(&self) -> usize {
         self.active.cascade.count
+    }
+
+    pub fn total_band_count(&self) -> usize {
+        self.active.active_section_count()
     }
 
     pub fn bypass_eq(&mut self) {
@@ -855,6 +1102,12 @@ impl Equalizer {
             || self.active.dsp.invert_phase
             || self.active.dsp.swap_channels
             || self.loudness_active()
+            || self.active.base_cascade.count > 0
+            || self.active.base_preamp != 1.0
+            || self.active.tone_sections.iter().any(Option::is_some)
+            || self.active.subsonic.is_some()
+            || self.active.mono_bass.is_some()
+            || self.active.extras.auto_level
     }
 
     pub fn is_transitioning(&self) -> bool {
@@ -885,8 +1138,17 @@ impl Equalizer {
         self.reset_meters();
         self.clear_transition();
         self.active.state = [[[0.0; 2]; MAX_BANDS]; 2];
+        self.active.base_state = [[[0.0; 2]; MAX_BANDS]; 2];
+        self.active.tone_state = [[[0.0; 2]; 5]; 2];
+        self.active.subsonic_state = [[0.0; 2]; 2];
+        self.active.mono_bass_state = [[0.0; 2]; 2];
         self.active.loudness_state = [[[0.0; 2]; 2]; 2];
         self.active.crossfeed.lp = [0.0; 2];
+        self.analyzer.reset_stream();
+    }
+
+    pub fn take_spectrum(&mut self, active: bool) -> AudioSpectrum {
+        self.analyzer.take_spectrum(active, self.active.extras.auto_level)
     }
 
     pub fn take_meters(&mut self, active: bool) -> AudioMeters {
@@ -923,7 +1185,8 @@ impl Equalizer {
         if pairs == 0 {
             return;
         }
-        let stride = if pairs > 16 { 4 } else { 1 };
+        let analyze = self.analyzer.spectrum_enabled();
+        let stride = if analyze || pairs <= 16 { 1 } else { 4 };
         let mut peak_l = self.peak_l;
         let mut peak_r = self.peak_r;
         let mut sum_sq_l = self.sum_sq_l;
@@ -931,8 +1194,13 @@ impl Equalizer {
         let mut count = self.meter_frames;
         let mut index = 0;
         while index < pairs {
-            let l = (frames[index * 2] as f32 * INV_SCALE).abs();
-            let r = (frames[index * 2 + 1] as f32 * INV_SCALE).abs();
+            let sl = frames[index * 2] as f32 * INV_SCALE;
+            let sr = frames[index * 2 + 1] as f32 * INV_SCALE;
+            if analyze {
+                self.analyzer.push_output_frame(sl, sr, sl, sr, false, 0.0);
+            }
+            let l = sl.abs();
+            let r = sr.abs();
             if l > peak_l {
                 peak_l = l;
             }
@@ -970,17 +1238,22 @@ impl Equalizer {
         let mut sum_sq_l = self.sum_sq_l;
         let mut sum_sq_r = self.sum_sq_r;
         let mut meter_frames = self.meter_frames;
+        let auto_level = self.active.extras.auto_level;
+        let target_lufs = f32::from(self.active.extras.auto_level_target_lufs);
+        let run_analyzer = self.analyzer.spectrum_enabled() || auto_level;
         for chunk in frames.chunks_mut(CHUNK * 2) {
             let pairs = chunk.len() / 2;
+            let agc_gain = if auto_level { self.analyzer.agc_gain_lin() } else { 1.0 };
+            let inv_agc = if auto_level && agc_gain > 1e-4 { 1.0 / agc_gain } else { 1.0 };
             let buf = &mut self.scratch[..pairs];
-            self.active.process_chunk(chunk, buf, &mut limiter_hits);
+            self.active.process_chunk(chunk, buf, agc_gain, &mut limiter_hits);
             if self.fade_len > 0 {
                 let old_buf = &mut self.old_scratch[..pairs];
                 let mut ignored_hits = 0u32;
-                self.previous.process_chunk(chunk, old_buf, &mut ignored_hits);
+                self.previous.process_chunk(chunk, old_buf, agc_gain, &mut ignored_hits);
                 let inv_len = 1.0 / self.fade_len as f32;
                 let mut pos = self.fade_pos;
-                let post_limit = self.active.dsp.limiter;
+                let post_limit = self.active.dsp.limiter || (auto_level && agc_gain > 1.0);
                 for (cur, old) in buf.iter_mut().zip(old_buf.iter()) {
                     if pos < self.fade_len {
                         pos += 1;
@@ -1006,8 +1279,13 @@ impl Equalizer {
                 }
             }
             for (slot, pair) in buf.iter().zip(chunk.chunks_exact_mut(2)) {
-                let l = slot[0].abs();
-                let r = slot[1].abs();
+                let sl = slot[0];
+                let sr = slot[1];
+                if run_analyzer {
+                    self.analyzer.push_output_frame(sl, sr, sl * inv_agc, sr * inv_agc, auto_level, target_lufs);
+                }
+                let l = sl.abs();
+                let r = sr.abs();
                 if l > peak_l {
                     peak_l = l;
                 }
@@ -1017,13 +1295,14 @@ impl Equalizer {
                 sum_sq_l = mul_add(l, l, sum_sq_l);
                 sum_sq_r = mul_add(r, r, sum_sq_r);
                 meter_frames = meter_frames.saturating_add(1);
-                pair[0] = quantize(slot[0], SCALE, &mut clipped);
-                pair[1] = quantize(slot[1], SCALE, &mut clipped);
+                pair[0] = quantize(sl, SCALE, &mut clipped);
+                pair[1] = quantize(sr, SCALE, &mut clipped);
             }
             if chunk.len() & 1 != 0 {
                 let last = chunk.len() - 1;
                 let count = self.active.cascade.count;
-                let base_gain = self.active.preamp * self.active.loudness_preamp * INV_SCALE;
+                let eq_preamp = self.active.preamp * self.active.base_preamp * self.active.tone_preamp;
+                let base_gain = eq_preamp * self.active.loudness_preamp * agc_gain * INV_SCALE;
                 let gain = if self.active.dsp.invert_phase { -base_gain } else { base_gain };
                 let mut x = chunk[last] as f32 * gain;
                 for (section, z) in self.active.cascade.sections[..count].iter().flatten().zip(self.active.state[0].iter_mut()) {
@@ -1617,5 +1896,124 @@ mod tests {
         let mut silence = [0i32; 64];
         eq.process_stereo(&mut silence);
         assert!(silence.iter().all(|&s| s == 0), "stale filter tail leaked into new stream: {silence:?}");
+    }
+
+    #[test]
+    fn spectrum_separates_sub_bass_and_midrange_tones_across_rates() {
+        for rate in [48_000u32, 192_000u32] {
+            for (tone_hz, min_band, max_band) in [(60.0f32, 2usize, 4usize), (1_000.0f32, 12usize, 14usize)] {
+                let mut eq = Equalizer::new();
+                eq.configure(&[], 0.0, rate).unwrap();
+                eq.set_spectrum_enabled(true);
+                let frames = (rate as usize) / 2;
+                let amp = 0.5 * 2_147_483_648.0f64;
+                let mut pcm = std::vec![0i32; frames * 2];
+                for i in 0..frames {
+                    let s = (amp * libm::sin(2.0 * PI * f64::from(tone_hz) * i as f64 / f64::from(rate))) as i32;
+                    pcm[i * 2] = s;
+                    pcm[i * 2 + 1] = s;
+                }
+                eq.observe_stereo(&pcm);
+                let spec = eq.take_spectrum(true);
+                assert!(spec.active);
+                let (peak_idx, peak_val) =
+                    spec.bands_db_x2.iter().enumerate().max_by_key(|&(_, &v)| v).map(|(i, &v)| (i, v)).unwrap();
+                assert!(
+                    (min_band..=max_band).contains(&peak_idx),
+                    "rate={rate} tone={tone_hz} peaked at band {peak_idx} ({:?})",
+                    spec.bands_db_x2
+                );
+                assert!(peak_val > 130, "expected strong peak for -6 dBFS tone, got {peak_val}");
+                assert!(spec.lufs_momentary_centi > -1_400 && spec.lufs_momentary_centi < -300);
+            }
+        }
+    }
+
+    #[test]
+    fn true_peak_catches_intersample_overshoot_and_agc_levels_loud_signal() {
+        let rate = 48_000u32;
+        let mut eq = Equalizer::new();
+        eq.configure(&[], 0.0, rate).unwrap();
+        eq.set_spectrum_enabled(true);
+        let mut inter = [0i32; 256];
+        let val = (0.95 * 2_147_483_648.0) as i32;
+        for (i, pair) in inter.chunks_exact_mut(2).enumerate() {
+            let s = match i & 3 {
+                0 | 1 => val,
+                _ => -val,
+            };
+            pair[0] = s;
+            pair[1] = s;
+        }
+        eq.observe_stereo(&inter);
+        let spec = eq.take_spectrum(true);
+        assert!(spec.true_peak_left_centi_db > 0, "expected >0 dBTP inter-sample peak, got {}", spec.true_peak_left_centi_db);
+
+        let mut agc_eq = Equalizer::new();
+        agc_eq
+            .configure_dsp_extras(
+                DspExtras { auto_level: true, auto_level_target_lufs: -18, subsonic_hz: 0, mono_bass_hz: 0 },
+                rate,
+            )
+            .unwrap();
+        let amp = 0.7 * 2_147_483_648.0f64;
+        for block in 0..18 {
+            let mut pcm = std::vec![0i32; 9_600];
+            for i in 0..4_800 {
+                let idx = block * 4_800 + i;
+                let s = (amp * libm::sin(2.0 * PI * 1_000.0 * idx as f64 / f64::from(rate))) as i32;
+                pcm[i * 2] = s;
+                pcm[i * 2 + 1] = s;
+            }
+            agc_eq.process_stereo(&mut pcm);
+        }
+        let after = agc_eq.take_spectrum(true);
+        assert!(
+            after.auto_level_gain_centi_db < -300,
+            "AGC should attenuate loud signal, got {}",
+            after.auto_level_gain_centi_db
+        );
+    }
+
+    #[test]
+    fn two_layer_eq_subsonic_and_mono_bass_behave_accurately() {
+        let rate = 48_000u32;
+        let mut base_bands = heapless::Vec::new();
+        base_bands.push(EqBand { kind: FilterKind::Peak, frequency_hz: 1_000, q_milli: 1_000, gain_centi_db: 400 }).unwrap();
+        let base = EqBaseSettings { enabled: true, profile: EqProfile { preamp_centi_db: -400, bands: base_bands } };
+        let tone = ToneEqSettings { enabled: true, mid_centi_db: 300, ..ToneEqSettings::default() };
+        let mut eq = Equalizer::new();
+        eq.configure_base_eq(&base, rate).unwrap();
+        eq.configure_tone_eq(tone, rate).unwrap();
+        let g1k = gain_to_db(measured_gain(&mut eq, 1_000.0, rate, 20.0, 30.0));
+        let g100 = gain_to_db(measured_gain(&mut eq, 100.0, rate, 12.0, 16.0));
+        assert!((g1k - g100 - 7.0).abs() < 0.4, "base +4 dB + tone +3 dB at 1 kHz: g1k={g1k}, g100={g100}");
+
+        let mut mb = Equalizer::new();
+        mb.configure_dsp_extras(
+            DspExtras { auto_level: false, auto_level_target_lufs: -16, subsonic_hz: 30, mono_bass_hz: 120 },
+            rate,
+        )
+        .unwrap();
+        let amp = 0.25 * 2_147_483_648.0f64;
+        let mut low_left = std::vec![0i32; 9_600];
+        for i in 0..4_800 {
+            low_left[i * 2] = (amp * libm::sin(2.0 * PI * 45.0 * i as f64 / f64::from(rate))) as i32;
+        }
+        mb.process_stereo(&mut low_left);
+        let tail = &low_left[4_800..];
+        let max_l = tail.iter().step_by(2).map(|s| s.unsigned_abs()).max().unwrap() as f64;
+        let max_r = tail.iter().skip(1).step_by(2).map(|s| s.unsigned_abs()).max().unwrap() as f64;
+        assert!(max_r > max_l * 0.6, "mono-bass should collapse 45 Hz L-only into R: L={max_l} R={max_r}");
+
+        let mut hi_left = std::vec![0i32; 4_800];
+        for i in 0..2_400 {
+            hi_left[i * 2] = (amp * libm::sin(2.0 * PI * 2_000.0 * i as f64 / f64::from(rate))) as i32;
+        }
+        mb.process_stereo(&mut hi_left);
+        let hi_tail = &hi_left[2_400..];
+        let hi_l = hi_tail.iter().step_by(2).map(|s| s.unsigned_abs()).max().unwrap() as f64;
+        let hi_r = hi_tail.iter().skip(1).step_by(2).map(|s| s.unsigned_abs()).max().unwrap() as f64;
+        assert!(hi_r < hi_l * 0.05, "mono-bass must keep 2 kHz stereo separate: L={hi_l} R={hi_r}");
     }
 }

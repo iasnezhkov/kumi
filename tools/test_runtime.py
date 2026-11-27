@@ -264,7 +264,7 @@ class RuntimeScenarios:
         self.assertNotIn(b'\x85\x03', report)
         bos = self.host.control(bytes.fromhex('8006000f00004000'))
         self.assertEqual(int.from_bytes(bos[2:4], 'little'), len(bos))
-        self.assertIn(bytes.fromhex('38b60834a909a0478bfda0768815b665'), bos)
+        self.assertNotIn(bytes.fromhex('38b60834a909a0478bfda0768815b665'), bos)
         msos = self.host.control(bytes.fromhex('c020000007000004'))
         self.assertIn(b'WINUSB\0\0', msos)
         self.assertEqual(int.from_bytes(msos[8:10], 'little'), len(msos))

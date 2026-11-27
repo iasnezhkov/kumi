@@ -431,6 +431,10 @@ fn volume_checks(program: &mut Program, volume: Volume, registers: [u32; 2]) {
     }
 }
 
+pub const fn effective_class_h(extras: DacExtras) -> ClassHMode {
+    if extras.line_out { ClassHMode::FixedHv } else { extras.class_h }
+}
+
 pub const fn class_h_value(mode: ClassHMode) -> u8 {
     match mode {
         ClassHMode::AdaptiveHv => CLASS_H_ADAPTIVE_HV,
@@ -485,8 +489,9 @@ pub fn pcm_start_with_extras(profile: PcmProfile, filter: Filter, extras: DacExt
         writes(&mut program, dac, &routing);
     }
     volume_writes(&mut program, volume, [VOLUME_LEFT, VOLUME_RIGHT]);
-    let class_h = class_h_value(extras.class_h);
-    let hp_out = hp_output_value(extras.class_h);
+    let effective = effective_class_h(extras);
+    let class_h = class_h_value(effective);
+    let hp_out = hp_output_value(effective);
     let enable_ops = [(reg::CLASS_H, class_h), (reg::HP_OUTPUT, hp_out), (reg::INT_MASK_1, 0x11), (reg::SYSTEM_CLOCKING, 0x01)];
     for dac in PAIR {
         writes(&mut program, dac, &enable_ops);
@@ -579,8 +584,9 @@ pub fn dsd_start_with_extras(rate: DsdRate, extras: DacExtras, volume: Volume) -
         writes(&mut program, dac, &path);
     }
     volume_writes(&mut program, volume, [DSD_VOLUME_LEFT, DSD_VOLUME_RIGHT]);
-    let class_h = class_h_value(extras.class_h);
-    let hp_out = hp_output_value(extras.class_h);
+    let effective = effective_class_h(extras);
+    let class_h = class_h_value(effective);
+    let hp_out = hp_output_value(effective);
     let enable_ops = [(reg::CLASS_H, class_h), (reg::HP_OUTPUT, hp_out), (reg::INT_MASK_1, 0x11), (reg::SYSTEM_CLOCKING, 0x01)];
     for dac in PAIR {
         writes(&mut program, dac, &enable_ops);
@@ -1473,5 +1479,15 @@ mod tests {
         let mut dsd_bus = MockBus::default();
         run_blocking(&mut dsd_bus, &only(&fixed_dsd, &[Dac::Primary]), |_| {}).unwrap();
         assert_eq!(dsd_bus.registers[&(0x33, reg::CLASS_H)], CLASS_H_FIXED_HV);
+        let line_out_pcm = pcm_start_with_extras(
+            PcmProfile::from_hz(48_000).unwrap(),
+            Filter::FastLowLatency,
+            DacExtras { line_out: true, class_h: ClassHMode::LowPowerLv, ..DacExtras::default() },
+            Volume::UNITY,
+        );
+        let mut lo_bus = MockBus::default();
+        run_blocking(&mut lo_bus, &only(&line_out_pcm, &[Dac::Primary]), |_| {}).unwrap();
+        assert_eq!(lo_bus.registers[&(0x33, reg::CLASS_H)], CLASS_H_FIXED_HV);
+        assert_eq!(lo_bus.registers[&(0x33, reg::HP_OUTPUT)], HP_OUTPUT_HV);
     }
 }
