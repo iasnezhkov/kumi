@@ -899,7 +899,7 @@ private fun InteractiveResponseCurve(
     val labelStyle = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold)
     val textMeasurer = rememberTextMeasurer()
     val haptic = LocalHapticFeedback.current
-    val (spectrumBands, spectrumTick) = rememberSmoothedSpectrum(liveSpectrum)
+    val spectrumVisual = rememberSmoothedSpectrum(liveSpectrum)
 
     val selectedBand = profile.bands.getOrNull(selectedIndex)
     val compositeDb = remember(profile) { FloatArray(FastEqCurve.POINTS).also { FastEqCurve.evaluate(profile, it) } }
@@ -1034,7 +1034,7 @@ private fun InteractiveResponseCurve(
                     },
             ) {
                 @Suppress("UNUSED_VARIABLE")
-                val rev = spectrumTick
+                val rev = spectrumVisual.tick.longValue
                 val halfH = size.height / 2f
                 fun y(db: Double): Float = (halfH - (db.coerceIn(-EQ_GAIN_RANGE_DB, EQ_GAIN_RANGE_DB) / EQ_GAIN_RANGE_DB) * halfH).toFloat()
                 fun x(hz: Double): Float = (ln(hz.coerceIn(EQ_MIN_HZ, EQ_MAX_HZ) / EQ_MIN_HZ) / EQ_LOG_SPAN * size.width).toFloat()
@@ -1053,7 +1053,7 @@ private fun InteractiveResponseCurve(
                     drawLine(grid.copy(alpha = 0.45f), Offset(xx, 0f), Offset(xx, size.height), strokeWidth = 1f)
                 }
 
-                drawRtaSpectrum(spectrumBands, tertiary, primary, minHz = EQ_MIN_HZ, logSpan = EQ_LOG_SPAN)
+                drawRtaSpectrum(spectrumVisual, tertiary, primary, minHz = EQ_MIN_HZ, logSpan = EQ_LOG_SPAN)
 
                 val zeroY = y(0.0)
                 val stepX = size.width / (FastEqCurve.POINTS - 1).toFloat()

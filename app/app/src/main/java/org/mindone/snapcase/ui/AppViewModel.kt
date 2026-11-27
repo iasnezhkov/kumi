@@ -154,10 +154,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     suspend fun refreshNow() {
-        if (kumi.kind.value != CaseKind.KUMI || home.value != HomeKind.KUMI) {
+        kumi.refreshOnDispatcher()
+        if (kumi.kind.value != CaseKind.KUMI && home.value != HomeKind.KUMI) {
             stock.refreshStatus()
         }
-        kumi.refreshOnDispatcher()
     }
 
     private fun applyDemo(enabled: Boolean) {

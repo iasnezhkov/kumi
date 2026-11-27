@@ -1139,6 +1139,22 @@ impl Equalizer {
         self.analyzer.reset_stream();
     }
 
+    pub fn spectrum_enabled(&self) -> bool {
+        self.analyzer.spectrum_enabled()
+    }
+
+    pub fn spectrum_busy(&self) -> bool {
+        self.analyzer.spectrum_busy()
+    }
+
+    pub fn start_spectrum(&mut self, active: bool) -> Option<AudioSpectrum> {
+        self.analyzer.start_spectrum(active, self.active.extras.auto_level)
+    }
+
+    pub fn step_spectrum(&mut self) -> Option<AudioSpectrum> {
+        self.analyzer.step_spectrum()
+    }
+
     pub fn take_spectrum(&mut self, active: bool) -> AudioSpectrum {
         self.analyzer.take_spectrum(active, self.active.extras.auto_level)
     }
@@ -2115,5 +2131,39 @@ mod tests {
         let sliced = b.take_spectrum_with(true, || polls += 1);
         assert_eq!(plain, sliced);
         assert!(polls >= 15, "expected fine-grained FFT poll slices, got {polls}");
+    }
+
+    #[test]
+    fn incremental_spectrum_steps_match_take_spectrum() {
+        let rate = 48_000u32;
+        let mut a = Equalizer::new();
+        let mut b = Equalizer::new();
+        a.configure(&[], 0.0, rate).unwrap();
+        b.configure(&[], 0.0, rate).unwrap();
+        a.set_spectrum_enabled(true);
+        b.set_spectrum_enabled(true);
+        let frames = 24_000usize;
+        let amp = 0.5 * 2_147_483_648.0f64;
+        let mut pcm = std::vec![0i32; frames * 2];
+        for i in 0..frames {
+            let s = (amp * libm::sin(2.0 * PI * 440.0 * i as f64 / f64::from(rate))) as i32;
+            pcm[i * 2] = s;
+            pcm[i * 2 + 1] = s;
+        }
+        a.observe_stereo(&pcm);
+        b.observe_stereo(&pcm);
+        let expected = a.take_spectrum(true);
+        assert!(b.start_spectrum(true).is_none());
+        assert!(b.spectrum_busy());
+        let mut steps = 0u32;
+        let mut got = None;
+        while got.is_none() {
+            steps += 1;
+            got = b.step_spectrum();
+            assert!(steps < 64);
+        }
+        assert!(!b.spectrum_busy());
+        assert_eq!(expected, got.unwrap());
+        assert!(steps >= 20, "expected fine-grained incremental steps, got {steps}");
     }
 }

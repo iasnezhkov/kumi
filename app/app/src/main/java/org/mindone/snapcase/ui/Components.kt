@@ -3,11 +3,10 @@ package org.mindone.snapcase.ui
 
 import androidx.annotation.DrawableRes
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.tween
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -63,6 +62,9 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
+import kotlin.math.abs
+import kotlin.math.exp
+import kotlinx.coroutines.channels.Channel
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -262,14 +264,70 @@ fun ToggleRow(
     }
 }
 
+private class VuVisualState {
+    var peakL = 0f
+    var peakR = 0f
+    var rmsL = 0f
+    var rmsR = 0f
+    @Volatile var targetPeakL = 0f
+    @Volatile var targetPeakR = 0f
+    @Volatile var targetRmsL = 0f
+    @Volatile var targetRmsR = 0f
+    val tick = mutableLongStateOf(0L)
+    val wakeup = Channel<Unit>(Channel.CONFLATED)
+
+    fun hasEnergy(): Boolean = peakL > 0f || peakR > 0f || rmsL > 0f || rmsR > 0f
+
+    fun hasTargetEnergy(): Boolean = targetPeakL > 0f || targetPeakR > 0f || targetRmsL > 0f || targetRmsR > 0f
+}
+
+private fun stepVuChannel(cur: Float, target: Float, attack: Float, release: Float): Float {
+    val next = if (target >= cur) cur + (target - cur) * attack else cur + (target - cur) * release
+    return if (next < 0.002f && target == 0f) 0f else next
+}
+
 @Composable
-private fun rememberVuLevel(target: Float, attackMs: Int, releaseMs: Int): Float {
-    val anim = remember { Animatable(target) }
-    LaunchedEffect(target) {
-        val ms = if (target >= anim.value) attackMs else releaseMs
-        anim.animateTo(target, animationSpec = tween(durationMillis = ms, easing = LinearEasing))
+private fun rememberVuVisual(peakL: Float, peakR: Float, rmsL: Float, rmsR: Float): VuVisualState {
+    val vu = remember { VuVisualState() }
+    vu.targetPeakL = peakL
+    vu.targetPeakR = peakR
+    vu.targetRmsL = rmsL
+    vu.targetRmsR = rmsR
+    vu.wakeup.trySend(Unit)
+    LaunchedEffect(vu) {
+        while (true) {
+            if (!vu.hasEnergy() && !vu.hasTargetEnergy()) {
+                vu.wakeup.receive()
+            }
+            var lastNanos = 0L
+            while (true) {
+                val frameNanos = withFrameNanos { it }
+                val dt = if (lastNanos == 0L) 0.016f else ((frameNanos - lastNanos) * 1e-9f).coerceIn(0.001f, 0.05f)
+                lastNanos = frameNanos
+                val peakAttack = 1f - exp(-dt / 0.008f)
+                val peakRelease = 1f - exp(-dt / 0.110f)
+                val rmsAttack = 1f - exp(-dt / 0.015f)
+                val rmsRelease = 1f - exp(-dt / 0.135f)
+                val nPeakL = stepVuChannel(vu.peakL, vu.targetPeakL, peakAttack, peakRelease)
+                val nPeakR = stepVuChannel(vu.peakR, vu.targetPeakR, peakAttack, peakRelease)
+                val nRmsL = stepVuChannel(vu.rmsL, vu.targetRmsL, rmsAttack, rmsRelease)
+                val nRmsR = stepVuChannel(vu.rmsR, vu.targetRmsR, rmsAttack, rmsRelease)
+                val changed = abs(nPeakL - vu.peakL) > 0.0004f || (nPeakL == 0f && vu.peakL != 0f) ||
+                    abs(nPeakR - vu.peakR) > 0.0004f || (nPeakR == 0f && vu.peakR != 0f) ||
+                    abs(nRmsL - vu.rmsL) > 0.0004f || (nRmsL == 0f && vu.rmsL != 0f) ||
+                    abs(nRmsR - vu.rmsR) > 0.0004f || (nRmsR == 0f && vu.rmsR != 0f)
+                if (changed) {
+                    vu.peakL = nPeakL
+                    vu.peakR = nPeakR
+                    vu.rmsL = nRmsL
+                    vu.rmsR = nRmsR
+                    vu.tick.longValue = vu.tick.longValue + 1L
+                }
+                if (!vu.hasEnergy() && !vu.hasTargetEnergy()) break
+            }
+        }
     }
-    return anim.value
+    return vu
 }
 
 @Composable
@@ -309,26 +367,28 @@ fun DismissibleErrorBanner(
 @Composable
 fun StereoVuMeter(meters: AudioMeters, modifier: Modifier = Modifier) {
     fun norm(centiDb: Int): Float = ((centiDb / 100f + 60f) / 60f).coerceIn(0f, 1f)
-    val peakL = rememberVuLevel(if (meters.active) norm(meters.peakLeftCentiDb) else 0f, attackMs = 18, releaseMs = 95)
-    val peakR = rememberVuLevel(if (meters.active) norm(meters.peakRightCentiDb) else 0f, attackMs = 18, releaseMs = 95)
-    val rmsL = rememberVuLevel(if (meters.active) norm(meters.rmsLeftCentiDb) else 0f, attackMs = 28, releaseMs = 125)
-    val rmsR = rememberVuLevel(if (meters.active) norm(meters.rmsRightCentiDb) else 0f, attackMs = 28, releaseMs = 125)
+    val vu = rememberVuVisual(
+        peakL = if (meters.active) norm(meters.peakLeftCentiDb) else 0f,
+        peakR = if (meters.active) norm(meters.peakRightCentiDb) else 0f,
+        rmsL = if (meters.active) norm(meters.rmsLeftCentiDb) else 0f,
+        rmsR = if (meters.active) norm(meters.rmsRightCentiDb) else 0f,
+    )
     val track = MaterialTheme.colorScheme.surfaceContainerHighest
     val primary = MaterialTheme.colorScheme.primary
     val hot = MaterialTheme.colorScheme.tertiary
     val clip = MaterialTheme.colorScheme.error
 
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        VuChannelRow(stringResource(R.string.kumi_vu_left), peakL, rmsL, meters.peakLeftCentiDb, meters.active, track, primary, hot, clip)
-        VuChannelRow(stringResource(R.string.kumi_vu_right), peakR, rmsR, meters.peakRightCentiDb, meters.active, track, primary, hot, clip)
+        VuChannelRow(stringResource(R.string.kumi_vu_left), vu, left = true, meters.peakLeftCentiDb, meters.active, track, primary, hot, clip)
+        VuChannelRow(stringResource(R.string.kumi_vu_right), vu, left = false, meters.peakRightCentiDb, meters.active, track, primary, hot, clip)
     }
 }
 
 @Composable
 private fun VuChannelRow(
     channel: String,
-    peak: Float,
-    rms: Float,
+    vu: VuVisualState,
+    left: Boolean,
     peakCentiDb: Int,
     active: Boolean,
     track: Color,
@@ -336,14 +396,18 @@ private fun VuChannelRow(
     hot: Color,
     clip: Color,
 ) {
-    val peakColor = when {
-        peak >= 0.98f -> clip
-        peak >= 0.86f -> hot
-        else -> primary
-    }
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(channel, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(12.dp))
         Canvas(Modifier.weight(1f).height(8.dp)) {
+            @Suppress("UNUSED_VARIABLE")
+            val rev = vu.tick.longValue
+            val peak = if (left) vu.peakL else vu.peakR
+            val rms = if (left) vu.rmsL else vu.rmsR
+            val peakColor = when {
+                peak >= 0.98f -> clip
+                peak >= 0.86f -> hot
+                else -> primary
+            }
             val radius = CornerRadius(size.height / 2f, size.height / 2f)
             drawRoundRect(track, cornerRadius = radius)
             val peakWidth = size.width * peak
@@ -384,16 +448,18 @@ fun VerticalStereoVuMeter(
     fun norm(centiDb: Int): Float = ((centiDb / 100f + 60f) / 60f).coerceIn(0f, 1f)
     val live = meters != null && (streaming || meters.active)
     val active = live && meters.active
-    val peakL = rememberVuLevel(if (active) norm(meters.peakLeftCentiDb) else 0f, attackMs = 18, releaseMs = 95)
-    val peakR = rememberVuLevel(if (active) norm(meters.peakRightCentiDb) else 0f, attackMs = 18, releaseMs = 95)
-    val rmsL = rememberVuLevel(if (active) norm(meters.rmsLeftCentiDb) else 0f, attackMs = 28, releaseMs = 125)
-    val rmsR = rememberVuLevel(if (active) norm(meters.rmsRightCentiDb) else 0f, attackMs = 28, releaseMs = 125)
+    val vu = rememberVuVisual(
+        peakL = if (active) norm(meters.peakLeftCentiDb) else 0f,
+        peakR = if (active) norm(meters.peakRightCentiDb) else 0f,
+        rmsL = if (active) norm(meters.rmsLeftCentiDb) else 0f,
+        rmsR = if (active) norm(meters.rmsRightCentiDb) else 0f,
+    )
     val track = MaterialTheme.colorScheme.surfaceContainerHighest
     val primary = MaterialTheme.colorScheme.primary
     val hot = MaterialTheme.colorScheme.tertiary
     val clip = MaterialTheme.colorScheme.error
     val labelColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (live) 0.9f else 0.5f)
-    val clipped = active && (meters.clippedSamples > 0 || peakL >= 0.98f || peakR >= 0.98f)
+    val hadClip = active && meters.clippedSamples > 0
 
     Column(
         modifier = modifier,
@@ -401,6 +467,13 @@ fun VerticalStereoVuMeter(
         verticalArrangement = Arrangement.spacedBy(3.dp),
     ) {
         Canvas(Modifier.weight(1f).fillMaxWidth()) {
+            @Suppress("UNUSED_VARIABLE")
+            val rev = vu.tick.longValue
+            val peakL = vu.peakL
+            val peakR = vu.peakR
+            val rmsL = vu.rmsL
+            val rmsR = vu.rmsR
+            val clipped = hadClip || peakL >= 0.98f || peakR >= 0.98f
             val gap = 4.dp.toPx()
             val barW = ((size.width - gap) / 2f).coerceAtLeast(4f)
             val radius = CornerRadius(barW / 2f, barW / 2f)

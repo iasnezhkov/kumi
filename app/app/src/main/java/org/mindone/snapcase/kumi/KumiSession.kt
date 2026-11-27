@@ -93,7 +93,6 @@ class KumiSession(
     val liveSpectrum: StateFlow<AudioSpectrum?> = _liveSpectrum.asStateFlow()
 
     @Volatile private var spectrumSupported: Boolean = false
-    @Volatile private var meterPollTick: Int = 0
 
     private class EqSnapshot(val profile: EqProfile?)
 
@@ -229,7 +228,6 @@ class KumiSession(
         runCatching { bridge.resetSession() }
         SnapLiveMirror.clear()
         spectrumSupported = false
-        meterPollTick = 0
         _liveMeters.value = null
         _liveSpectrum.value = null
         _state.update {
@@ -296,6 +294,7 @@ class KumiSession(
             val mediaGestures = if (caps.keymap) runCatching { c.mediaGestures() }.getOrNull() else null
             val macros = if (caps.keymap) (0 until KumiLimits.MACRO_SLOTS).map { runCatching { c.macroSlot(it) }.getOrNull() } else List(KumiLimits.MACRO_SLOTS) { null }
             val combos = if (caps.keymap) (0 until KumiLimits.COMBO_SLOTS).map { runCatching { c.comboSlot(it) }.getOrNull() } else List(KumiLimits.COMBO_SLOTS) { null }
+            val events = runCatching { c.subscribe(EventMask.APP) }.getOrNull()
             val audio = runCatching { c.audioStatus() }.getOrNull()
             val meters = if (caps.audioOut && audio?.stream != null) runCatching { c.audioMeters() }.getOrNull() else null
             val initialSpectrum = if (caps.audioOut) runCatching { c.audioSpectrum() }.getOrNull() else null
@@ -303,7 +302,6 @@ class KumiSession(
             val keyboard = runCatching { c.keyboardStatus() }.getOrNull()
             val diagnostics = runCatching { c.diagnostics() }.getOrNull()
             val telemetry = runCatching { c.telemetry() }.getOrNull()
-            val events = runCatching { c.subscribe(EventMask.APP) }.getOrNull()
             _liveMeters.value = meters
             _liveSpectrum.value = initialSpectrum?.takeIf { audio?.stream != null }
             _state.update {
@@ -325,11 +323,13 @@ class KumiSession(
             val audio = c.audioStatus()
             val keyboard = c.keyboardStatus()
             if (audio.stream == null) {
-                meterPollTick = 0
                 _liveMeters.value = null
                 _liveSpectrum.value = null
             }
-            c.pollTopics()
+            val subscribed = _state.value.events
+            if (subscribed != null && (subscribed.keys || subscribed.uart)) {
+                c.pollTopics()
+            }
             val prev = _state.value
             val clearTransient = prev.error != null && prev.errorKind == null
             if (prev.audio != audio || prev.keyboard != keyboard || clearTransient) {
@@ -351,9 +351,8 @@ class KumiSession(
     suspend fun pollMetersNow() = withContext(dispatcher) {
         val c = client ?: return@withContext
         if (_state.value.audio?.stream == null) return@withContext
-        val tick = meterPollTick++
         runCatching { c.audioMeters() }.getOrNull()?.let { m -> _liveMeters.value = m }
-        if (spectrumSupported && (tick and 1) == 0) {
+        if (spectrumSupported) {
             runCatching { c.audioSpectrum() }.getOrNull()?.let { s -> _liveSpectrum.value = s }
         }
     }

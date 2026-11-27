@@ -39,19 +39,9 @@ const MAX_PACKET_FRAMES: usize = PACKET_BUFFER / 4;
 const PACKETS_PER_POLL: usize = 4;
 const HOST_PAUSE_US: u32 = 8_000;
 const PUBLISH_INTERVAL_MS: u32 = 4;
-const SPECTRUM_INTERVAL_MS: u32 = 60;
-const SPECTRUM_STAGE_PACKETS: usize = 8;
-
-#[derive(Clone, Copy)]
-struct StagedPacket {
-    words: [u32; PACKET_BUFFER / 4],
-    length: u16,
-    flags: u16,
-}
-
-impl StagedPacket {
-    const EMPTY: Self = Self { words: [0; PACKET_BUFFER / 4], length: 0, flags: 0 };
-}
+const METER_INTERVAL_MS: u32 = 30;
+const SPECTRUM_INTERVAL_MS: u32 = 25;
+const SPECTRUM_MIN_INTERVAL_MS: u32 = 18;
 
 const fn max_eq_bands(_rate_hz: u32) -> usize {
     kumi_dsp::MAX_BANDS
@@ -153,6 +143,7 @@ pub struct Function {
     meters: AudioMeters,
     meters_consumed: bool,
     spectrum: AudioSpectrum,
+    spectrum_consumed: bool,
     spectrum_until_ms: Option<u32>,
 }
 
@@ -175,6 +166,7 @@ impl Function {
             meters: AudioMeters::default(),
             meters_consumed: false,
             spectrum: AudioSpectrum::default(),
+            spectrum_consumed: false,
             spectrum_until_ms: None,
         }
     }
@@ -196,6 +188,7 @@ impl Function {
     }
 
     pub fn take_spectrum(&mut self, now_ms: u32) -> AudioSpectrum {
+        self.spectrum_consumed = true;
         self.spectrum_until_ms = Some(now_ms.wrapping_add(1_500));
         self.spectrum
     }
@@ -450,7 +443,8 @@ impl<'d> Stream<'d> {
 
     fn update_stream_cpu(&self) {
         if let Some((rate, transport)) = self.active_transport() {
-            board::set_cpu_profile(stream_cpu_profile(rate, transport, !self.equalizer.is_bypassed()));
+            let need_compute = !self.equalizer.is_bypassed() || self.equalizer.spectrum_enabled();
+            board::set_cpu_profile(stream_cpu_profile(rate, transport, need_compute));
         }
     }
 
@@ -534,9 +528,17 @@ impl<'d> Stream<'d> {
         self.settings_rev = rev;
         shared.uac.borrow_mut().eq_active = applied;
         if self.active() {
-            board::set_cpu_profile(stream_cpu_profile(rate, transport, !self.equalizer.is_bypassed()));
+            let need_compute = !self.equalizer.is_bypassed() || self.equalizer.spectrum_enabled();
+            board::set_cpu_profile(stream_cpu_profile(rate, transport, need_compute));
         }
         hardware_changed
+    }
+
+    #[unsafe(link_section = ".text.hot")]
+    pub fn service_iso(&mut self) {
+        if self.alternate != 0 && !matches!(self.phase, Phase::Idle | Phase::Failed) {
+            self.receive(board::cycles());
+        }
     }
 
     #[unsafe(link_section = ".text.hot")]
@@ -588,6 +590,14 @@ impl<'d> Stream<'d> {
         if ms.wrapping_sub(self.publish_ms) >= PUBLISH_INTERVAL_MS || !matches!(self.phase, Phase::Running { .. }) {
             self.publish_ms = ms;
             self.publish(shared);
+        }
+        if self.equalizer.spectrum_busy()
+            && let Some(spectrum) = self.equalizer.step_spectrum()
+        {
+            let mut function = shared.uac.borrow_mut();
+            function.spectrum = spectrum;
+            function.spectrum_consumed = false;
+            self.spectrum_ms = shared.milliseconds.get();
         }
     }
 
@@ -686,7 +696,7 @@ impl<'d> Stream<'d> {
             (controls.output().filter.into(), controls.dac_extras())
         };
         let _ = self.sync_settings(shared, profile.hz(), transport);
-        let dsp_active = !self.equalizer.is_bypassed();
+        let dsp_active = !self.equalizer.is_bypassed() || self.equalizer.spectrum_enabled();
         board::set_cpu_profile(stream_cpu_profile(profile.hz(), transport, dsp_active));
         let now = board::monotonic_us();
         audio::clear_monitor();
@@ -753,6 +763,7 @@ impl<'d> Stream<'d> {
             function.meters = AudioMeters::default();
             function.meters_consumed = false;
             function.spectrum = AudioSpectrum::default();
+            function.spectrum_consumed = false;
             function.spectrum_until_ms = None;
         }
         self.equalizer.set_spectrum_enabled(false);
@@ -1099,62 +1110,36 @@ impl<'d> Stream<'d> {
         let running = matches!(self.phase, Phase::Running { waiting: false, .. });
         let ms = shared.milliseconds.get();
         let want_spectrum = running && !self.is_dsd() && function.spectrum_wanted(ms);
+        let prev_spectrum = self.equalizer.spectrum_enabled();
         self.equalizer.set_spectrum_enabled(want_spectrum);
         if !running {
             self.equalizer.reset_meters();
             function.meters = AudioMeters::default();
             function.meters_consumed = false;
             function.spectrum = AudioSpectrum::default();
+            function.spectrum_consumed = false;
         } else {
-            if function.meters_consumed || ms.wrapping_sub(self.meter_ms) >= 50 {
+            if function.meters_consumed || ms.wrapping_sub(self.meter_ms) >= METER_INTERVAL_MS {
                 function.meters = self.equalizer.take_meters(true);
                 function.meters_consumed = false;
                 self.meter_ms = ms;
             }
-            let recompute_spectrum = want_spectrum && ms.wrapping_sub(self.spectrum_ms) >= SPECTRUM_INTERVAL_MS;
             if !want_spectrum {
                 function.spectrum = AudioSpectrum::default();
-            }
-            drop(function);
-            if recompute_spectrum {
-                let mut staged = [StagedPacket::EMPTY; SPECTRUM_STAGE_PACKETS];
-                let mut staged_count = 0usize;
-                let out = &mut self.out;
-                let equalizer = &mut self.equalizer;
-                let spectrum = equalizer.take_spectrum_with(true, || {
-                    while staged_count < SPECTRUM_STAGE_PACKETS && out.readable() {
-                        let slot = &mut staged[staged_count];
-                        let bytes =
-                            unsafe { core::slice::from_raw_parts_mut(slot.words.as_mut_ptr().cast::<u8>(), PACKET_BUFFER) };
-                        let Some((length, flags)) = out.receive(bytes) else { break };
-                        slot.length = length as u16;
-                        slot.flags = flags;
-                        staged_count += 1;
-                    }
-                });
-                shared.uac.borrow_mut().spectrum = spectrum;
-                self.spectrum_ms = ms;
-                if staged_count > 0 {
-                    let now_cycles = board::cycles();
-                    for slot in &staged[..staged_count] {
-                        if slot.flags != 0 && matches!(self.phase, Phase::Running { .. }) {
-                            self.lost = self.lost.wrapping_add(1);
-                        }
-                        if slot.length == 0 || slot.flags & usb::DAMAGED != 0 {
-                            continue;
-                        }
-                        let length = usize::from(slot.length);
-                        self.packets = self.packets.wrapping_add(1);
-                        self.last_packet_cycles = now_cycles;
-                        let bytes = unsafe { core::slice::from_raw_parts(slot.words.as_ptr().cast::<u8>(), length) };
-                        let words = &slot.words[..length / 4];
-                        self.accept(bytes, words);
-                        if self.pending_transport.is_some() {
-                            break;
-                        }
-                    }
+                function.spectrum_consumed = false;
+            } else if !self.equalizer.spectrum_busy() {
+                let elapsed = ms.wrapping_sub(self.spectrum_ms);
+                let due = elapsed >= SPECTRUM_INTERVAL_MS || (function.spectrum_consumed && elapsed >= SPECTRUM_MIN_INTERVAL_MS);
+                if due && let Some(spectrum) = self.equalizer.start_spectrum(true) {
+                    function.spectrum = spectrum;
+                    function.spectrum_consumed = false;
+                    self.spectrum_ms = ms;
                 }
             }
+        }
+        drop(function);
+        if want_spectrum != prev_spectrum {
+            self.update_stream_cpu();
         }
     }
 

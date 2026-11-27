@@ -118,6 +118,11 @@ open class CaseBridge(private val port: FakePort) : FakeBridge() {
         return """{"ok":null}"""
     }
 
+    override fun pollTopics(link: KumiLink, maxFrames: Int): String {
+        calls += "pollTopics"
+        return super.pollTopics(link, maxFrames)
+    }
+
     override fun call(link: KumiLink, path: String, request: String): String {
         calls += path
         if (path == "events/subscribe") subscriptions += EventMask.from(JSONObject(request))
@@ -139,7 +144,12 @@ open class CaseBridge(private val port: FakePort) : FakeBridge() {
             "system/diagnostics" -> """{"ok":{"Ok":{"boot_count":3,"safe_mode":true,"stage":512,"uptime_ms":10,"dropped_events":0,"watchdog_armed":true,"last_crash":null}}}"""
             "system/telemetry" -> """{"ok":{"Ok":$TELEMETRY}}"""
             "system/presence" -> """{"ok":$PRESENCE}"""
-            "events/subscribe" -> """{"ok":{"Ok":{"keys":false,"log":true,"audio":false,"uart":false}}}"""
+            "events/subscribe" -> {
+                val req = JSONObject(request)
+                val keys = req.optBoolean("keys", false)
+                val uart = req.optBoolean("uart", false)
+                """{"ok":{"Ok":{"keys":$keys,"log":true,"audio":false,"uart":$uart}}}"""
+            }
             "keys/map/get" -> if (JSONObject(request).getInt("layer") == 0) """{"ok":{"Ok":$KEYMAP}}""" else """{"ok":{"Ok":{"entries":[],"more":false}}}"""
             "keys/config/get" -> """{"ok":{"tapping_term_ms":200,"one_shot_timeout_ms":3000,"combo_term_ms":50}}"""
             "keys/media/get" -> """{"ok":$MEDIA_GESTURES}"""

@@ -45,6 +45,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -65,9 +66,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.repeatOnLifecycle
+import kotlin.math.abs
+import kotlin.math.exp
 import kotlin.math.ln
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
 import org.mindone.snapcase.BuildConfig
 import org.mindone.snapcase.R
 import org.mindone.snapcase.kumi.AppReleaseAsset
@@ -884,39 +892,112 @@ private val CURVE_DB_LINES = doubleArrayOf(-12.0, 0.0, 12.0)
 private val CURVE_HZ_LINES = doubleArrayOf(100.0, 1_000.0, 10_000.0)
 private val LOG_SPAN = ln(1000.0)
 
-@Composable
-fun rememberSmoothedSpectrum(liveSpectrum: StateFlow<AudioSpectrum?>?): Pair<FloatArray, Long> {
-    val spectrum = liveSpectrum?.collectAsStateWithLifecycle()?.value
-    val smooth = remember { FloatArray(KumiLimits.SPECTRUM_BANDS) }
-    var tick by remember { mutableLongStateOf(0L) }
-    LaunchedEffect(spectrum) {
-        val raw = spectrum?.takeIf { it.active }?.bandsDbX2
+class SpectrumVisualState {
+    val bands = FloatArray(KumiLimits.SPECTRUM_BANDS)
+    val targets = FloatArray(KumiLimits.SPECTRUM_BANDS)
+    val tick = mutableLongStateOf(0L)
+    @Volatile var active: Boolean = false
+    internal val xs = FloatArray(KumiLimits.SPECTRUM_BANDS + 2)
+    internal val ys = FloatArray(KumiLimits.SPECTRUM_BANDS + 2)
+    internal val linePath = Path()
+    internal val fillPath = Path()
+
+    internal fun hasEnergy(): Boolean {
+        for (v in bands) {
+            if (v > 0f) return true
+        }
+        return false
+    }
+
+    internal fun hasTargetEnergy(): Boolean {
+        for (v in targets) {
+            if (v > 0f) return true
+        }
+        return false
+    }
+
+    internal fun clear() {
+        active = false
+        targets.fill(0f)
         var changed = false
-        for (i in 0 until KumiLimits.SPECTRUM_BANDS) {
-            val target = if (raw != null && i < raw.size) (raw[i] / 160f).coerceIn(0f, 1f) else 0f
-            val cur = smooth[i]
-            val next = if (target >= cur) cur + (target - cur) * 0.58f else cur * 0.84f
-            val clamped = if (next < 0.004f) 0f else next
-            if (clamped != cur) {
-                smooth[i] = clamped
+        for (i in bands.indices) {
+            if (bands[i] != 0f) {
+                bands[i] = 0f
                 changed = true
             }
         }
-        if (changed) tick++
+        if (changed) tick.longValue = tick.longValue + 1L
     }
-    return smooth to tick
+}
+
+@Composable
+fun rememberSmoothedSpectrum(liveSpectrum: StateFlow<AudioSpectrum?>?): SpectrumVisualState {
+    val visual = remember(liveSpectrum) { SpectrumVisualState() }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    LaunchedEffect(liveSpectrum, lifecycleOwner) {
+        if (liveSpectrum == null) {
+            visual.clear()
+            return@LaunchedEffect
+        }
+        lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            val wakeup = Channel<Unit>(Channel.CONFLATED)
+            launch {
+                liveSpectrum.collect { spectrum ->
+                    val active = spectrum?.active == true
+                    val raw = spectrum?.takeIf { it.active }?.bandsDbX2
+                    for (i in 0 until KumiLimits.SPECTRUM_BANDS) {
+                        visual.targets[i] = if (raw != null && i < raw.size) (raw[i] / 160f).coerceIn(0f, 1f) else 0f
+                    }
+                    visual.active = active
+                    wakeup.trySend(Unit)
+                }
+            }
+            while (true) {
+                if (!visual.hasEnergy() && !visual.hasTargetEnergy()) {
+                    wakeup.receive()
+                }
+                var lastNanos = 0L
+                while (true) {
+                    val frameNanos = withFrameNanos { it }
+                    val dt = if (lastNanos == 0L) 0.016f else ((frameNanos - lastNanos) * 1e-9f).coerceIn(0.001f, 0.05f)
+                    lastNanos = frameNanos
+                    val attack = 1f - exp(-dt / 0.016f)
+                    val release = 1f - exp(-dt / 0.130f)
+                    var changed = false
+                    var anyEnergy = false
+                    for (i in 0 until KumiLimits.SPECTRUM_BANDS) {
+                        val target = visual.targets[i]
+                        val cur = visual.bands[i]
+                        val next = if (target >= cur) cur + (target - cur) * attack else cur + (target - cur) * release
+                        val clamped = if (next < 0.003f && target == 0f) 0f else next
+                        if (abs(clamped - cur) > 0.0004f || (clamped == 0f && cur != 0f)) {
+                            visual.bands[i] = clamped
+                            changed = true
+                        }
+                        if (visual.bands[i] > 0f) anyEnergy = true
+                    }
+                    if (changed) {
+                        visual.tick.longValue = visual.tick.longValue + 1L
+                    }
+                    if (!anyEnergy && !visual.hasTargetEnergy()) break
+                }
+            }
+        }
+    }
+    return visual
 }
 
 fun DrawScope.drawRtaSpectrum(
-    bands: FloatArray,
+    visual: SpectrumVisualState,
     barColor: Color,
     @Suppress("UNUSED_PARAMETER") capColor: Color,
     minHz: Double = 20.0,
     logSpan: Double = LOG_SPAN,
 ) {
+    val bands = visual.bands
     var any = false
     for (v in bands) {
-        if (v > 0.01f) {
+        if (v > 0.008f) {
             any = true
             break
         }
@@ -925,8 +1006,8 @@ fun DrawScope.drawRtaSpectrum(
     val centers = AudioSpectrum.BAND_CENTERS_HZ
     val count = minOf(bands.size, centers.size)
     if (count < 2) return
-    val xs = FloatArray(count + 2)
-    val ys = FloatArray(count + 2)
+    val xs = visual.xs
+    val ys = visual.ys
     val usableH = size.height * 0.94f
     xs[0] = 0f
     ys[0] = size.height - (bands[0].coerceIn(0f, 1f) * usableH * 0.72f)
@@ -936,21 +1017,22 @@ fun DrawScope.drawRtaSpectrum(
     }
     xs[count + 1] = size.width
     ys[count + 1] = size.height - (bands[count - 1].coerceIn(0f, 1f) * usableH * 0.65f)
-    val linePath = Path().apply {
-        moveTo(xs[0], ys[0])
-        for (i in 1 until xs.size - 1) {
-            val midX = (xs[i] + xs[i + 1]) * 0.5f
-            val midY = (ys[i] + ys[i + 1]) * 0.5f
-            quadraticTo(xs[i], ys[i], midX, midY)
-        }
-        lineTo(xs[xs.size - 1], ys[ys.size - 1])
+    val total = count + 2
+    val linePath = visual.linePath
+    linePath.reset()
+    linePath.moveTo(xs[0], ys[0])
+    for (i in 1 until total - 1) {
+        val midX = (xs[i] + xs[i + 1]) * 0.5f
+        val midY = (ys[i] + ys[i + 1]) * 0.5f
+        linePath.quadraticTo(xs[i], ys[i], midX, midY)
     }
-    val fillPath = Path().apply {
-        addPath(linePath)
-        lineTo(size.width, size.height)
-        lineTo(0f, size.height)
-        close()
-    }
+    linePath.lineTo(xs[total - 1], ys[total - 1])
+    val fillPath = visual.fillPath
+    fillPath.reset()
+    fillPath.addPath(linePath)
+    fillPath.lineTo(size.width, size.height)
+    fillPath.lineTo(0f, size.height)
+    fillPath.close()
     drawPath(
         path = fillPath,
         brush = Brush.verticalGradient(
@@ -977,7 +1059,7 @@ fun ResponseCurve(
     val baseLine = MaterialTheme.colorScheme.secondary
     val spectrumBar = MaterialTheme.colorScheme.tertiary
     val grid = MaterialTheme.colorScheme.outlineVariant
-    val (spectrumBands, spectrumTick) = rememberSmoothedSpectrum(liveSpectrum)
+    val spectrumVisual = rememberSmoothedSpectrum(liveSpectrum)
     val curveDb = remember(profile, eqBase, toneEq) {
         FloatArray(FastEqCurve.POINTS).also { FastEqCurve.evaluateComposite(profile, eqBase, toneEq, it) }
     }
@@ -994,7 +1076,7 @@ fun ResponseCurve(
     val dashEffect = remember { PathEffect.dashPathEffect(floatArrayOf(8f, 6f), 0f) }
     Canvas(modifier) {
         @Suppress("UNUSED_VARIABLE")
-        val rev = spectrumTick
+        val rev = spectrumVisual.tick.longValue
         val range = 18.0
         val halfH = size.height / 2f
         fun y(db: Double) = (halfH - (db.coerceIn(-range, range) / range) * halfH).toFloat()
@@ -1005,7 +1087,7 @@ fun ResponseCurve(
         for (hz in CURVE_HZ_LINES) {
             drawLine(grid.copy(alpha = 0.45f), Offset(x(hz), 0f), Offset(x(hz), size.height), strokeWidth = 1f)
         }
-        drawRtaSpectrum(spectrumBands, spectrumBar, line)
+        drawRtaSpectrum(spectrumVisual, spectrumBar, line)
         val zeroY = y(0.0)
         val stepX = size.width / (FastEqCurve.POINTS - 1).toFloat()
         if (baseDb != null) {

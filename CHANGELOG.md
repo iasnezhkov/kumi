@@ -3,11 +3,11 @@
 ## 1.1.0
 
 ### Hi-Fi Audio, Live DSP & True 2 Vrms Line-Out
-- **Live 24-band post-DSP RTA spectrum:** smooth spline drawn behind the EQ curve across *Home*, *Presets*, *Bands*, and *Effects*. Computed inside the case DSP with USB-interleaved FFT slices (zero audio glitches on app launch, minimize, or resume), works at up to 384 kHz bit-perfect, needs no `RECORD_AUDIO` permission, and uses 0% CPU in the background.
+- **Live 24-band post-DSP RTA spectrum:** 60/96 fps vsync-interpolated spline drawn behind the EQ curve across *Home*, *Presets*, *Bands*, and *Effects*. Computed inside the case DSP via incremental per-stage FFT steps (zero audio glitches on app launch, minimize, or resume), works at up to 384 kHz bit-perfect, needs no `RECORD_AUDIO` permission, and uses 0% CPU in the background.
 - **EBU R128 LUFS, True-Peak (`dBTP`) & hardware Auto-Level:** live loudness metering on *Home* and *Sound -> Effects*, plus optional on-case Auto-Level (attenuate-only under Android software volume so it never fights volume buttons, and peak-guarded up to `+4 dB` under UAC2 hardware volume).
 - **Two-Layer Parametric EQ:** stack a fixed **Headphone Base (AutoEQ)** curve under all 4 persistent EQ slots, plus a quick **5-band Tone layer**, **Subsonic high-pass**, and **Mono-Bass** crossover.
 - **True 2 Vrms Line-Out mode:** locks the CS43198 into fixed `2 Vrms` (`FixedHv`) + `0 dB` output and sets full `0 dBFS` Android media output on confirm (restoring your previous headphone volume when turned off).
-- **Upgraded metering & graphs:** 50 ms asymmetric PPM stereo VU meters and taller zero-scroll EQ graphs.
+- **Upgraded metering & graphs:** 30 Hz polled / 60–96 fps vsync-rendered asymmetric PPM stereo VU meters and taller zero-scroll EQ graphs.
 
 ### Instant Search, Hardware Media Gestures & Physical Keyboard UX
 - **Instant Home Type-to-Search:** start typing on any Home screen to open a zero-animation app search overlay and press `Enter` to launch (no root required).
@@ -22,7 +22,7 @@
 
 ### Updates, Reliability & Security
 - **Streamlined Updates screen & in-app changelog reader:** shows App and Case status side by side above the fold with actionable updates first, collapsible older versions, and formatted release notes with clickable links.
-- **Glitch-free OTA & playback:** caches crash-log diagnostics in RAM (zero SPI flash stalls during streaming), automatically mutes the CS43198 DAC and pauses Android media playback while flashing case firmware, and fixes OTA trial-boot with headphones plugged in.
+- **Glitch-free OTA & playback:** caches crash-log diagnostics in RAM (zero SPI flash stalls during streaming), eliminates unnecessary bulk-IN topic timeouts on Android MUSB hosts, automatically mutes the CS43198 DAC and pauses Android media playback while flashing case firmware, and fixes OTA trial-boot with headphones plugged in.
 - **Stable / Developer (RC) update channels**, fixed 36-key Caps Word presets (`D+F` / `F+J`), and a new orthographic MindOne + Snap-In Case illustration.
 - **Hardened release firmware (zero daily friction):** release slots disable lab/debug commands and UART sniffing; Ed25519 signed A/B OTA with monotonic anti-rollback; signature-protected launcher bridge and fail-closed APK signature checks; lockscreen guards, RAM-only clipboard (1 h TTL), opt-in WebUSB BOS, SipHash-2-4 USB serial, and a `Shift + Backspace` (2 s) physical-presence guard for service BootROM entry.
 

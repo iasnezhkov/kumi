@@ -402,7 +402,7 @@ class KumiSessionTest {
     }
 
     @Test
-    fun pollMetersFetchesSpectrumEveryOtherTick() = runTest {
+    fun pollMetersFetchesMetersAndSpectrumEveryTick() = runTest {
         val rig = Rig(this)
         rig.bridge.handlers["audio/status"] = { """{"ok":${Contract.json.getJSONObject("audio_status")}}""" }
         rig.session.refreshNow()
@@ -410,6 +410,19 @@ class KumiSessionTest {
         rig.bridge.calls.clear()
         repeat(4) { rig.session.pollMetersNow() }
         assertEquals(4, rig.bridge.calls.count { it == "audio/meters" })
-        assertEquals(2, rig.bridge.calls.count { it == "audio/spectrum" })
+        assertEquals(4, rig.bridge.calls.count { it == "audio/spectrum" })
+    }
+
+    @Test
+    fun pollSkipsTopicDrainUnlessKeysOrUartSubscribed() = runTest {
+        val rig = connected()
+        rig.bridge.calls.clear()
+        rig.session.refreshNow()
+        assertEquals(0, rig.bridge.calls.count { it == "pollTopics" })
+        rig.session.setKeyEventsSubscribed(true)
+        advanceUntilIdle()
+        rig.bridge.calls.clear()
+        rig.session.refreshNow()
+        assertEquals(1, rig.bridge.calls.count { it == "pollTopics" })
     }
 }

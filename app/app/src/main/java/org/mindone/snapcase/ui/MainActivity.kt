@@ -8,6 +8,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.hardware.usb.UsbManager
 import android.os.Bundle
+import android.os.SystemClock
 import android.view.KeyEvent
 import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
@@ -279,8 +280,10 @@ fun SnapApp(
         }
         lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
             while (true) {
+                val started = SystemClock.elapsedRealtime()
                 viewModel.kumi.pollMetersNow()
-                delay(METER_POLL_MS)
+                val elapsed = SystemClock.elapsedRealtime() - started
+                delay((METER_POLL_MS - elapsed).coerceAtLeast(8L))
             }
         }
     }
@@ -561,7 +564,7 @@ private val ALLOWED_DEEP_LINKS = setOf("home", "audio", "eq", "keys", "firmware"
 private val LEGACY_SCREENS = setOf(Screen.LEGACY, Screen.TECH)
 
 private const val POLL_MS = 3500L
-private const val METER_POLL_MS = 50L
+private const val METER_POLL_MS = 33L
 
 private fun messageText(message: UserMessage): Int = when (message) {
     UserMessage.CASE_NOT_ANSWERING -> R.string.msg_case_not_answering

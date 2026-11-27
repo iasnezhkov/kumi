@@ -317,6 +317,9 @@ where
         board::kick_watchdog();
         let _ = usb.as_mut().poll(&mut context);
         let _ = commands.as_mut().poll(&mut context);
+        if let Some(audio) = audio.as_mut() {
+            audio.service_iso();
+        }
         let _ = reports.as_mut().poll(&mut context);
         let mut loop_busy = false;
         let rpc_now = shared.rpc_activity.get();
