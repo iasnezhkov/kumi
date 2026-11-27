@@ -782,6 +782,9 @@
     <string name="kumi_updates_app_up_to_date">App is up to date (v%1$s)</string>
     <string name="kumi_updates_fw_up_to_date">Case firmware is up to date</string>
     <string name="kumi_updates_changelog">What\'s new</string>
+    <string name="kumi_updates_up_to_date_short">Up to date</string>
+    <string name="kumi_updates_other_versions">Other versions (%1$d)</string>
+    <string name="kumi_updates_open_release">Open on GitHub</string>
     <string name="kumi_changelog_empty">No release notes were provided for this version.</string>
     <string name="kumi_updates_download_install">Download &amp; install</string>
     <string name="kumi_updates_install_now">Install update</string>

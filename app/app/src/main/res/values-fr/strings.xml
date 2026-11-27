@@ -782,6 +782,9 @@
     <string name="kumi_updates_app_up_to_date">L’app est à jour (v%1$s)</string>
     <string name="kumi_updates_fw_up_to_date">Le firmware de l’étui est à jour</string>
     <string name="kumi_updates_changelog">Nouveautés</string>
+    <string name="kumi_updates_up_to_date_short">À jour</string>
+    <string name="kumi_updates_other_versions">Autres versions (%1$d)</string>
+    <string name="kumi_updates_open_release">Ouvrir sur GitHub</string>
     <string name="kumi_changelog_empty">Aucune note de version fournie pour cette version.</string>
     <string name="kumi_updates_download_install">Télécharger et installer</string>
     <string name="kumi_updates_install_now">Installer la mise à jour</string>

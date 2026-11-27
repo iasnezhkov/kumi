@@ -782,6 +782,9 @@
     <string name="kumi_updates_app_up_to_date">應用程式已是最新 (v%1$s)</string>
     <string name="kumi_updates_fw_up_to_date">鍵盤殼韌體已是最新</string>
     <string name="kumi_updates_changelog">更新內容</string>
+    <string name="kumi_updates_up_to_date_short">已是最新</string>
+    <string name="kumi_updates_other_versions">其他版本 (%1$d)</string>
+    <string name="kumi_updates_open_release">在 GitHub 上開啟</string>
     <string name="kumi_changelog_empty">此版本沒有提供更新說明。</string>
     <string name="kumi_updates_download_install">下載並安裝</string>
     <string name="kumi_updates_install_now">安裝更新</string>

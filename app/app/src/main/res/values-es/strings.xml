@@ -782,6 +782,9 @@
     <string name="kumi_updates_app_up_to_date">La app está al día (v%1$s)</string>
     <string name="kumi_updates_fw_up_to_date">El firmware de la funda está al día</string>
     <string name="kumi_updates_changelog">Novedades</string>
+    <string name="kumi_updates_up_to_date_short">Al día</string>
+    <string name="kumi_updates_other_versions">Otras versiones (%1$d)</string>
+    <string name="kumi_updates_open_release">Abrir en GitHub</string>
     <string name="kumi_changelog_empty">No se proporcionaron notas de la versión.</string>
     <string name="kumi_updates_download_install">Descargar e instalar</string>
     <string name="kumi_updates_install_now">Instalar actualización</string>

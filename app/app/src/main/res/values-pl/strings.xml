@@ -782,6 +782,9 @@
     <string name="kumi_updates_app_up_to_date">Masz najnowszą wersję (v%1$s)</string>
     <string name="kumi_updates_fw_up_to_date">Firmware etui jest aktualne</string>
     <string name="kumi_updates_changelog">Co nowego</string>
+    <string name="kumi_updates_up_to_date_short">Aktualna</string>
+    <string name="kumi_updates_other_versions">Inne wersje (%1$d)</string>
+    <string name="kumi_updates_open_release">Otwórz na GitHubie</string>
     <string name="kumi_changelog_empty">Dla tej wersji nie podano listy zmian.</string>
     <string name="kumi_updates_download_install">Pobierz i zainstaluj</string>
     <string name="kumi_updates_install_now">Zainstaluj aktualizację</string>

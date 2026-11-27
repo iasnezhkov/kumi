@@ -20,5 +20,10 @@ class ReleaseHostsTest {
         assertFalse(ReleaseHosts.download("https://github.com:8443/k.kumi"))
         assertFalse(ReleaseHosts.download("https://api.github.com/repos/o/kumi"))
         assertFalse(ReleaseHosts.download("not a url"))
+        assertTrue(ReleaseHosts.webUrl("https://github.com/o/kumi/releases/tag/v1.1.0"))
+        assertTrue(ReleaseHosts.webUrl("https://github.com/o/kumi/compare/v1.0.1...v1.1.0"))
+        assertFalse(ReleaseHosts.webUrl("http://github.com/o/kumi/releases"))
+        assertFalse(ReleaseHosts.webUrl("https://evil.example.com/o/kumi"))
+        assertFalse(ReleaseHosts.webUrl("https://user@github.com/o/kumi"))
     }
 }

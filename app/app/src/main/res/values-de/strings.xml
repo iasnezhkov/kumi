@@ -782,6 +782,9 @@
     <string name="kumi_updates_app_up_to_date">Die App ist aktuell (v%1$s)</string>
     <string name="kumi_updates_fw_up_to_date">Die Case-Firmware ist aktuell</string>
     <string name="kumi_updates_changelog">Neuigkeiten</string>
+    <string name="kumi_updates_up_to_date_short">Aktuell</string>
+    <string name="kumi_updates_other_versions">Andere Versionen (%1$d)</string>
+    <string name="kumi_updates_open_release">Auf GitHub öffnen</string>
     <string name="kumi_changelog_empty">Für diese Version liegen keine Versionshinweise vor.</string>
     <string name="kumi_updates_download_install">Laden &amp; installieren</string>
     <string name="kumi_updates_install_now">Update installieren</string>

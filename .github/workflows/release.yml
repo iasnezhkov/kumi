@@ -358,6 +358,10 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: CHANGELOG.md
+          sparse-checkout-cone-mode: false
       - name: Download verified release bundle
         uses: actions/download-artifact@v8
         with:
@@ -371,6 +375,7 @@ jobs:
           TARGET_SHA: ${{ github.sha }}
           TAG: ${{ needs.plan.outputs.tag }}
           BUNDLE_VER: ${{ needs.plan.outputs.bundle_version }}
+          FW_VER: ${{ needs.plan.outputs.fw_version }}
           APP_VER: ${{ needs.plan.outputs.app_version }}
           PRERELEASE: ${{ needs.plan.outputs.prerelease }}
           DRAFT: ${{ needs.plan.outputs.draft }}
@@ -380,7 +385,44 @@ jobs:
           else
             TITLE="Kumi ${BUNDLE_VER} / App ${APP_VER}"
           fi
-          FLAGS=(--repo "$REPO" --title "$TITLE" --generate-notes)
+          NOTES_FILE="$RUNNER_TEMP/release-notes.md"
+          python3 - "$NOTES_FILE" <<'PY'
+          import os, re, sys
+          from pathlib import Path
+
+          out = Path(sys.argv[1])
+          changelog = Path("CHANGELOG.md")
+          sums_path = Path(os.environ["RUNNER_TEMP"]) / "release" / "SHA256SUMS.txt"
+          bundle_ver = os.environ["BUNDLE_VER"]
+          fw_ver = os.environ["FW_VER"]
+          section = ""
+          if changelog.is_file():
+              text = changelog.read_text(encoding="utf-8").replace("\r\n", "\n")
+              for target in (bundle_ver, fw_ver):
+                  m = re.search(rf"(?m)^##\s+v?{re.escape(target)}\s*$\n(.*?)(?=^##\s+|\Z)", text, re.S)
+                  if m and m.group(1).strip():
+                      section = m.group(1).strip()
+                      break
+          if section:
+              parts = [section]
+              if sums_path.is_file():
+                  sums = [l.strip() for l in sums_path.read_text(encoding="utf-8").splitlines() if l.strip()]
+                  if sums:
+                      lines = ["## Verification", ""]
+                      for line in sums:
+                          digest, _, fname = line.partition("  ")
+                          if fname:
+                              lines.append(f"- `{fname}`: `{digest}`")
+                      parts.append("\n".join(lines))
+              parts.append("> Licensed under the **PolyForm Noncommercial License 1.0.0** (`PolyForm-Noncommercial-1.0.0`).")
+              out.write_text("\n\n".join(parts) + "\n", encoding="utf-8")
+          PY
+          FLAGS=(--repo "$REPO" --title "$TITLE")
+          if [ -s "$NOTES_FILE" ]; then
+            FLAGS+=(--notes-file "$NOTES_FILE")
+          else
+            FLAGS+=(--generate-notes)
+          fi
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then FLAGS+=(--target "$TARGET_SHA"); fi
           if [ "$PRERELEASE" = "true" ]; then FLAGS+=(--prerelease); fi
           if [ "$DRAFT" = "true" ]; then FLAGS+=(--draft); fi

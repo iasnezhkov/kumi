@@ -103,6 +103,7 @@ data class ReleaseAsset(
     val asset: String,
     val url: String,
     val size: Long,
+    val htmlUrl: String = "",
 ) {
     val version: KumiVersion? get() = KumiVersion.extractFromFilename(asset) ?: KumiVersion.parse(tag)
     val releaseVersion: ReleaseVersion? get() = ReleaseVersion.fromRelease(version, tag, asset, prerelease)
@@ -133,6 +134,7 @@ data class ReleaseAsset(
                         asset = name,
                         url = asset.optString("browser_download_url"),
                         size = size,
+                        htmlUrl = release.optString("html_url").takeIf { ReleaseHosts.webUrl(it) }.orEmpty(),
                     )
                 }
             }
@@ -151,6 +153,7 @@ data class AppReleaseAsset(
     val asset: String,
     val url: String,
     val size: Long,
+    val htmlUrl: String = "",
 ) {
     val version: KumiVersion?
         get() = KumiVersion.extractFromFilename(asset)
@@ -184,6 +187,7 @@ data class AppReleaseAsset(
                         asset = name,
                         url = asset.optString("browser_download_url"),
                         size = size,
+                        htmlUrl = release.optString("html_url").takeIf { ReleaseHosts.webUrl(it) }.orEmpty(),
                     )
                 }
             }
@@ -460,4 +464,10 @@ object ReleaseHosts {
             url.host.lowercase() in (if (json) setOf(API) else DOWNLOADS)
 
     fun download(url: String): Boolean = runCatching { allowed(URL(url), json = false) }.getOrDefault(false)
+
+    fun webUrl(url: String): Boolean = runCatching {
+        val parsed = URL(url)
+        parsed.protocol == "https" && (parsed.port == -1 || parsed.port == 443) &&
+            parsed.userInfo == null && parsed.host.equals("github.com", ignoreCase = true)
+    }.getOrDefault(false)
 }

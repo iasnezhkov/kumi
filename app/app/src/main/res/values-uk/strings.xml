@@ -782,6 +782,9 @@
     <string name="kumi_updates_app_up_to_date">Встановлено останню версію (v%1$s)</string>
     <string name="kumi_updates_fw_up_to_date">На кейсі актуальна прошивка</string>
     <string name="kumi_updates_changelog">Що нового</string>
+    <string name="kumi_updates_up_to_date_short">Актуально</string>
+    <string name="kumi_updates_other_versions">Інші версії (%1$d)</string>
+    <string name="kumi_updates_open_release">Відкрити на GitHub</string>
     <string name="kumi_changelog_empty">Для цієї версії список змін не вказано.</string>
     <string name="kumi_updates_download_install">Завантажити й встановити</string>
     <string name="kumi_updates_install_now">Встановити оновлення</string>

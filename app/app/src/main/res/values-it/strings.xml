@@ -782,6 +782,9 @@
     <string name="kumi_updates_app_up_to_date">App aggiornata (v%1$s)</string>
     <string name="kumi_updates_fw_up_to_date">Il firmware della custodia è aggiornato</string>
     <string name="kumi_updates_changelog">Novità</string>
+    <string name="kumi_updates_up_to_date_short">Aggiornato</string>
+    <string name="kumi_updates_other_versions">Altre versioni (%1$d)</string>
+    <string name="kumi_updates_open_release">Apri su GitHub</string>
     <string name="kumi_changelog_empty">Nessuna nota di rilascio per questa versione.</string>
     <string name="kumi_updates_download_install">Scarica e installa</string>
     <string name="kumi_updates_install_now">Installa aggiornamento</string>

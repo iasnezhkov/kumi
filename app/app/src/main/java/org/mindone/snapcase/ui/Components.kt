@@ -51,16 +51,25 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLinkStyles
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.DialogProperties
 import org.mindone.snapcase.R
 import org.mindone.snapcase.kumi.AudioMeters
+import org.mindone.snapcase.kumi.ReleaseHosts
 
 enum class Evidence { MEASURED, UNVERIFIED, EXPERIMENTAL }
 
@@ -460,21 +469,139 @@ fun VerticalStereoVuMeter(
     }
 }
 
+internal sealed interface ChangelogBlock {
+    data class Heading(val text: String, val level: Int) : ChangelogBlock
+    data class Bullet(val text: String, val indent: Int = 0) : ChangelogBlock
+    data class Quote(val text: String) : ChangelogBlock
+    data class Paragraph(val text: String) : ChangelogBlock
+    data object Divider : ChangelogBlock
+}
+
+private val FULL_CHANGELOG_LINE = Regex("""^\*{0,2}Full Changelog\*{0,2}:\s*(https://github\.com/\S+)\s*$""", RegexOption.IGNORE_CASE)
+private val INLINE_TOKEN = Regex("""\[([^\]\n]+)\]\((https://[^\s)]+)\)|\*\*([^*\n]+)\*\*|`([^`\n]+)`|(https://[^\s)>,]+)""")
+
+internal fun extractChangelogUrl(notes: String, fallbackUrl: String? = null): String? {
+    val validFallback = fallbackUrl?.takeIf { ReleaseHosts.webUrl(it) }
+    val fromBody = notes.replace("\r\n", "\n")
+        .lineSequence()
+        .mapNotNull { line -> FULL_CHANGELOG_LINE.matchEntire(line.trim())?.groupValues?.getOrNull(1) }
+        .firstOrNull { ReleaseHosts.webUrl(it) }
+    return validFallback ?: fromBody
+}
+
+internal fun parseChangelogBlocks(notes: String): List<ChangelogBlock> {
+    val out = mutableListOf<ChangelogBlock>()
+    for (raw in notes.replace("\r\n", "\n").lines()) {
+        val leadingSpaces = raw.indexOfFirst { !it.isWhitespace() }.let { if (it < 0) 0 else it }
+        val trimmed = raw.trim()
+        if (trimmed.isEmpty()) continue
+        if (FULL_CHANGELOG_LINE.matches(trimmed)) continue
+        when {
+            trimmed == "---" || trimmed == "***" -> out += ChangelogBlock.Divider
+            trimmed.startsWith("### ") -> out += ChangelogBlock.Heading(trimmed.drop(4).trim(), 3)
+            trimmed.startsWith("## ") -> out += ChangelogBlock.Heading(trimmed.drop(3).trim(), 2)
+            trimmed.startsWith("# ") -> out += ChangelogBlock.Heading(trimmed.drop(2).trim(), 1)
+            trimmed.startsWith("- ") || trimmed.startsWith("* ") ->
+                out += ChangelogBlock.Bullet(trimmed.drop(2).trim(), if (leadingSpaces >= 2) 1 else 0)
+            trimmed.startsWith("> ") -> out += ChangelogBlock.Quote(trimmed.drop(2).trim())
+            else -> out += ChangelogBlock.Paragraph(trimmed)
+        }
+    }
+    return out
+}
+
+@Composable
+private fun rememberFormattedChangelogText(text: String): AnnotatedString {
+    val linkColor = MaterialTheme.colorScheme.primary
+    val codeBg = MaterialTheme.colorScheme.surfaceContainerHighest
+    return remember(text, linkColor, codeBg) {
+        buildAnnotatedString {
+            var cursor = 0
+            for (match in INLINE_TOKEN.findAll(text)) {
+                if (match.range.first > cursor) {
+                    append(text.substring(cursor, match.range.first))
+                }
+                val mdLabel = match.groups[1]?.value
+                val mdUrl = match.groups[2]?.value
+                val boldText = match.groups[3]?.value
+                val codeText = match.groups[4]?.value
+                val bareUrl = match.groups[5]?.value
+                when {
+                    mdLabel != null && mdUrl != null -> {
+                        if (ReleaseHosts.webUrl(mdUrl)) {
+                            pushLink(
+                                LinkAnnotation.Url(
+                                    url = mdUrl,
+                                    styles = TextLinkStyles(
+                                        style = SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline),
+                                    ),
+                                ),
+                            )
+                            append(mdLabel)
+                            pop()
+                        } else {
+                            append(mdLabel)
+                        }
+                    }
+                    boldText != null -> {
+                        pushStyle(SpanStyle(fontWeight = FontWeight.SemiBold))
+                        append(boldText)
+                        pop()
+                    }
+                    codeText != null -> {
+                        pushStyle(SpanStyle(fontFamily = FontFamily.Monospace, background = codeBg))
+                        append(" $codeText ")
+                        pop()
+                    }
+                    bareUrl != null -> {
+                        val cleanUrl = bareUrl.trimEnd('.', ',', ';')
+                        val suffix = bareUrl.removePrefix(cleanUrl)
+                        if (ReleaseHosts.webUrl(cleanUrl)) {
+                            pushLink(
+                                LinkAnnotation.Url(
+                                    url = cleanUrl,
+                                    styles = TextLinkStyles(
+                                        style = SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline),
+                                    ),
+                                ),
+                            )
+                            append(cleanUrl.removePrefix("https://"))
+                            pop()
+                        } else {
+                            append(cleanUrl)
+                        }
+                        if (suffix.isNotEmpty()) append(suffix)
+                    }
+                }
+                cursor = match.range.last + 1
+            }
+            if (cursor < text.length) {
+                append(text.substring(cursor))
+            }
+        }
+    }
+}
+
 @Composable
 fun ChangelogDialog(
     title: String,
     subtitle: String?,
     notes: String,
+    releaseUrl: String? = null,
     primaryLabel: String? = null,
     onPrimary: (() -> Unit)? = null,
     onDismiss: () -> Unit,
 ) {
-    val lines = rememberChangelogLines(notes)
+    val uriHandler = LocalUriHandler.current
+    val blocks = remember(notes) { parseChangelogBlocks(notes) }
+    val linkUrl = remember(notes, releaseUrl) { extractChangelogUrl(notes, releaseUrl) }
     AlertDialog(
         onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
         title = {
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(title)
+                Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 if (!subtitle.isNullOrBlank()) {
                     Note(subtitle)
                 }
@@ -482,26 +609,69 @@ fun ChangelogDialog(
         },
         text = {
             Column(
-                Modifier.fillMaxWidth().heightIn(max = 380.dp).verticalScroll(rememberScrollState()),
+                Modifier.fillMaxWidth().heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                if (lines.isEmpty()) {
+                if (blocks.isEmpty()) {
                     Note(stringResource(R.string.kumi_changelog_empty))
                 } else {
-                    lines.forEach { line ->
-                        when {
-                            line.startsWith("### ") || line.startsWith("## ") || line.startsWith("# ") ->
+                    blocks.forEach { block ->
+                        when (block) {
+                            is ChangelogBlock.Heading -> {
                                 Text(
-                                    line.trimStart('#', ' '),
-                                    style = MaterialTheme.typography.titleSmall,
+                                    rememberFormattedChangelogText(block.text),
+                                    style = if (block.level <= 2) MaterialTheme.typography.titleSmall else MaterialTheme.typography.labelLarge,
                                     fontWeight = FontWeight.SemiBold,
+                                    color = if (block.level <= 2) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.padding(top = if (block.level <= 2) 6.dp else 3.dp),
+                                )
+                            }
+                            is ChangelogBlock.Bullet -> {
+                                Row(
+                                    Modifier.fillMaxWidth().padding(start = (block.indent * 12).dp),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalAlignment = Alignment.Top,
+                                ) {
+                                    Text(
+                                        if (block.indent == 0) "•" else "◦",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.primary,
+                                    )
+                                    Text(
+                                        rememberFormattedChangelogText(block.text),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                }
+                            }
+                            is ChangelogBlock.Quote -> {
+                                Text(
+                                    rememberFormattedChangelogText(block.text),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.padding(top = 4.dp),
                                 )
-                            line.startsWith("- ") || line.startsWith("* ") ->
-                                Text("• " + line.drop(2).trim(), style = MaterialTheme.typography.bodyMedium)
-                            else ->
-                                Text(line, style = MaterialTheme.typography.bodyMedium)
+                            }
+                            is ChangelogBlock.Paragraph -> {
+                                Text(
+                                    rememberFormattedChangelogText(block.text),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                )
+                            }
+                            ChangelogBlock.Divider -> {
+                                HorizontalDivider(Modifier.padding(vertical = 2.dp))
+                            }
                         }
+                    }
+                }
+                if (linkUrl != null) {
+                    TextButton(
+                        onClick = { runCatching { uriHandler.openUri(linkUrl) } },
+                        modifier = Modifier.padding(top = 2.dp),
+                    ) {
+                        Text(stringResource(R.string.kumi_updates_open_release))
                     }
                 }
             }
@@ -523,12 +693,6 @@ fun ChangelogDialog(
         },
     )
 }
-
-private fun rememberChangelogLines(notes: String): List<String> =
-    notes.replace("\r\n", "\n")
-        .lines()
-        .map { it.trim().replace("**", "").replace("`", "") }
-        .filter { it.isNotEmpty() }
 
 @Composable
 fun InfoRow(label: String, value: String?, evidence: Evidence? = null) {

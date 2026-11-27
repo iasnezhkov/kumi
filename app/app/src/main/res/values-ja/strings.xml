@@ -782,6 +782,9 @@
     <string name="kumi_updates_app_up_to_date">アプリは最新です (v%1$s)</string>
     <string name="kumi_updates_fw_up_to_date">ケースのファームウェアは最新です</string>
     <string name="kumi_updates_changelog">新機能</string>
+    <string name="kumi_updates_up_to_date_short">最新</string>
+    <string name="kumi_updates_other_versions">その他のバージョン (%1$d)</string>
+    <string name="kumi_updates_open_release">GitHubで開く</string>
     <string name="kumi_changelog_empty">このバージョンのリリースノートはありません。</string>
     <string name="kumi_updates_download_install">ダウンロードしてインストール</string>
     <string name="kumi_updates_install_now">アップデートをインストール</string>
