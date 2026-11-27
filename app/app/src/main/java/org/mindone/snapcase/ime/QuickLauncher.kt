@@ -27,6 +27,11 @@ data class LaunchableApp(
 object QuickLauncher {
     private val combiningMarks = Regex("\\p{InCombiningDiacriticalMarks}+")
 
+    private val genericPkgSegments: Set<String> = setOf(
+        "com", "org", "net", "io", "co", "jp", "kr", "cn", "tw", "ru", "de", "fr", "uk", "edu", "gov",
+        "android", "app", "apps", "mobile", "client", "main", "google", "samsung", "sec", "miui",
+    )
+
     private val qwertyToRu: Map<Char, Char> = mapOf(
         'q' to 'й', 'w' to 'ц', 'e' to 'у', 'r' to 'к', 't' to 'е', 'y' to 'н', 'u' to 'г', 'i' to 'ш', 'o' to 'щ', 'p' to 'з',
         '[' to 'х', ']' to 'ъ', 'a' to 'ф', 's' to 'ы', 'd' to 'в', 'f' to 'а', 'g' to 'п', 'h' to 'р', 'j' to 'о', 'k' to 'л',
@@ -89,7 +94,7 @@ object QuickLauncher {
                 val label = info.loadLabel(pm).toString().takeIf { it.isNotBlank() } ?: pkg
                 LaunchableApp(pkg, label, activity.name.orEmpty())
             }
-            .distinctBy { it.packageName }
+            .distinctBy { "${it.packageName}/${it.activityName}" }
             .sortedBy { it.label.lowercase() }
     }
 
@@ -131,20 +136,26 @@ object QuickLauncher {
     }
 
     fun foldForSearch(text: String): String {
-        val decomposed = Normalizer.normalize(text.trim(), Normalizer.Form.NFD)
-        val stripped = combiningMarks.replace(decomposed, "")
-        val sb = StringBuilder(stripped.length)
-        for (raw in stripped) {
-            when (val c = raw.lowercaseChar()) {
-                'ё' -> sb.append('е')
-                'ß' -> sb.append("ss")
-                'ł' -> sb.append('l')
-                'ø' -> sb.append('o')
-                'đ' -> sb.append('d')
-                'ı' -> sb.append('i')
-                'æ' -> sb.append("ae")
-                'œ' -> sb.append("oe")
-                else -> sb.append(c)
+        val sb = StringBuilder(text.length)
+        for (raw in text.trim().lowercase()) {
+            if (HangulComposer.isHangul(raw)) {
+                sb.append(raw)
+                continue
+            }
+            val decomposed = Normalizer.normalize(raw.toString(), Normalizer.Form.NFD)
+            val stripped = combiningMarks.replace(decomposed, "")
+            for (c in stripped) {
+                when (c) {
+                    'ё' -> sb.append('е')
+                    'ß' -> sb.append("ss")
+                    'ł' -> sb.append('l')
+                    'ø' -> sb.append('o')
+                    'đ' -> sb.append('d')
+                    'ı' -> sb.append('i')
+                    'æ' -> sb.append("ae")
+                    'œ' -> sb.append("oe")
+                    else -> sb.append(c)
+                }
             }
         }
         return sb.toString()
@@ -154,7 +165,8 @@ object QuickLauncher {
         if (folded.isEmpty()) return emptyList()
         val toLat = mapWithTable(folded, ruToQwerty)
         val toCyr = mapWithTable(folded, qwertyToRu)
-        return listOf(toLat, toCyr).filter { it.isNotEmpty() && it != folded }.distinct()
+        val toKo = if (folded.all { it in 'a'..'z' }) HangulComposer.composeFromLatin(folded) else ""
+        return listOf(toLat, toCyr, toKo).filter { it.isNotEmpty() && it != folded }.distinct()
     }
 
     private fun mapWithTable(text: String, table: Map<Char, Char>): String {
@@ -184,12 +196,12 @@ object QuickLauncher {
         for (app in apps) {
             val labelFold = foldForSearch(app.label)
             val words = splitSearchWords(app.label)
-            val pkgFold = app.packageName.lowercase()
-            var tier = matchTier(labelFold, words, pkgFold, q)
+            val pkgSegments = packageSearchSegments(app.packageName)
+            var tier = matchTier(labelFold, words, pkgSegments, q)
             if (tier < 0) {
                 var bestAlt = Int.MAX_VALUE
                 for (alt in alternates) {
-                    val altTier = matchTier(labelFold, words, pkgFold, alt)
+                    val altTier = matchTier(labelFold, words, pkgSegments, alt)
                     if (altTier >= 0 && altTier < bestAlt) bestAlt = altTier
                 }
                 if (bestAlt != Int.MAX_VALUE) tier = bestAlt + 6
@@ -207,10 +219,15 @@ object QuickLauncher {
         return scored.map { it.second }
     }
 
+    private fun packageSearchSegments(packageName: String): List<String> =
+        packageName.lowercase()
+            .split('.', '_', '-')
+            .filter { it.length >= 3 && it !in genericPkgSegments }
+
     private fun matchTier(
         labelFold: String,
         words: List<String>,
-        pkgFold: String,
+        pkgSegments: List<String>,
         q: String,
     ): Int {
         if (labelFold == q) return 0
@@ -218,7 +235,7 @@ object QuickLauncher {
         if (words.any { it.startsWith(q) }) return 2
         if (q.length >= 2 && matchesAcronym(words, q)) return 3
         if (labelFold.contains(q)) return 4
-        if (pkgFold.contains(q)) return 5
+        if (q.length >= 3 && pkgSegments.any { it.startsWith(q) }) return 5
         return -1
     }
 

@@ -182,6 +182,10 @@ android {
     }
 
     buildTypes {
+        debug {
+            val suffix = providers.gradleProperty("kumi.appIdSuffix").getOrElse("").trim()
+            if (suffix.isNotEmpty()) applicationIdSuffix = suffix
+        }
         release {
             isMinifyEnabled = false
             vcsInfo {

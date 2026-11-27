@@ -119,5 +119,28 @@ class QuickLauncherTest {
         assertFalse(handoff.isHandoffWindow(nowMs = 2900L))
         handoff.requestDismiss()
         assertTrue(handoff.consumePending().dismissRequested)
+
+        handoff.beginLaunch(null, nowMs = 3000L)
+        handoff.backspace()
+        handoff.backspace()
+        assertEquals(2, handoff.consumePending().backspaces)
+    }
+
+    @Test
+    fun packageMatchingAvoidsShortNoiseWhileKeepingRomajiPackageNames() {
+        val apps = listOf(
+            LaunchableApp("org.mindone.snapcase", "Kumi"),
+            LaunchableApp("com.kakaku.tabelog", "Tabelog"),
+            LaunchableApp("jp.co.rakuten.pointclub", "楽天PointClub"),
+            LaunchableApp("com.kakao.talk", "카카오톡"),
+        )
+        val ku = QuickLauncher.searchApps(apps, "ku")
+        assertEquals(listOf("Kumi"), ku.map { it.label })
+
+        val rakuten = QuickLauncher.searchApps(apps, "rakuten")
+        assertEquals(listOf("楽天PointClub"), rakuten.map { it.label })
+
+        val koQuery = QuickLauncher.searchApps(apps, "zkzk")
+        assertEquals("com.kakao.talk", koQuery.firstOrNull()?.packageName)
     }
 }

@@ -113,10 +113,22 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     )
 
     init {
+        org.mindone.snapcase.kumi.SnapLiveMirror.bindContext(application)
+        org.mindone.snapcase.kumi.SnapLiveMirror.bindSession(kumi)
         viewModelScope.launch {
             prefs.rawSettings.map { it.demoMode }.distinctUntilChanged().collect {
                 stock.reconnect()
                 applyDemo(it)
+            }
+        }
+        viewModelScope.launch {
+            prefs.rawSettings.map { it.launcherBridgeEnabled }.distinctUntilChanged().collect {
+                org.mindone.snapcase.kumi.SnapLiveMirror.setControlsAllowed(application, it)
+            }
+        }
+        viewModelScope.launch {
+            catalog.state.map { it.appUpdate(BuildConfig.VERSION_NAME) != null }.distinctUntilChanged().collect {
+                org.mindone.snapcase.kumi.SnapLiveMirror.setUpdateAvailable(it)
             }
         }
         viewModelScope.launch {
@@ -160,6 +172,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     override fun onCleared() {
+        org.mindone.snapcase.kumi.SnapLiveMirror.bindSession(null)
         caseExecutor.execute {
             stock.close()
             flows.closeNow()

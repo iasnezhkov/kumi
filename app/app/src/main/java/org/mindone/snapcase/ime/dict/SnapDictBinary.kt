@@ -98,26 +98,32 @@ class SnapDictBinary(
 
         fun foldKey(text: String): String {
             val sb = StringBuilder(text.length)
-            val normalized = Normalizer.normalize(text.lowercase(Locale.ROOT), Normalizer.Form.NFD)
-            for (ch in normalized) {
-                val type = Character.getType(ch)
-                if (type == Character.NON_SPACING_MARK.toInt()) continue
-                when (ch) {
-                    'ё' -> sb.append('е')
-                    'ъ' -> sb.append('ь')
-                    'й' -> sb.append('и')
-                    'ґ' -> sb.append('г')
-                    'є' -> sb.append('е')
-                    'ї' -> sb.append('и')
-                    'і' -> sb.append('и')
-                    'ß' -> sb.append("ss")
-                    'ł' -> sb.append('l')
-                    'ı' -> sb.append('i')
-                    'ø' -> sb.append('o')
-                    'đ' -> sb.append('d')
-                    'æ' -> sb.append("ae")
-                    'œ' -> sb.append("oe")
-                    else -> sb.append(ch)
+            for (raw in text.lowercase(Locale.ROOT)) {
+                if (raw in '\uAC00'..'\uD7A3' || raw in '\u3131'..'\u318E') {
+                    sb.append(raw)
+                    continue
+                }
+                val normalized = Normalizer.normalize(raw.toString(), Normalizer.Form.NFD)
+                for (ch in normalized) {
+                    val type = Character.getType(ch)
+                    if (type == Character.NON_SPACING_MARK.toInt()) continue
+                    when (ch) {
+                        'ё' -> sb.append('е')
+                        'ъ' -> sb.append('ь')
+                        'й' -> sb.append('и')
+                        'ґ' -> sb.append('г')
+                        'є' -> sb.append('е')
+                        'ї' -> sb.append('и')
+                        'і' -> sb.append('и')
+                        'ß' -> sb.append("ss")
+                        'ł' -> sb.append('l')
+                        'ı' -> sb.append('i')
+                        'ø' -> sb.append('o')
+                        'đ' -> sb.append('d')
+                        'æ' -> sb.append("ae")
+                        'œ' -> sb.append("oe")
+                        else -> sb.append(ch)
+                    }
                 }
             }
             return sb.toString()
@@ -155,7 +161,7 @@ class SnapDictBinary(
             return SnapDictBinary(count, offsets, lengths, ranks, pool)
         }
 
-        fun compileFromFrequencyText(text: String, maxWords: Int = 20_000, cyrillic: Boolean = false): ByteArray {
+        fun compileFromFrequencyText(text: String, maxWords: Int = 20_000, cyrillic: Boolean = false, hangul: Boolean = false): ByteArray {
             val raw = ArrayList<Pair<String, Int>>(maxWords.coerceAtMost(20_000))
             val seen = HashSet<String>(maxWords.coerceAtMost(20_000))
             for (line in text.lineSequence()) {
@@ -164,10 +170,10 @@ class SnapDictBinary(
                 val sep = trimmed.indexOfFirst { it == ' ' || it == '\t' }
                 val word = (if (sep > 0) trimmed.substring(0, sep) else trimmed).lowercase()
                 if (word.length !in 2..28) continue
-                val valid = if (cyrillic) {
-                    word.all { (it in '\u0400'..'\u04FF') || it == '-' || it == '\'' } && word.any { it in '\u0400'..'\u04FF' }
-                } else {
-                    word[0].isLetter() && word.all { it.isLetter() || it == '-' || it == '\'' }
+                val valid = when {
+                    cyrillic -> word.all { (it in '\u0400'..'\u04FF') || it == '-' || it == '\'' } && word.any { it in '\u0400'..'\u04FF' }
+                    hangul -> word.all { it in '\uAC00'..'\uD7A3' || it in '\u3131'..'\u318E' }
+                    else -> word[0].isLetter() && word.all { it.isLetter() || it == '-' || it == '\'' }
                 }
                 if (!valid || !seen.add(word)) continue
                 val freq = if (sep > 0) trimmed.substring(sep + 1).trim().toIntOrNull() ?: 1 else 1

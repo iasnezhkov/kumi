@@ -3,8 +3,8 @@
 <resources>
     <string name="app_name">Kumi</string>
     <string name="keyboard_layouts_label">iKKO Snap 배열</string>
-    <string name="remap_service_label">Snap 키 재할당</string>
-    <string name="remap_service_description">실험적 기능입니다. Snap Case 앱의 표에 따라 iKKO Snap 케이스의 키를 재할당합니다. 원래 키를 가로채고 지정한 키를 입력합니다. 입력은 플랫폼 키로 서명된 시스템 빌드에서만 작동합니다.</string>
+    <string name="remap_service_label">Kumi 키보드 단축키</string>
+    <string name="remap_service_description">홈 화면 앱 검색, 입력창 밖에서 Backspace 뒤로가기, 두 번 눌러 미디어 제어, 빠른 실행 키를 활성화합니다. 비밀번호나 화면 텍스트를 읽거나 전송하지 않습니다.</string>
     <string name="demo_banner">데모 모드: 스크립트 응답이며 실제 케이스가 아니에요</string>
     <string name="tag_measured">실측</string>
     <string name="tag_unverified">미검증</string>
@@ -277,7 +277,7 @@
     <string name="kb_tester_text">모든 키가 작동하는지 확인</string>
     <string name="keys_title">키 재할당</string>
     <string name="keys_enable_title">재할당 켜기</string>
-    <string name="keys_enable_text">접근성을 열고 “Snap 키 재할당”을 켜세요. 켜지 않으면 키는 원래 기능 그대로예요.</string>
+    <string name="keys_enable_text">접근성에서 「Kumi 키보드 단축키」를 켜세요. 켜지 않으면 키가 기본 동작을 유지합니다.</string>
     <string name="keys_intro">“추가”를 누르고 케이스의 키를 누른 뒤 기능을 고르세요.</string>
     <string name="keys_empty">재할당한 키가 아직 없어요</string>
     <string name="keys_disabled">아무것도 안 함</string>
@@ -688,7 +688,7 @@
     <string name="kumi_case_ready">연결되어 사용할 수 있어요</string>
     <string name="kumi_crossfeed_hint">채널을 살짝 섞어 헤드폰이 스피커처럼 들리게 해요.</string>
     <string name="kumi_advanced_sound_title">고급 사운드</string>
-    <string name="kumi_advanced_sound_summary">위상, DSD, DC 필터, 라인 아웃</string>
+    <string name="kumi_advanced_sound_summary">위상, DSD, DC 필터, 좌/우 전환</string>
     <string name="kumi_keys_timing_summary">길게 누름 지연 및 고정 키 제한 시간</string>
     <string name="kumi_eq_reset_confirm_title">이퀄라이저를 초기화할까요?</string>
     <string name="kumi_eq_reset_confirm_text">이 슬롯의 모든 밴드를 플랫으로 되돌려요.</string>
@@ -832,7 +832,7 @@
     <string name="ime_subtype_uk">우크라이나어 (Kumi Strip)</string>
     <string name="ime_subtype_ja">일본어 (Kumi Strip)</string>
     <string name="ime_settings_title">자동 완성 스트립 및 단축키</string>
-    <string name="ime_settings_subtitle">하단 추천 바, 배열 전환, 이모지, 사전</string>
+    <string name="ime_settings_subtitle">자동완성, 배열, 진동 및 사전</string>
     <string name="ime_setup_title">Kumi Strip 입력 바</string>
     <string name="ime_setup_body">물리 키보드 입력을 위한 하단의 46 dp 컴팩트 스트립으로, 추천 단어, 배열, 이모지, 클립보드를 담았어요. Android 15와 16에서 화면을 가리지 않고 작동합니다.</string>
     <string name="ime_switch_to_virtual">눌러서 화면 키보드 사용 ⌨</string>
@@ -895,7 +895,7 @@
     <string name="ime_long_press_upper">대문자</string>
     <string name="ime_default_lang_label">기본 사전</string>
     <string name="ime_dicts_title">오프라인 사전</string>
-    <string name="ime_dicts_desc">영어, 러시아어, 우크라이나어(MIT FrequencyWords)와 일본어 로마자→가나/한자(BSD-3-Clause Google Mozc)는 오프라인으로 내장되어 있어요. 스페인어, 독일어, 프랑스어, 이탈리아어, 포르투갈어, 폴란드어, 네덜란드어, 터키어, 체코어, 스웨덴어, 핀란드어, 루마니아어, 헝가리어는 기기에서 내려받으며(각 2만 5천 단어) 1초도 걸리지 않아요.</string>
+    <string name="ime_dicts_desc">영어, 러시아어, 우크라이나어, 한국어(MIT FrequencyWords), 일본어 로마자→가나/한자(BSD-3-Clause Google Mozc), 중국어 간체/번체 병음(Apache-2.0 Rime + OpenCC)이 오프라인 내장되어 있습니다. 스페인어, 독일어, 프랑스어, 이탈리아어, 포르투갈어, 폴란드어, 네덜란드어, 튀르키예어, 체코어, 스웨덴어, 핀란드어, 루마니아어, 헝가리어(각 2.5만 단어)는 1초 이내에 기기로 다운로드됩니다.</string>
     <string name="ime_langs_download_hint">↓ 표시가 있는 언어는 켤 때 사전을 내려받아요.</string>
     <string name="ime_dict_bundled">내장 (1만 5천 단어, 오프라인)</string>
     <string name="ime_dict_downloaded">다운로드됨 (2만 5천 단어, 오프라인)</string>
@@ -951,4 +951,42 @@
     <string name="home_search_placeholder">앱 검색…</string>
     <string name="home_search_empty">일치하는 앱 없음</string>
     <string name="home_search_footer_hint">Enter 열기 · ↑↓ 선택 · Esc 닫기</string>
+    <string name="ime_tab_snippets">상용구</string>
+    <string name="kumi_line_out_badge">Line-Out</string>
+    <string name="kumi_audio_dac_glitch">오디오 출력에 일시적인 오류가 발생했습니다. 소리가 멈추면 이어폰을 다시 꽂거나 재생을 재시작하세요.</string>
+    <string name="kumi_diag_audio_counters">오디오 카운터</string>
+    <string name="kumi_err_generic">케이스 작업을 완료하지 못했습니다. 다시 시도하거나 케이스를 다시 연결하세요.</string>
+    <string name="kumi_err_no_reply">케이스가 제때 응답하지 않았습니다. 잠시 기다리거나 다시 연결하세요.</string>
+    <string name="kumi_err_usb_link">케이스와의 USB 연결이 끊어졌습니다. 케이스를 다시 끼워 재연결하세요.</string>
+    <string name="kumi_err_protocol">케이스에서 예기치 않은 응답이 왔습니다. 계속되면 앱이나 펌웨어를 업데이트하세요.</string>
+    <string name="kumi_err_not_connected">케이스가 연결되지 않았습니다. 케이스를 연결하고 다시 시도하세요.</string>
+    <string name="kumi_err_network_offline">인터넷에 연결되어 있지 않습니다. 네트워크에 연결한 뒤 다시 시도하세요.</string>
+    <string name="kumi_err_network_timeout">연결 시간이 초과되었습니다. 네트워크를 확인하고 다시 시도하세요.</string>
+    <string name="kumi_err_network_rate_limit">GitHub 요청 한도에 도달했습니다. 몇 분 후 다시 시도하세요.</string>
+    <string name="kumi_err_network_generic">GitHub에 연결할 수 없습니다. 네트워크 상태를 확인하고 다시 시도하세요.</string>
+    <string name="shortcuts_title">시스템 단축키</string>
+    <string name="shortcuts_tile">단축키</string>
+    <string name="shortcuts_subtitle">홈 검색, Backspace = 뒤로, 미디어</string>
+    <string name="shortcuts_setup_title">Kumi 키보드 단축키 켜기</string>
+    <string name="shortcuts_setup_badge">2단계</string>
+    <string name="shortcuts_service_active_title">Kumi 키보드 단축키 활성</string>
+    <string name="shortcuts_service_active_text">홈 검색, Backspace = 뒤로가기, 단축키가 준비되었습니다.</string>
+    <string name="shortcuts_service_active_launcher">활성 · 런처: %1$s</string>
+    <string name="shortcuts_step1_title">제한된 설정 허용 (APK 설치)</string>
+    <string name="shortcuts_step1_hint">앱 정보 열기 → 아래로 스크롤 또는 ⋮ 탭 → 「제한된 설정 허용」 켜기. 이미 허용했다면 건너뛰세요.</string>
+    <string name="shortcuts_step1_cta">앱 정보 열기</string>
+    <string name="shortcuts_step2_title">Kumi 키보드 단축키 켜기</string>
+    <string name="shortcuts_step2_hint">접근성 → 다운로드한 앱 → Kumi 키보드 단축키 → 위쪽 스위치만 켜세요(「바로가기」는 꺼 두어야 떠다니는 버튼이 생기지 않습니다).</string>
+    <string name="shortcuts_back_title">Backspace로 뒤로가기</string>
+    <string name="shortcuts_back_desc">텍스트 입력창 밖에서 Backspace를 눌러 Android 뒤로가기를 실행합니다. 입력창, 홈, 잠금 화면, 제외 앱에서는 동작하지 않습니다.</string>
+    <string name="shortcuts_back_toggle">Backspace = 뒤로</string>
+    <string name="shortcuts_back_excluded_btn">제외 앱 (%1$d)</string>
+    <string name="shortcuts_back_excluded_title">제외 앱</string>
+    <string name="shortcuts_back_excluded_hint">선택한 앱(터미널, SSH, 게임)에서는 Backspace가 원래대로 동작합니다.</string>
+    <string name="shortcuts_media_title">두 번 눌러 미디어 제어</string>
+    <string name="shortcuts_media_desc">입력창 밖(잠금 화면 포함): 왼쪽 Shift 2× = 이전 곡, Backspace 2× = 다음 곡, Space 2× = 재생/일시정지.</string>
+    <string name="shortcuts_media_toggle">두 번 눌러 미디어 제어 켜기</string>
+    <string name="settings_launcher_title">런처</string>
+    <string name="settings_launcher_bridge">런처 빠른 제어 허용</string>
+    <string name="settings_launcher_bridge_text">DAC, EQ 및 레이어 상태를 MindOne Launcher와 공유하고 빠른 오디오 제어를 허용합니다.</string>
 </resources>

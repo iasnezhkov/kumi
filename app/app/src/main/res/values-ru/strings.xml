@@ -3,8 +3,8 @@
 <resources>
     <string name="app_name">Kumi</string>
     <string name="keyboard_layouts_label">Раскладки iKKO Snap</string>
-    <string name="remap_service_label">Переназначение клавиш Snap</string>
-    <string name="remap_service_description">Экспериментально. Переназначает клавиши кейса iKKO Snap по таблице приложения Snap Case: исходная клавиша поглощается, вместо неё вводится назначенная. Ввод работает только в системной сборке, подписанной ключом платформы.</string>
+    <string name="remap_service_label">Сочетания клавиш Kumi</string>
+    <string name="remap_service_description">Включает поиск приложений на главном экране, Backspace как «Назад» вне полей ввода, двойное нажатие для управления музыкой и быстрые клавиши. Не читает и не отправляет пароли или текст с экрана.</string>
     <string name="demo_banner">Демо-режим: ответы по сценарию, не настоящий кейс</string>
     <string name="tag_measured">измерено</string>
     <string name="tag_unverified">не проверено</string>
@@ -277,7 +277,7 @@
     <string name="kb_tester_text">Убедиться, что все клавиши работают</string>
     <string name="keys_title">Переназначение клавиш</string>
     <string name="keys_enable_title">Включите переназначение</string>
-    <string name="keys_enable_text">Откройте «Спец. возможности» и включите «Переназначение клавиш Snap». Без этого клавиши работают как обычно.</string>
+    <string name="keys_enable_text">Откройте «Спец. возможности» и включите «Сочетания клавиш Kumi». Без этого клавиши работают как обычно.</string>
     <string name="keys_intro">Нажмите «Добавить», затем клавишу на кейсе и выберите, что она будет делать.</string>
     <string name="keys_empty">Пока ничего не переназначено</string>
     <string name="keys_disabled">Ничего не делать</string>
@@ -688,7 +688,7 @@
     <string name="kumi_case_ready">Подключён и готов</string>
     <string name="kumi_crossfeed_hint">Слегка смешивает каналы, чтобы наушники звучали естественнее, как колонки.</string>
     <string name="kumi_advanced_sound_title">Расширенные настройки звука</string>
-    <string name="kumi_advanced_sound_summary">Фаза, DSD, фильтры, линейный выход</string>
+    <string name="kumi_advanced_sound_summary">Фаза, DSD, DC-фильтр, обмен L/R</string>
     <string name="kumi_keys_timing_summary">Задержка удержания и залипания</string>
     <string name="kumi_eq_reset_confirm_title">Сбросить эквалайзер?</string>
     <string name="kumi_eq_reset_confirm_text">Все полосы в этом слоте вернутся в «Без изменений».</string>
@@ -832,7 +832,7 @@
     <string name="ime_subtype_uk">Украинский (Kumi Strip)</string>
     <string name="ime_subtype_ja">Японский (Kumi Strip)</string>
     <string name="ime_settings_title">Полоса подсказок и раскладки</string>
-    <string name="ime_settings_subtitle">Автодополнение снизу, смена языка, эмодзи и словари</string>
+    <string name="ime_settings_subtitle">Подсказки, раскладки, вибрация и словари</string>
     <string name="ime_setup_title">Полоса ввода Kumi Strip</string>
     <string name="ime_setup_body">Компактная нижняя полоса 46 dp с подсказками, сменой языка, эмодзи и буфером обмена для физической клавиатуры — работает на Android 15 и 16 без перекрытия экрана.</string>
     <string name="ime_switch_to_virtual">Экранная клавиатура ⌨</string>
@@ -895,7 +895,7 @@
     <string name="ime_long_press_upper">Заглавная</string>
     <string name="ime_default_lang_label">Словарь по умолчанию</string>
     <string name="ime_dicts_title">Офлайн-словари</string>
-    <string name="ime_dicts_desc">Английский, русский, украинский (MIT FrequencyWords) и японский ромадзи→кана/кандзи (BSD-3-Clause Google Mozc) уже встроены офлайн. Испанский, немецкий, французский, итальянский, португальский, польский, нидерландский, турецкий, чешский, шведский, финский, румынский и венгерский скачиваются и собираются на устройстве (по 25 тыс. слов) за секунду.</string>
+    <string name="ime_dicts_desc">Английский, русский, украинский, корейский (MIT FrequencyWords), японский Romaji→Кана/Кандзи (BSD-3-Clause Google Mozc), а также упрощённый и традиционный китайский Pinyin (Apache-2.0 Rime + OpenCC) встроены офлайн. Испанский, немецкий, французский, итальянский, португальский, польский, нидерландский, турецкий, чешский, шведский, финский, румынский и венгерский загружаются на устройство (по 25 тыс. слов) менее чем за секунду.</string>
     <string name="ime_langs_download_hint">Языки с пометкой ↓ скачивают словарь при включении.</string>
     <string name="ime_dict_bundled">Встроен (15 тыс. слов, офлайн)</string>
     <string name="ime_dict_downloaded">Скачан (25 тыс. слов, офлайн)</string>
@@ -951,4 +951,42 @@
     <string name="home_search_placeholder">Поиск приложений…</string>
     <string name="home_search_empty">Подходящих приложений нет</string>
     <string name="home_search_footer_hint">Enter — открыть · ↑↓ — выбор · Esc — закрыть</string>
+    <string name="ime_tab_snippets">Сниппеты</string>
+    <string name="kumi_line_out_badge">Лин. выход</string>
+    <string name="kumi_audio_dac_glitch">Краткий сбой вывода звука. Переподключите наушники или перезапустите воспроизведение, если звук пропал.</string>
+    <string name="kumi_diag_audio_counters">Счётчики аудио</string>
+    <string name="kumi_err_generic">Не удалось выполнить действие на чехле. Повторите попытку или переподключите чехол.</string>
+    <string name="kumi_err_no_reply">Чехол не ответил вовремя. Подождите немного или переподключите чехол.</string>
+    <string name="kumi_err_usb_link">Связь по USB с чехлом прервалась. Переподключите чехол.</string>
+    <string name="kumi_err_protocol">Неожиданный ответ чехла. Обновите приложение или прошивку, если ошибка повторяется.</string>
+    <string name="kumi_err_not_connected">Чехол не подключён. Подключите чехол и попробуйте снова.</string>
+    <string name="kumi_err_network_offline">Нет подключения к интернету. Подключитесь к сети и повторите попытку.</string>
+    <string name="kumi_err_network_timeout">Превышено время ожидания сети. Проверьте подключение и попробуйте снова.</string>
+    <string name="kumi_err_network_rate_limit">Превышен лимит запросов GitHub. Попробуйте снова через несколько минут.</string>
+    <string name="kumi_err_network_generic">Не удалось связаться с GitHub. Проверьте подключение и попробуйте снова.</string>
+    <string name="shortcuts_title">Системные клавиши</string>
+    <string name="shortcuts_tile">Клавиши</string>
+    <string name="shortcuts_subtitle">Поиск, Backspace = Назад и медиа</string>
+    <string name="shortcuts_setup_title">Включите «Сочетания клавиш Kumi»</string>
+    <string name="shortcuts_setup_badge">2 шага</string>
+    <string name="shortcuts_service_active_title">«Сочетания клавиш Kumi» активны</string>
+    <string name="shortcuts_service_active_text">Поиск с главного экрана, Backspace = Назад и быстрые клавиши готовы к работе.</string>
+    <string name="shortcuts_service_active_launcher">Активно · лаунчер: %1$s</string>
+    <string name="shortcuts_step1_title">Разрешите ограниченные настройки (установка из APK)</string>
+    <string name="shortcuts_step1_hint">Откройте «О приложении» → прокрутите вниз или нажмите ⋮ → включите «Разрешить ограниченные настройки». Пропустите, если уже разрешено.</string>
+    <string name="shortcuts_step1_cta">О приложении</string>
+    <string name="shortcuts_step2_title">Включите «Сочетания клавиш Kumi»</string>
+    <string name="shortcuts_step2_hint">Откройте «Спец. возможности» → «Скачанные приложения» → «Сочетания клавиш Kumi» → включите только верхний переключатель (оставьте «Ярлык» выключенным, чтобы не появилась плавающая кнопка).</string>
+    <string name="shortcuts_back_title">Backspace как «Назад»</string>
+    <string name="shortcuts_back_desc">Нажатие Backspace вне полей ввода возвращает назад в любом приложении Android. Не срабатывает в текстовых полях, на главном экране, экране блокировки и в исключениях.</string>
+    <string name="shortcuts_back_toggle">Backspace = Назад</string>
+    <string name="shortcuts_back_excluded_btn">Исключения (%1$d)</string>
+    <string name="shortcuts_back_excluded_title">Приложения-исключения</string>
+    <string name="shortcuts_back_excluded_hint">В отмеченных приложениях Backspace работает как обычно (терминалы, SSH, игры).</string>
+    <string name="shortcuts_media_title">Двойное нажатие для медиа</string>
+    <string name="shortcuts_media_desc">Вне полей ввода (включая экран блокировки): 2× Левый Shift = прошлый трек, 2× Backspace = следующий трек, 2× Пробел = пауза / воспроизведение.</string>
+    <string name="shortcuts_media_toggle">Управление музыкой двойным нажатием</string>
+    <string name="settings_launcher_title">Лаунчер</string>
+    <string name="settings_launcher_bridge">Быстрые действия из лаунчера</string>
+    <string name="settings_launcher_bridge_text">Передавать статус ЦАП, эквалайзера и слоёв в MindOne Launcher и разрешить быстрые переключатели звука.</string>
 </resources>

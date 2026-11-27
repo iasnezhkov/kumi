@@ -73,6 +73,17 @@ class AppPreferences(private val repository: SettingsRepository, private val sco
     }
     fun setSpeedKeysEnabled(value: Boolean) = edit { setSpeedKeysEnabled(value) }
     fun setHomeTypeToSearch(value: Boolean) = edit { setHomeTypeToSearch(value) }
+    fun setBackspaceAsBack(value: Boolean) = edit { setBackspaceAsBack(value) }
+    fun setMediaDoubleTap(value: Boolean) = edit { setMediaDoubleTap(value) }
+    fun setLauncherBridgeEnabled(value: Boolean) = edit { setLauncherBridgeEnabled(value) }
+    fun addBackspaceBackExcluded(packageName: String) = edit {
+        val clean = packageName.trim()
+        if (clean.isNotEmpty()) updateBackspaceBackExcluded { it + clean }
+    }
+    fun removeBackspaceBackExcluded(packageName: String) = edit {
+        updateBackspaceBackExcluded { it - packageName }
+    }
+    fun recordQuickSearchRecent(packageName: String) = edit { recordQuickSearchRecent(packageName) }
     fun setSpeedKey(binding: SpeedKeyBinding) = edit {
         if (binding.valid) {
             updateSpeedKeys { list -> list.filterNot { it.keyCode == binding.keyCode } + binding }

@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 package org.mindone.snapcase.ui
 
+import android.view.KeyEvent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -48,15 +50,44 @@ fun KumiDetailsScreen(
     val otherConfirmed = state.slots?.slots?.firstOrNull { it.slot != state.slots?.booted && it.state == SlotState.Confirmed }
     var confirmSwitch by remember { mutableStateOf<SlotInfo?>(null) }
 
+    val shRefresh = stringResource(R.string.action_refresh)
+    val shDev = stringResource(R.string.kumi_dev_title)
+    val shBack = stringResource(R.string.action_back)
+    val canDev = state.connected && state.device?.capabilities?.developer == true
+
+    RegisterScreenKeys(
+        key = listOf(state.connected, canDev),
+        shortcuts = buildList {
+            if (state.connected) add("R" to shRefresh)
+            if (canDev) add("D" to shDev)
+            add("⌫" to shBack)
+        },
+    ) { code, repeat ->
+        if (repeat) return@RegisterScreenKeys false
+        when (code) {
+            KeyEvent.KEYCODE_R -> if (state.connected) {
+                kumi.refreshTelemetry()
+                kumi.refreshDiagnostics()
+                true
+            } else false
+            KeyEvent.KEYCODE_D -> if (canDev) {
+                onOpenDeveloper()
+                true
+            } else false
+            else -> false
+        }
+    }
+
     LaunchedEffect(state.connected) {
         if (state.connected) kumi.refreshTelemetry()
     }
 
-    LazyColumn(
-        Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
+    Column(Modifier.fillMaxSize()) {
+        LazyColumn(
+            Modifier.weight(1f).fillMaxWidth(),
+            contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
         if (!state.connected) {
             item {
                 SectionCard(stringResource(R.string.kumi_case_absent)) {
@@ -114,6 +145,12 @@ fun KumiDetailsScreen(
                     InfoRow(stringResource(R.string.kumi_diag_boot_count), diag.bootCount.toString())
                     InfoRow(stringResource(R.string.kumi_diag_stage), BootStages.name(diag.stage))
                     InfoRow(stringResource(R.string.kumi_diag_watchdog), stringResource(if (diag.watchdogArmed) R.string.value_on else R.string.value_off))
+                    state.audio?.counters?.let { c ->
+                        InfoRow(
+                            stringResource(R.string.kumi_diag_audio_counters),
+                            stringResource(R.string.kumi_counters, c.underruns, c.overruns, c.dacFaults),
+                        )
+                    }
                     diag.lastCrash?.let { crash ->
                         Note(stringResource(R.string.kumi_crash_note, crash.reason.name, BootStages.name(crash.stage), crash.bootCount), MaterialTheme.colorScheme.error)
                     } ?: Note(stringResource(R.string.kumi_dev_no_crash))
@@ -124,15 +161,23 @@ fun KumiDetailsScreen(
             item {
                 Card(
                     Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(20.dp),
+                    shape = RoundedCornerShape(16.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
                 ) {
                     Box(Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
-                        NavRow(R.drawable.ic_settings, R.string.kumi_dev_title, stringResource(R.string.kumi_dev_text), onOpenDeveloper)
+                        NavRow(R.drawable.ic_settings, R.string.kumi_dev_title, stringResource(R.string.kumi_dev_text), onOpenDeveloper, keyHint = "D")
                     }
                 }
             }
         }
+        }
+        KeyboardHintStrip(
+            hints = buildList {
+                if (state.connected) add("R" to shRefresh)
+                if (canDev) add("D" to shDev)
+                add("⌫" to shBack)
+            },
+        )
     }
 
     confirmSwitch?.let { target ->

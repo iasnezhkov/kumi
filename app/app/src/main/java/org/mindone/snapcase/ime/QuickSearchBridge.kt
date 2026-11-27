@@ -7,12 +7,14 @@ import java.util.concurrent.ConcurrentHashMap
 
 data class QuickSearchPending(
     val text: String = "",
+    val backspaces: Int = 0,
     val launchTopRequested: Boolean = false,
     val dismissRequested: Boolean = false,
 )
 
 class QuickSearchHandoff(private val timeoutMs: Long = HANDOFF_TIMEOUT_MS) {
     private val buffer = StringBuilder()
+    private var pendingBackspaces = 0
     private var launchTop = false
     private var dismiss = false
     private var launchingUntilMs = 0L
@@ -21,6 +23,7 @@ class QuickSearchHandoff(private val timeoutMs: Long = HANDOFF_TIMEOUT_MS) {
     @Synchronized
     fun beginLaunch(initialChar: Char?, nowMs: Long) {
         buffer.setLength(0)
+        pendingBackspaces = 0
         if (initialChar != null) buffer.append(initialChar)
         launchTop = false
         dismiss = false
@@ -38,7 +41,11 @@ class QuickSearchHandoff(private val timeoutMs: Long = HANDOFF_TIMEOUT_MS) {
 
     @Synchronized
     fun backspace() {
-        if (buffer.isNotEmpty()) buffer.deleteCharAt(buffer.length - 1)
+        if (buffer.isNotEmpty()) {
+            buffer.deleteCharAt(buffer.length - 1)
+        } else if (!dismiss) {
+            pendingBackspaces++
+        }
     }
 
     @Synchronized
@@ -51,6 +58,7 @@ class QuickSearchHandoff(private val timeoutMs: Long = HANDOFF_TIMEOUT_MS) {
         dismiss = true
         launchTop = false
         buffer.setLength(0)
+        pendingBackspaces = 0
         launchingUntilMs = 0L
     }
 
@@ -64,10 +72,12 @@ class QuickSearchHandoff(private val timeoutMs: Long = HANDOFF_TIMEOUT_MS) {
     fun consumePending(): QuickSearchPending {
         val result = QuickSearchPending(
             text = buffer.toString(),
+            backspaces = pendingBackspaces,
             launchTopRequested = launchTop,
             dismissRequested = dismiss,
         )
         buffer.setLength(0)
+        pendingBackspaces = 0
         launchTop = false
         dismiss = false
         return result
@@ -103,6 +113,12 @@ object QuickSearchBridge {
     fun setSessionActive(active: Boolean) = handoff.setSessionActive(active)
 
     fun consumePending(): QuickSearchPending = handoff.consumePending()
+
+    @Synchronized
+    fun seedRecent(packages: List<String>) {
+        if (recent.isNotEmpty() || packages.isEmpty()) return
+        packages.take(MAX_RECENT).forEach { recent.addLast(it) }
+    }
 
     @Synchronized
     fun recordLaunch(packageName: String) {

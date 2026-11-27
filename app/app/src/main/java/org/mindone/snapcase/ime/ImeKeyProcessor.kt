@@ -4,6 +4,7 @@ package org.mindone.snapcase.ime
 import org.mindone.snapcase.ime.dict.JapaneseDict
 import org.mindone.snapcase.ime.dict.NextWordPredictor
 import org.mindone.snapcase.ime.dict.PersonalDictionary
+import org.mindone.snapcase.ime.dict.PinyinDict
 import org.mindone.snapcase.ime.dict.SnapDictBinary
 import org.mindone.snapcase.ime.dict.SuggestionEngine
 
@@ -45,10 +46,13 @@ class ImeKeyProcessor(
     private val personal: PersonalDictionary? = null,
     private val nowMs: () -> Long = System::currentTimeMillis,
     private val jaDictProvider: () -> JapaneseDict? = { null },
+    private val pinyinDictProvider: (StripLang) -> PinyinDict? = { null },
 ) {
     private val nextWordPredictor = NextWordPredictor(personal)
     private val composing = StringBuilder()
     private val jaRomaji = StringBuilder()
+    private val pinyinRaw = StringBuilder()
+    private val hangul = HangulComposer()
     private var lang: StripLang = StripLang.EN
     private var shiftState: StickyState = StickyState.OFF
     private var lastShiftTapMs: Long = 0L
@@ -73,7 +77,7 @@ class ImeKeyProcessor(
     fun updateConfig(newConfig: ImeConfig) {
         val prevDefault = config.defaultLang
         config = newConfig
-        if (composing.isEmpty() && jaRomaji.isEmpty()) {
+        if (!hasComposing()) {
             if (prevDefault != newConfig.defaultLang) {
                 lang = newConfig.defaultLang
             } else if (newConfig.enabledLangs.isNotEmpty() && lang !in newConfig.enabledLangs) {
@@ -85,6 +89,8 @@ class ImeKeyProcessor(
     fun startInput(passwordField: Boolean, textBefore: String) {
         composing.clear()
         jaRomaji.clear()
+        pinyinRaw.clear()
+        hangul.clear()
         suggestions = emptyList()
         selectedSuggestionIndex = -1
         isNextWordPrediction = false
@@ -108,6 +114,8 @@ class ImeKeyProcessor(
     fun finishInput() {
         composing.clear()
         jaRomaji.clear()
+        pinyinRaw.clear()
+        hangul.clear()
         suggestions = emptyList()
         selectedSuggestionIndex = -1
         isNextWordPrediction = false
@@ -133,7 +141,7 @@ class ImeKeyProcessor(
 
     fun currentLanguage(): StripLang = lang
 
-    fun hasComposing(): Boolean = composing.isNotEmpty() || jaRomaji.isNotEmpty()
+    fun hasComposing(): Boolean = composing.isNotEmpty() || jaRomaji.isNotEmpty() || pinyinRaw.isNotEmpty() || !hangul.isEmpty()
 
     fun hasSuggestions(): Boolean = suggestions.isNotEmpty()
 
@@ -144,7 +152,7 @@ class ImeKeyProcessor(
         val size = suggestions.size
         if (selectedSuggestionIndex !in suggestions.indices) {
             selectedSuggestionIndex = if (delta > 0) {
-                val autoFirst = !isNextWordPrediction && (config.autoCorrect || lang == StripLang.JA) &&
+                val autoFirst = !isNextWordPrediction && (config.autoCorrect || lang.isCjkNoSpace) &&
                     autoCorrectCandidate != null && suggestions.firstOrNull() == autoCorrectCandidate
                 if (autoFirst && size > 1) 1 else 0
             } else {
@@ -187,7 +195,7 @@ class ImeKeyProcessor(
     }
 
     fun cycleLanguage(target: InputTarget? = null): StripLang {
-        if (target != null && (composing.isNotEmpty() || jaRomaji.isNotEmpty())) {
+        if (target != null && hasComposing()) {
             commitCurrentWord(target, delimiter = "", applyAutoCorrect = false)
         }
         val cycle = config.enabledLangs.ifEmpty { listOf(StripLang.EN, StripLang.RU) }
@@ -204,7 +212,7 @@ class ImeKeyProcessor(
     }
 
     fun setLanguage(next: StripLang, target: InputTarget? = null) {
-        if (target != null && (composing.isNotEmpty() || jaRomaji.isNotEmpty())) {
+        if (target != null && hasComposing()) {
             commitCurrentWord(target, delimiter = "", applyAutoCorrect = false)
         }
         lang = next
@@ -286,6 +294,19 @@ class ImeKeyProcessor(
         if (lang == StripLang.JA) {
             if (shiftState == StickyState.ONE_SHOT) shiftState = StickyState.OFF
             return onJapaneseCharTyped(rawChar, target)
+        }
+        if (lang.isPinyin) {
+            if (shiftState == StickyState.ONE_SHOT) shiftState = StickyState.OFF
+            return onPinyinCharTyped(rawChar, target)
+        }
+        if (lang.isHangul) {
+            val effectiveChar = if (!physicalShifted && rawChar.isLetter() && shiftState != StickyState.OFF) {
+                rawChar.uppercaseChar()
+            } else {
+                rawChar
+            }
+            if (shiftState == StickyState.ONE_SHOT) shiftState = StickyState.OFF
+            return onHangulCharTyped(effectiveChar, target, isRepeat)
         }
         if (autoDetectLang) detectLanguageFromChar(rawChar)
 
@@ -421,6 +442,38 @@ class ImeKeyProcessor(
                             selectedSuggestionIndex = -1
                             isNextWordPrediction = false
                         }
+                    } else if (lang.isPinyin && pinyinRaw.isNotEmpty()) {
+                        pinyinRaw.deleteCharAt(pinyinRaw.lastIndex)
+                        if (pinyinRaw.isNotEmpty()) {
+                            val formatted = PinyinEngine.formatComposing(pinyinRaw.toString())
+                            composing.clear()
+                            composing.append(formatted)
+                            commitCurrentWord(target, delimiter = keycapSym, applyAutoCorrect = false)
+                        } else {
+                            composing.clear()
+                            target.setComposing("")
+                            target.commit(keycapSym)
+                            suggestions = emptyList()
+                            autoCorrectCandidate = null
+                            selectedSuggestionIndex = -1
+                            isNextWordPrediction = false
+                        }
+                    } else if (lang.isHangul && !hangul.isEmpty()) {
+                        hangul.dropLastPendingOrChar()
+                        val remaining = hangul.text()
+                        if (remaining.isNotEmpty()) {
+                            composing.clear()
+                            composing.append(remaining)
+                            commitCurrentWord(target, delimiter = keycapSym, applyAutoCorrect = false)
+                        } else {
+                            composing.clear()
+                            target.setComposing("")
+                            target.commit(keycapSym)
+                            suggestions = emptyList()
+                            autoCorrectCandidate = null
+                            selectedSuggestionIndex = -1
+                            isNextWordPrediction = false
+                        }
                     } else if (composing.isNotEmpty()) {
                         composing.deleteCharAt(composing.lastIndex)
                         if (composing.isNotEmpty()) {
@@ -531,6 +584,39 @@ class ImeKeyProcessor(
             }
             return true
         }
+        if (lang.isPinyin && pinyinRaw.isNotEmpty()) {
+            pinyinRaw.deleteCharAt(pinyinRaw.lastIndex)
+            if (pinyinRaw.isEmpty()) {
+                composing.clear()
+                target.setComposing("")
+                suggestions = emptyList()
+                isNextWordPrediction = false
+                autoCorrectCandidate = null
+            } else {
+                val formatted = PinyinEngine.formatComposing(pinyinRaw.toString())
+                composing.clear()
+                composing.append(formatted)
+                target.setComposing(formatted)
+                refreshSuggestions()
+            }
+            return true
+        }
+        if (lang.isHangul && !hangul.isEmpty()) {
+            hangul.backspace()
+            val text = hangul.text()
+            composing.clear()
+            composing.append(text)
+            if (text.isEmpty()) {
+                target.setComposing("")
+                suggestions = emptyList()
+                isNextWordPrediction = false
+                autoCorrectCandidate = null
+            } else {
+                target.setComposing(text)
+                refreshSuggestions()
+            }
+            return true
+        }
         if (composing.isNotEmpty()) {
             composing.deleteCharAt(composing.lastIndex)
             if (composing.isEmpty()) {
@@ -553,14 +639,30 @@ class ImeKeyProcessor(
                 target.deleteSurrounding(expected.length, 0)
                 composing.clear()
                 jaRomaji.clear()
-                if (lang == StripLang.JA) {
-                    jaRomaji.append(undo.typed)
-                    val kana = RomajiKanaConverter.toHiragana(undo.typed, flushTrailingN = false)
-                    composing.append(kana)
-                    target.setComposing(kana)
-                } else {
-                    composing.append(undo.typed)
-                    target.setComposing(composing.toString())
+                pinyinRaw.clear()
+                hangul.clear()
+                when {
+                    lang == StripLang.JA -> {
+                        jaRomaji.append(undo.typed)
+                        val kana = RomajiKanaConverter.toHiragana(undo.typed, flushTrailingN = false)
+                        composing.append(kana)
+                        target.setComposing(kana)
+                    }
+                    lang.isPinyin -> {
+                        pinyinRaw.append(undo.typed)
+                        val formatted = PinyinEngine.formatComposing(undo.typed)
+                        composing.append(formatted)
+                        target.setComposing(formatted)
+                    }
+                    lang.isHangul -> {
+                        hangul.setPrefixOnly(undo.typed)
+                        composing.append(undo.typed)
+                        target.setComposing(undo.typed)
+                    }
+                    else -> {
+                        composing.append(undo.typed)
+                        target.setComposing(composing.toString())
+                    }
                 }
                 suppressedAutoCorrectWord = undo.typed
                 undoRecord = null
@@ -600,7 +702,18 @@ class ImeKeyProcessor(
             undoRecord = null
             return true
         }
-        if (composing.isNotEmpty()) {
+        if (lang.isPinyin && pinyinRaw.isNotEmpty()) {
+            val raw = pinyinRaw.toString()
+            pinyinRaw.clear()
+            composing.clear()
+            target.commit(raw)
+            suggestions = emptyList()
+            isNextWordPrediction = false
+            autoCorrectCandidate = null
+            undoRecord = null
+            return true
+        }
+        if (hasComposing()) {
             commitCurrentWord(target, delimiter = "", applyAutoCorrect = false)
         }
         if (config.autoCapitalize) pendingAutoCap = true
@@ -615,14 +728,21 @@ class ImeKeyProcessor(
     }
 
     fun pickSuggestion(word: String, target: InputTarget) {
-        val typed = if (lang == StripLang.JA && jaRomaji.isNotEmpty()) jaRomaji.toString() else composing.toString()
+        val typed = when {
+            lang == StripLang.JA && jaRomaji.isNotEmpty() -> jaRomaji.toString()
+            lang.isPinyin && pinyinRaw.isNotEmpty() -> pinyinRaw.toString()
+            lang.isHangul && !hangul.isEmpty() -> hangul.text()
+            else -> composing.toString()
+        }
         composing.clear()
         jaRomaji.clear()
+        pinyinRaw.clear()
+        hangul.clear()
         variations = emptyList()
         selectedSuggestionIndex = -1
-        val delimiter = if (lang == StripLang.JA) "" else " "
+        val delimiter = if (lang.isCjkNoSpace) "" else " "
         target.commit(word + delimiter)
-        if (!isPasswordField && lang != StripLang.JA && word.length >= 2 && !word.contains(' ')) {
+        if (!isPasswordField && !lang.isCjkNoSpace && word.length >= 2 && !word.contains(' ')) {
             personal?.learn(lang.code, word)
         }
         recordCommittedWord(word)
@@ -726,7 +846,7 @@ class ImeKeyProcessor(
             if (shiftState == StickyState.ONE_SHOT) shiftState = StickyState.OFF
             if (pendingAutoCap) pendingAutoCap = false
         }
-        val canCompose = !isPasswordField && lang != StripLang.JA && text.length == 1 &&
+        val canCompose = !isPasswordField && !lang.isCjkNoSpace && !lang.isHangul && text.length == 1 &&
             (text[0].isLetter() || (composing.isNotEmpty() && isWordChar(text[0])))
         if (canCompose) {
             undoRecord = null
@@ -738,7 +858,7 @@ class ImeKeyProcessor(
             refreshSuggestions()
             return
         }
-        if (composing.isNotEmpty()) {
+        if (hasComposing()) {
             commitCurrentWord(target, delimiter = "", applyAutoCorrect = false)
         }
         target.commit(text)
@@ -746,10 +866,12 @@ class ImeKeyProcessor(
     }
 
     fun onCursorMovedExternally(target: InputTarget) {
-        if (composing.isNotEmpty() || jaRomaji.isNotEmpty()) {
+        if (hasComposing()) {
             target.finishComposing()
             composing.clear()
             jaRomaji.clear()
+            pinyinRaw.clear()
+            hangul.clear()
             suggestions = emptyList()
             autoCorrectCandidate = null
         }
@@ -790,7 +912,7 @@ class ImeKeyProcessor(
         suggestions = if (isPasswordField) emptyList() else suggestions,
         selectedSuggestionIndex = if (isPasswordField) -1 else selectedSuggestionIndex,
         isNextWordPrediction = !isPasswordField && isNextWordPrediction,
-        autoHighlightFirst = !isPasswordField && !isNextWordPrediction && (config.autoCorrect || lang == StripLang.JA) && autoCorrectCandidate != null &&
+        autoHighlightFirst = !isPasswordField && !isNextWordPrediction && (config.autoCorrect || lang.isCjkNoSpace) && autoCorrectCandidate != null &&
             suggestions.firstOrNull() == autoCorrectCandidate,
         variations = variations,
         activeDrawer = activeDrawer,
@@ -860,6 +982,127 @@ class ImeKeyProcessor(
         return false
     }
 
+    private fun onPinyinCharTyped(rawChar: Char, target: InputTarget): Boolean {
+        val lower = rawChar.lowercaseChar()
+        if (lower in 'a'..'z' || (lower == '\'' && pinyinRaw.isNotEmpty())) {
+            undoRecord = null
+            variations = emptyList()
+            selectedSuggestionIndex = -1
+            isNextWordPrediction = false
+            pinyinRaw.append(lower)
+            val formatted = PinyinEngine.formatComposing(pinyinRaw.toString())
+            composing.clear()
+            composing.append(formatted)
+            target.setComposing(formatted)
+            lastTypedWasWordChar = true
+            refreshSuggestions()
+            return true
+        }
+        variations = emptyList()
+        if (rawChar == ' ') {
+            if (selectedSuggestionIndex in suggestions.indices) {
+                pickSuggestion(suggestions[selectedSuggestionIndex], target)
+                return true
+            }
+            if (pinyinRaw.isNotEmpty()) {
+                commitCurrentWord(target, delimiter = "", applyAutoCorrect = true)
+                lastTypedWasWordChar = false
+                lastSpaceMs = 0L
+                refreshNextWordPredictions()
+                return true
+            }
+            return false
+        }
+        if (rawChar in ZH_PUNCTUATION || rawChar in SENTENCE_END || rawChar in WORD_DELIMITERS) {
+            selectedSuggestionIndex = -1
+            if (pinyinRaw.isNotEmpty()) {
+                commitCurrentWord(target, delimiter = rawChar.toString(), applyAutoCorrect = true)
+            } else {
+                target.commit(rawChar.toString())
+            }
+            previousWord = ""
+            suggestions = emptyList()
+            isNextWordPrediction = false
+            lastTypedWasWordChar = false
+            lastSpaceMs = 0L
+            return true
+        }
+        if (pinyinRaw.isNotEmpty()) {
+            commitCurrentWord(target, delimiter = "", applyAutoCorrect = false)
+        }
+        return false
+    }
+
+    private fun onHangulCharTyped(rawChar: Char, target: InputTarget, isRepeat: Boolean): Boolean {
+        if (rawChar in 'a'..'z' || rawChar in 'A'..'Z') {
+            undoRecord = null
+            variations = emptyList()
+            selectedSuggestionIndex = -1
+            isNextWordPrediction = false
+            if (hangul.feedLatin(rawChar)) {
+                val text = hangul.text()
+                composing.clear()
+                composing.append(text)
+                target.setComposing(text)
+                lastTypedWasWordChar = true
+                refreshSuggestions()
+                return true
+            }
+        }
+        variations = emptyList()
+        if (rawChar == ' ') {
+            if (selectedSuggestionIndex in suggestions.indices) {
+                pickSuggestion(suggestions[selectedSuggestionIndex], target)
+                return true
+            }
+            val now = nowMs()
+            if (!isRepeat && hangul.isEmpty() && config.doubleSpacePeriod && lastTypedWasWordChar &&
+                now - lastSpaceMs in 1..DOUBLE_SPACE_MS && target.textBeforeCursor(2).endsWith(" ")
+            ) {
+                val before = target.textBeforeCursor(3)
+                if (before.length >= 2 && before[before.length - 2].isLetterOrDigit()) {
+                    target.deleteSurrounding(1, 0)
+                    target.commit(". ")
+                    previousWord = ""
+                    suggestions = emptyList()
+                    isNextWordPrediction = false
+                    selectedSuggestionIndex = -1
+                    lastSpaceMs = 0L
+                    lastTypedWasWordChar = false
+                    undoRecord = null
+                    return true
+                }
+            }
+            if (!hangul.isEmpty()) {
+                commitCurrentWord(target, delimiter = " ", applyAutoCorrect = false)
+                lastSpaceMs = now
+                lastTypedWasWordChar = true
+                refreshNextWordPredictions()
+                return true
+            }
+            lastSpaceMs = now
+            return false
+        }
+        if (rawChar in SENTENCE_END || rawChar in WORD_DELIMITERS) {
+            selectedSuggestionIndex = -1
+            if (!hangul.isEmpty()) {
+                commitCurrentWord(target, delimiter = rawChar.toString(), applyAutoCorrect = false)
+            } else {
+                target.commit(rawChar.toString())
+            }
+            if (rawChar in SENTENCE_END) previousWord = ""
+            suggestions = emptyList()
+            isNextWordPrediction = false
+            lastTypedWasWordChar = false
+            lastSpaceMs = 0L
+            return true
+        }
+        if (!hangul.isEmpty()) {
+            commitCurrentWord(target, delimiter = "", applyAutoCorrect = false)
+        }
+        return false
+    }
+
     private fun commitCurrentWord(target: InputTarget, delimiter: String, applyAutoCorrect: Boolean) {
         selectedSuggestionIndex = -1
         if (lang == StripLang.JA && jaRomaji.isNotEmpty()) {
@@ -881,6 +1124,42 @@ class ImeKeyProcessor(
             } else {
                 null
             }
+            suppressedAutoCorrectWord = null
+            suggestions = emptyList()
+            isNextWordPrediction = false
+            autoCorrectCandidate = null
+            return
+        }
+        if (lang.isPinyin && pinyinRaw.isNotEmpty()) {
+            val raw = pinyinRaw.toString()
+            pinyinRaw.clear()
+            composing.clear()
+            val chosen = if (applyAutoCorrect && autoCorrectCandidate != null &&
+                !raw.equals(suppressedAutoCorrectWord, ignoreCase = true)
+            ) {
+                autoCorrectCandidate!!
+            } else {
+                raw
+            }
+            target.commit(chosen + delimiter)
+            recordCommittedWord(chosen)
+            undoRecord = if (chosen != raw) UndoCorrection(raw, chosen, delimiter) else null
+            suppressedAutoCorrectWord = null
+            suggestions = emptyList()
+            isNextWordPrediction = false
+            autoCorrectCandidate = null
+            return
+        }
+        if (lang.isHangul && !hangul.isEmpty()) {
+            val text = hangul.text()
+            hangul.clear()
+            composing.clear()
+            target.commit(text + delimiter)
+            if (!isPasswordField && text.length >= 2 && text.all(HangulComposer::isHangul)) {
+                personal?.learn(lang.code, text)
+            }
+            recordCommittedWord(text)
+            undoRecord = null
             suppressedAutoCorrectWord = null
             suggestions = emptyList()
             isNextWordPrediction = false
@@ -916,14 +1195,14 @@ class ImeKeyProcessor(
         val clean = word.trim()
         if (clean.isEmpty() || clean.contains(' ')) return
         if (!isPasswordField && previousWord.isNotEmpty()) {
-            personal?.learnBigram(lang.code, previousWord, if (lang == StripLang.JA) clean else clean.lowercase())
+            personal?.learnBigram(lang.code, previousWord, if (lang.isCjkNoSpace || lang.isHangul) clean else clean.lowercase())
         }
         previousWord = clean
     }
 
     private fun refreshNextWordPredictions() {
         selectedSuggestionIndex = -1
-        if (isPasswordField || composing.isNotEmpty() || jaRomaji.isNotEmpty() || previousWord.isEmpty()) {
+        if (isPasswordField || hasComposing() || previousWord.isEmpty()) {
             isNextWordPrediction = false
             return
         }
@@ -961,7 +1240,23 @@ class ImeKeyProcessor(
             autoCorrectCandidate = if (raw.equals(suppressedAutoCorrectWord, ignoreCase = true)) kana else top
             return
         }
-        val word = composing.toString()
+        if (lang.isPinyin) {
+            if (pinyinRaw.isEmpty()) {
+                suggestions = emptyList()
+                autoCorrectCandidate = null
+                return
+            }
+            val raw = pinyinRaw.toString()
+            val hits = PinyinEngine.lookup(raw, pinyinDictProvider(lang), limit = 6)
+            val out = LinkedHashSet<String>(4)
+            hits.forEach { if (out.size < 3) out.add(it) }
+            if (out.isEmpty()) out.add(raw)
+            suggestions = out.take(3)
+            val top = hits.firstOrNull() ?: raw
+            autoCorrectCandidate = if (raw.equals(suppressedAutoCorrectWord, ignoreCase = true)) raw else top
+            return
+        }
+        val word = if (lang.isHangul) hangul.text() else composing.toString()
         if (word.isEmpty()) {
             suggestions = emptyList()
             autoCorrectCandidate = null
@@ -977,7 +1272,7 @@ class ImeKeyProcessor(
             nextWordBoost = boost,
         )
         suggestions = result.suggestions
-        autoCorrectCandidate = if (word.equals(suppressedAutoCorrectWord, ignoreCase = true)) null else result.autoCorrectCandidate
+        autoCorrectCandidate = if (lang.isHangul || word.equals(suppressedAutoCorrectWord, ignoreCase = true)) null else result.autoCorrectCandidate
     }
 
     private fun extractPreviousWord(before: String): String {
@@ -1017,6 +1312,7 @@ class ImeKeyProcessor(
         private val SENTENCE_END = setOf('.', '!', '?')
         private val WORD_DELIMITERS = setOf(',', ';', ':', ')', ']', '}', '"')
         private val JA_PUNCTUATION = setOf('。', '、', '？', '！', '・', '「', '」', '（', '）')
+        private val ZH_PUNCTUATION = setOf('，', '。', '、', '？', '！', '：', '；', '「', '」', '（', '）', '“', '”')
         private val UKRAINIAN_ONLY = setOf('ґ', 'є', 'і', 'ї')
     }
 }

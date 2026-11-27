@@ -16,6 +16,9 @@ ALLOWED_BINARIES = {
     "app/app/src/main/assets/dict/ru.snapdict",
     "app/app/src/main/assets/dict/uk.snapdict",
     "app/app/src/main/assets/dict/ja.snapja",
+    "app/app/src/main/assets/dict/ko.snapdict",
+    "app/app/src/main/assets/dict/zh_cn.snappy",
+    "app/app/src/main/assets/dict/zh_tw.snappy",
 }
 CYRILLIC_ALLOWED_PREFIXES = (
     "app/app/src/main/res/values-",

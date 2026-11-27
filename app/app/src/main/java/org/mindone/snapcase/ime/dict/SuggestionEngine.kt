@@ -65,7 +65,8 @@ class SuggestionEngine(
                 offer(hit.word, 280.0 + hit.rank - lenPenalty)
             }
 
-            if (folded.length >= 2 && (!exactInDict || scored.size < maxSuggestions)) {
+            val isHangulWord = folded[0] in '\uAC00'..'\uD7A3' || folded[0] in '\u3131'..'\u318E'
+            if (!isHangulWord && folded.length >= 2 && (!exactInDict || scored.size < maxSuggestions)) {
                 val maxCost = if (folded.length <= 3) 10 else 15
                 val firstNeighbors = SnapKeyboardGeometry.adjacentChars(folded[0])
                 for (first in firstNeighbors) {

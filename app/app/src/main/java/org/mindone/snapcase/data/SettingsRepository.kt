@@ -61,6 +61,11 @@ data class AppSettings(
     val speedKeysEnabled: Boolean = true,
     val speedKeys: List<SpeedKeyBinding> = emptyList(),
     val homeTypeToSearch: Boolean = true,
+    val backspaceAsBack: Boolean = false,
+    val mediaDoubleTap: Boolean = false,
+    val backspaceBackExcluded: Set<String> = SettingsRepository.DEFAULT_BACKSPACE_EXCLUDED,
+    val quickSearchRecent: List<String> = emptyList(),
+    val launcherBridgeEnabled: Boolean = true,
 )
 
 class SettingsRepository(private val store: DataStore<Preferences>) {
@@ -106,6 +111,11 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
             speedKeysEnabled = prefs[SPEED_KEYS_ENABLED] ?: true,
             speedKeys = QuickLauncher.parseBindings(prefs[SPEED_KEYS]),
             homeTypeToSearch = prefs[HOME_TYPE_TO_SEARCH] ?: true,
+            backspaceAsBack = prefs[BACKSPACE_AS_BACK] ?: false,
+            mediaDoubleTap = prefs[MEDIA_DOUBLE_TAP] ?: false,
+            backspaceBackExcluded = parsePackageSet(prefs[BACKSPACE_BACK_EXCLUDED]),
+            quickSearchRecent = parseRecentList(prefs[QUICK_SEARCH_RECENT]),
+            launcherBridgeEnabled = prefs[LAUNCHER_BRIDGE_ENABLED] ?: true,
         )
     }
 
@@ -171,11 +181,36 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
     }
     suspend fun setSpeedKeysEnabled(value: Boolean) = store.edit { it[SPEED_KEYS_ENABLED] = value }
     suspend fun setHomeTypeToSearch(value: Boolean) = store.edit { it[HOME_TYPE_TO_SEARCH] = value }
+    suspend fun setBackspaceAsBack(value: Boolean) = store.edit { it[BACKSPACE_AS_BACK] = value }
+    suspend fun setMediaDoubleTap(value: Boolean) = store.edit { it[MEDIA_DOUBLE_TAP] = value }
+    suspend fun setLauncherBridgeEnabled(value: Boolean) = store.edit { it[LAUNCHER_BRIDGE_ENABLED] = value }
+    suspend fun updateBackspaceBackExcluded(transform: (Set<String>) -> Set<String>) = store.edit { prefs ->
+        val next = transform(parsePackageSet(prefs[BACKSPACE_BACK_EXCLUDED]))
+        prefs[BACKSPACE_BACK_EXCLUDED] = next.sorted().joinToString(",")
+    }
+    suspend fun recordQuickSearchRecent(packageName: String) = store.edit { prefs ->
+        val clean = packageName.trim()
+        if (clean.isEmpty()) return@edit
+        val next = (listOf(clean) + parseRecentList(prefs[QUICK_SEARCH_RECENT]).filterNot { it == clean }).take(24)
+        prefs[QUICK_SEARCH_RECENT] = next.joinToString(",")
+    }
     suspend fun updateSpeedKeys(transform: (List<SpeedKeyBinding>) -> List<SpeedKeyBinding>) = store.edit { prefs ->
         prefs[SPEED_KEYS] = QuickLauncher.serializeBindings(transform(QuickLauncher.parseBindings(prefs[SPEED_KEYS])))
     }
 
     companion object {
+        val DEFAULT_BACKSPACE_EXCLUDED: Set<String> = setOf(
+            "com.termux",
+            "org.connectbot",
+            "com.sonelli.juicessh",
+            "com.server.auditor.ssh.client",
+            "com.realvnc.viewer.android",
+            "com.microsoft.rdc.androidx",
+            "com.google.android.apps.chromeremotedesktop",
+            "com.termoneplus",
+            "jackpal.androidterm",
+        )
+
         private val EXPERIMENTAL_WRITES = booleanPreferencesKey("experimental_writes")
         private val DEMO_MODE = booleanPreferencesKey("demo_mode")
         private val REMAP_TABLE = stringPreferencesKey("remap_table")
@@ -211,10 +246,25 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         private val SPEED_KEYS_ENABLED = booleanPreferencesKey("speed_keys_enabled")
         private val SPEED_KEYS = stringPreferencesKey("speed_keys")
         private val HOME_TYPE_TO_SEARCH = booleanPreferencesKey("home_type_to_search")
+        private val BACKSPACE_AS_BACK = booleanPreferencesKey("backspace_as_back")
+        private val MEDIA_DOUBLE_TAP = booleanPreferencesKey("media_double_tap")
+        private val BACKSPACE_BACK_EXCLUDED = stringPreferencesKey("backspace_back_excluded")
+        private val QUICK_SEARCH_RECENT = stringPreferencesKey("quick_search_recent")
+        private val LAUNCHER_BRIDGE_ENABLED = booleanPreferencesKey("launcher_bridge_enabled")
 
         private fun parseLangList(raw: String?): List<String> {
             if (raw.isNullOrBlank()) return listOf("en", "ru")
             return raw.split(',').map { it.trim().lowercase() }.filter { it.isNotEmpty() }.distinct().ifEmpty { listOf("en", "ru") }
+        }
+
+        private fun parsePackageSet(raw: String?): Set<String> {
+            if (raw == null) return DEFAULT_BACKSPACE_EXCLUDED
+            return raw.split(',').map { it.trim() }.filter { it.isNotEmpty() }.toSet()
+        }
+
+        private fun parseRecentList(raw: String?): List<String> {
+            if (raw.isNullOrBlank()) return emptyList()
+            return raw.split(',').map { it.trim() }.filter { it.isNotEmpty() }.distinct().take(24)
         }
 
         fun from(context: Context) = SettingsRepository(context.applicationContext.snapDataStore)

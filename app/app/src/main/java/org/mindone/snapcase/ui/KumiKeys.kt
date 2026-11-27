@@ -87,6 +87,7 @@ fun KumiKeysScreen(
     onBack: () -> Unit = {},
     onOpenAndroidKeys: () -> Unit,
     onOpenIme: () -> Unit,
+    onOpenShortcuts: () -> Unit,
     onOpenTester: () -> Unit,
 ) {
     val state by kumi.state.collectAsStateWithLifecycle()
@@ -105,13 +106,14 @@ fun KumiKeysScreen(
 
     val shTab = stringResource(R.string.kumi_key_hint_tab)
     val shStrip = stringResource(R.string.kumi_tile_strip)
+    val shShortcuts = stringResource(R.string.shortcuts_tile)
     val shAndroidKeys = stringResource(R.string.keys_title)
     val shTester = stringResource(R.string.kb_tester_title)
 
     RegisterScreenKeys(
         key = Pair(page, layer),
         shortcuts = if (page == 0) {
-            listOf("Q" to shStrip, "W" to shAndroidKeys, "E" to shTester, "Tab" to shTab)
+            listOf("Q" to shStrip, "F" to shShortcuts, "W" to shAndroidKeys, "E" to shTester, "Tab" to shTab)
         } else {
             listOf("Tab" to shTab, "⌫" to stringResource(R.string.action_back))
         },
@@ -124,6 +126,7 @@ fun KumiKeysScreen(
         if (page == 0) {
             when (code) {
                 KeyEvent.KEYCODE_Q -> { onOpenIme(); true }
+                KeyEvent.KEYCODE_F -> { onOpenShortcuts(); true }
                 KeyEvent.KEYCODE_W -> { onOpenAndroidKeys(); true }
                 KeyEvent.KEYCODE_E -> { onOpenTester(); true }
                 else -> false
@@ -174,6 +177,7 @@ fun KumiKeysScreen(
                         ) {
                             Column(Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
                                 NavRow(R.drawable.ic_keyboard, R.string.kumi_tile_strip, stringResource(R.string.ime_settings_subtitle), onOpenIme, keyHint = "Q")
+                                NavRow(R.drawable.ic_search, R.string.shortcuts_title, stringResource(R.string.shortcuts_subtitle), onOpenShortcuts, keyHint = "F")
                             }
                         }
                     }
@@ -404,7 +408,7 @@ fun KumiKeysScreen(
         }
         KeyboardHintStrip(
             hints = if (page == 0) {
-                listOf("Q" to shStrip, "W" to shAndroidKeys, "E" to shTester, "Tab" to shTab)
+                listOf("Q" to shStrip, "F" to shShortcuts, "E" to shTester, "Tab" to shTab)
             } else {
                 listOf("Tab" to shTab, "⌫" to stringResource(R.string.action_back))
             },

@@ -29,19 +29,26 @@ and bit-for-bit return to stock through the immutable boot ROM service mode (`06
   and Stay-awake toggle.
 - **Kumi Strip IME** — compact 46 dp bottom autocomplete bar for physical keyboard typing (works on
   Android 15–17 without shifting the app viewport), built-in physical layout translator
-  (`EN` / `RU` / `UK` / `JA` built in, plus `ES` / `DE` / `FR` / `IT` / `PT` / `PL` / `NL` / `TR` /
-  `CS` / `SV` / `FI` / `RO` / `HU` with on-device downloadable 25k-word dictionaries, switched via
-  `Ctrl+Space`, `Shift+Space`, `Alt+Shift`, or strip tap), accent-aware suggestions and
-  language-specific quick extras and long-press variants, bundled offline MIT FrequencyWords
-  dictionaries (EN/RU/UK) and BSD-3-Clause Google Mozc Japanese Romaji → Hiragana/Katakana/Kanji
-  converter (all refreshable on demand), emoji search, clipboard history, text snippets,
-  **Home screen type-to-search** app launcher (works on any launcher — type to search, press Enter
-  to launch the top match), and Meta+letter Speed Keys.
+  (`EN` / `RU` / `UK` / `JA` / `KO` / `ZH-CN` / `ZH-TW` built in, plus `ES` / `DE` / `FR` / `IT` /
+  `PT` / `PL` / `NL` / `TR` / `CS` / `SV` / `FI` / `RO` / `HU` with on-device downloadable 25k-word
+  dictionaries, switched via `Ctrl+Space`, `Shift+Space`, `Alt+Shift`, or strip tap), accent-aware
+  suggestions and language-specific quick extras and long-press variants, bundled offline MIT
+  FrequencyWords dictionaries (EN/RU/UK/KO), BSD-3-Clause Google Mozc Japanese Romaji →
+  Hiragana/Katakana/Kanji converter, Apache-2.0 Rime + OpenCC Simplified/Traditional Chinese Pinyin
+  dictionaries (all refreshable on demand), dedicated typing haptics, emoji search, clipboard
+  history, and text snippets.
+- **System shortcuts** — dedicated screen for physical keyboard shortcuts powered by the
+  `Kumi Keyboard Shortcuts` Accessibility service (no root needed): instant overlay **Home screen
+  type-to-search** app launcher (works on any launcher — type to search, press Enter to launch),
+  optional **Backspace as Back** outside text fields (with 4-layer text-field guard and excluded-apps
+  list), optional **double-tap media controls** (`2× Left Shift` previous, `2× Backspace` next,
+  `2× Space` play/pause outside text fields), and Meta+letter Speed Keys.
 - **Update channels** — Stable and Developer (RC) channels in Settings so release candidates
   (`-rcN`) can be previewed and flashed before stable releases.
 - **App UI languages** — English, Russian, Spanish, Japanese, German, French, Portuguese, Italian,
-  Ukrainian, Polish, Simplified Chinese and Korean, selectable per app in Android system settings.
-  `python3 -I tools/check_l10n.py` verifies key and placeholder parity of every `values-*` file.
+  Ukrainian, Polish, Simplified Chinese, Traditional Chinese, and Korean, selectable per app in
+  Android system settings. `python3 -I tools/check_l10n.py` verifies key and placeholder parity of
+  every `values-*` file.
 - **Simulated demo mode** — runs the full install, update, audio, EQ, keymap, and return-to-stock
   code paths in-process without a physical case attached.
 
@@ -90,11 +97,11 @@ NDK `28.2.13676358`).
 | Package | Responsibility |
 |---|---|
 | `org.mindone.snapcase.kumi` | `KumiNative` JNI bridge, `KumiClient` typed RPCs, `KumiSession` state machine, `KumiEqPresets`, `KumiKeymapPresets`, `SnapLiveMirror` |
-| `org.mindone.snapcase.ime` | `SnapStripImeService`, `ImeKeyProcessor`, `PhysicalLayoutTranslator`, `RomajiKanaConverter`, `LocaleVariations`, `EmojiCatalog`, `ClipboardStore`, `QuickLauncher`, `QuickSearchActivity`, `QuickSearchBridge` |
-| `org.mindone.snapcase.ime.dict` | `SnapDictBinary` (EN/RU/UK + downloadable languages), `JapaneseDict` (Mozc `SNAPJA01`), `SuggestionEngine`, `PersonalDictionary`, `DictionaryPackManager` |
+| `org.mindone.snapcase.ime` | `SnapStripImeService`, `ImeKeyProcessor`, `PhysicalLayoutTranslator`, `RomajiKanaConverter`, `HangulComposer`, `PinyinEngine`, `LocaleVariations`, `EmojiCatalog`, `ClipboardStore`, `QuickLauncher`, `QuickSearchActivity`, `QuickSearchOverlayController`, `QuickSearchBridge` |
+| `org.mindone.snapcase.ime.dict` | `SnapDictBinary` (EN/RU/UK/KO + downloadable languages), `JapaneseDict` (Mozc `SNAPJA01`), `PinyinDict` (Rime + OpenCC `SNAPPY01`), `SuggestionEngine`, `PersonalDictionary`, `DictionaryPackManager` |
 | `org.mindone.snapcase.transport` | Android USB Host transport (`UsbCasePort`, `ServiceMode`), optional stock hidraw transport |
-| `org.mindone.snapcase.ui` | Material 3 Compose screens (`KumiHome`, `KumiAudio`, `KumiEq`, `KumiKeys`, `KumiFirmware`, `KumiDeveloper`, `ImeSettingsScreen`, `SnapStripBar`) |
-| `org.mindone.snapcase.remap` | Accessibility service for Home screen type-to-search, Speed Keys, and optional Android-side key remapping |
+| `org.mindone.snapcase.ui` | Material 3 Compose screens (`KumiHome`, `KumiAudio`, `KumiEq`, `KumiKeys`, `KumiFirmware`, `KumiDeveloper`, `KumiDetailsScreen`, `SystemShortcutsScreen`, `MindOneCaseIllustration`, `ImeSettingsScreen`, `SnapStripBar`) |
+| `org.mindone.snapcase.remap` | Accessibility service (`Kumi Keyboard Shortcuts`) for Home screen overlay type-to-search, Backspace-as-Back, double-tap media controls, Speed Keys, and optional Android-side key remapping |
 
 JSON models and enum contracts are pinned against `crates/kumi-jni/tests/fixtures/contract.json`
 and verified in both Rust and JVM unit tests (`ContractTest`).
@@ -107,7 +114,9 @@ Bundled dictionaries in `app/src/main/assets/dict/` are reproducible from open c
 python3 tools/build_dict.py en_50k.txt app/src/main/assets/dict/en.snapdict 15000 latin
 python3 tools/build_dict.py ru_50k.txt app/src/main/assets/dict/ru.snapdict 15000 cyrillic
 python3 tools/build_dict.py uk_50k.txt app/src/main/assets/dict/uk.snapdict 12000 cyrillic
+python3 tools/build_dict.py ko_50k.txt app/src/main/assets/dict/ko.snapdict 15000 hangul
 python3 tools/build_ja_dict.py /tmp/mozc-cache app/src/main/assets/dict/ja.snapja 35000
+python3 tools/build_zh_dict.py /tmp/zh-cache app/src/main/assets/dict/zh_cn.snappy app/src/main/assets/dict/zh_tw.snappy 18000
 ```
 
 ## Network &amp; security boundaries
@@ -115,7 +124,9 @@ python3 tools/build_ja_dict.py /tmp/mozc-cache app/src/main/assets/dict/ja.snapj
 - Network requests use HTTPS (port 443) only, strictly scoped to GitHub release APIs
   (`api.github.com`, `github.com`, `objects.githubusercontent.com`,
   `release-assets.githubusercontent.com`) and on-demand open dictionary downloads
-  (`raw.githubusercontent.com/hermitdave/FrequencyWords`, `raw.githubusercontent.com/google/mozc`).
+  (`raw.githubusercontent.com/hermitdave/FrequencyWords`, `raw.githubusercontent.com/google/mozc`,
+  `raw.githubusercontent.com/rime/rime-luna-pinyin`, `raw.githubusercontent.com/rime/rime-essay`,
+  `raw.githubusercontent.com/rime/rime-pinyin-simp`).
 - Downloaded `.kumi` packages are strictly Ed25519-verified (`verify_strict`) before entering the
   installer list and verified a second time before flashing.
 - Flash-writing commands against stock firmware (`SET 0x01`, `0x04`, `0x05`) are never sent; see

@@ -37,7 +37,7 @@ CYCLES_PER_INSTRUCTION = 1
 WAIT_SKIP_CYCLES = CPU_HZ // 10_000
 WAIT_STREAK = 3
 USB_IRQ = 34
-MSTATUS_MIE, MSTATUS_MPIE, MIE_MEIE, MMISC_VEC_PLIC = 0x8, 0x80, 0x800, 0x2
+MSTATUS_MIE, MSTATUS_MPIE, MSTATUS_FS, MSTATUS_FS_INITIAL, MIE_MEIE, MMISC_VEC_PLIC = 0x8, 0x80, 0x6000, 0x2000, 0x800, 0x2
 RAM_WINDOWS = ((0, ILM_SIZE), (DLM_BASE, DLM_SIZE), *((a, RT_SIZE) for a in RT_ALIASES))
 MEASURED_CSRS = {
     0x301: 0x40901124, 0xF11: 0x0000031E, 0xF12: 0x80000025, 0xF13: 0x00000240, 0xF14: 0,
@@ -47,6 +47,7 @@ MEASURED_CSRS = {
 READ_ONLY_CSRS = {0x301, 0xF11, 0xF12, 0xF13, 0xF14, 0xFC0, 0xFC1, 0xFC2}
 UNMEASURED_CSRS = {0x801}
 COUNTER_CSRS = {0xB00, 0xB80, 0xC00, 0xC80, 0xB02, 0xB82, 0xC02, 0xC82}
+FP_CSRS = frozenset({0x001, 0x002, 0x003})
 NAMED_CSRS = {0x001: "FFLAGS", 0x002: "FRM", 0x003: "FCSR", 0x300: "MSTATUS", 0x304: "MIE", 0x305: "MTVEC",
               0x340: "MSCRATCH", 0x341: "MEPC", 0x342: "MCAUSE", 0x343: "MTVAL", 0x344: "MIP"}
 NAMED_REGISTERS = {}
@@ -528,11 +529,25 @@ class Emulator(andes.Machine):
             for key, value in values.items():
                 setattr(getattr(self, name), key, value)
 
+    def snapshot_registers(self):
+        registers = [self.cpu.reg(self.r.UC_RISCV_REG_X0 + i) for i in range(32)]
+        registers.append(self.cpu.reg(self.r.UC_RISCV_REG_PC))
+        mstatus = self.cpu.reg(self.r.UC_RISCV_REG_MSTATUS)
+        toggle_fs = not (mstatus & MSTATUS_FS)
+        if toggle_fs:
+            self.cpu.set_reg(self.r.UC_RISCV_REG_MSTATUS, mstatus | MSTATUS_FS_INITIAL)
+        try:
+            for csr, register in NAMED_REGISTERS.items():
+                registers.append(mstatus if csr == 0x300 else self.cpu.reg(register))
+        finally:
+            if toggle_fs:
+                self.cpu.set_reg(self.r.UC_RISCV_REG_MSTATUS, mstatus)
+        return registers
+
     def snapshot_key(self, *arguments):
         state, devices = self.model_state()
         digest = hashlib.sha256(code_digest().encode())
-        registers = [self.cpu.reg(self.r.UC_RISCV_REG_X0 + i) for i in range(32)]
-        registers += [self.cpu.reg(register) for register in (self.r.UC_RISCV_REG_PC, *NAMED_REGISTERS.values())]
+        registers = self.snapshot_registers()
         digest.update(pickle.dumps((self.inputs, registers, arguments,
                                     {k: v for k, v in state.items() if k not in TIMING_STATE}, devices)))
         for part in self.memory_state():
@@ -774,6 +789,9 @@ class Emulator(andes.Machine):
         if csr in COUNTER_CSRS:
             old = self.counter(csr)
         elif csr in NAMED_CSRS:
+            if csr in FP_CSRS and not (self.cpu.reg(self.r.UC_RISCV_REG_MSTATUS) & MSTATUS_FS):
+                self.trap(2, word)
+                return
             old = self.cpu.reg(NAMED_REGISTERS[csr])
         elif csr in self.csrs or csr in UNMEASURED_CSRS:
             old = self.csrs.get(csr, 0)

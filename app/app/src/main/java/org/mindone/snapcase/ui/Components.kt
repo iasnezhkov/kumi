@@ -3,8 +3,11 @@ package org.mindone.snapcase.ui
 
 import androidx.annotation.DrawableRes
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -241,12 +244,56 @@ fun ToggleRow(
 }
 
 @Composable
+private fun rememberVuLevel(target: Float, attackMs: Int, releaseMs: Int): Float {
+    val anim = remember { Animatable(target) }
+    LaunchedEffect(target) {
+        val ms = if (target >= anim.value) attackMs else releaseMs
+        anim.animateTo(target, animationSpec = tween(durationMillis = ms, easing = LinearEasing))
+    }
+    return anim.value
+}
+
+@Composable
+fun DismissibleErrorBanner(
+    message: String,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        color = MaterialTheme.colorScheme.errorContainer,
+        contentColor = MaterialTheme.colorScheme.onErrorContainer,
+        shape = RoundedCornerShape(14.dp),
+        modifier = modifier.fillMaxWidth(),
+    ) {
+        Row(
+            Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                message,
+                style = MaterialTheme.typography.labelMedium,
+                maxLines = 4,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                stringResource(R.string.action_dismiss),
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.clickable(onClick = onDismiss).padding(horizontal = 4.dp, vertical = 2.dp),
+            )
+        }
+    }
+}
+
+@Composable
 fun StereoVuMeter(meters: AudioMeters, modifier: Modifier = Modifier) {
     fun norm(centiDb: Int): Float = ((centiDb / 100f + 60f) / 60f).coerceIn(0f, 1f)
-    val peakL by animateFloatAsState(if (meters.active) norm(meters.peakLeftCentiDb) else 0f, tween(110), label = "peakL")
-    val peakR by animateFloatAsState(if (meters.active) norm(meters.peakRightCentiDb) else 0f, tween(110), label = "peakR")
-    val rmsL by animateFloatAsState(if (meters.active) norm(meters.rmsLeftCentiDb) else 0f, tween(150), label = "rmsL")
-    val rmsR by animateFloatAsState(if (meters.active) norm(meters.rmsRightCentiDb) else 0f, tween(150), label = "rmsR")
+    val peakL = rememberVuLevel(if (meters.active) norm(meters.peakLeftCentiDb) else 0f, attackMs = 18, releaseMs = 95)
+    val peakR = rememberVuLevel(if (meters.active) norm(meters.peakRightCentiDb) else 0f, attackMs = 18, releaseMs = 95)
+    val rmsL = rememberVuLevel(if (meters.active) norm(meters.rmsLeftCentiDb) else 0f, attackMs = 28, releaseMs = 125)
+    val rmsR = rememberVuLevel(if (meters.active) norm(meters.rmsRightCentiDb) else 0f, attackMs = 28, releaseMs = 125)
     val track = MaterialTheme.colorScheme.surfaceContainerHighest
     val primary = MaterialTheme.colorScheme.primary
     val hot = MaterialTheme.colorScheme.tertiary
@@ -318,10 +365,10 @@ fun VerticalStereoVuMeter(
     fun norm(centiDb: Int): Float = ((centiDb / 100f + 60f) / 60f).coerceIn(0f, 1f)
     val live = meters != null && (streaming || meters.active)
     val active = live && meters.active
-    val peakL by animateFloatAsState(if (active) norm(meters.peakLeftCentiDb) else 0f, tween(90), label = "vPeakL")
-    val peakR by animateFloatAsState(if (active) norm(meters.peakRightCentiDb) else 0f, tween(90), label = "vPeakR")
-    val rmsL by animateFloatAsState(if (active) norm(meters.rmsLeftCentiDb) else 0f, tween(130), label = "vRmsL")
-    val rmsR by animateFloatAsState(if (active) norm(meters.rmsRightCentiDb) else 0f, tween(130), label = "vRmsR")
+    val peakL = rememberVuLevel(if (active) norm(meters.peakLeftCentiDb) else 0f, attackMs = 18, releaseMs = 95)
+    val peakR = rememberVuLevel(if (active) norm(meters.peakRightCentiDb) else 0f, attackMs = 18, releaseMs = 95)
+    val rmsL = rememberVuLevel(if (active) norm(meters.rmsLeftCentiDb) else 0f, attackMs = 28, releaseMs = 125)
+    val rmsR = rememberVuLevel(if (active) norm(meters.rmsRightCentiDb) else 0f, attackMs = 28, releaseMs = 125)
     val track = MaterialTheme.colorScheme.surfaceContainerHighest
     val primary = MaterialTheme.colorScheme.primary
     val hot = MaterialTheme.colorScheme.tertiary

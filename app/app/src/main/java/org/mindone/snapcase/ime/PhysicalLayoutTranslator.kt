@@ -60,16 +60,24 @@ object PhysicalLayoutTranslator {
         literalPunctuation: Boolean = false,
     ): Char? {
         val letterUpper = shifted xor capsLock
-        if (lang == StripLang.JA) {
+        if (lang == StripLang.JA || lang.isPinyin) {
             if (!literalPunctuation) {
-                if (keyCode == KeyEvent.KEYCODE_PERIOD) return if (shifted) '、' else '。'
-                if (keyCode == KeyEvent.KEYCODE_COMMA) return '、'
+                if (keyCode == KeyEvent.KEYCODE_PERIOD) return if (shifted) (if (lang.isPinyin) '，' else '、') else '。'
+                if (keyCode == KeyEvent.KEYCODE_COMMA) return if (lang.isPinyin) '，' else '、'
             } else if (keyCode == KeyEvent.KEYCODE_PERIOD) {
                 return if (shifted) ',' else '.'
             }
-            if (keyCode == KeyEvent.KEYCODE_MINUS && !shifted) return '-'
+            if (lang == StripLang.JA && keyCode == KeyEvent.KEYCODE_MINUS && !shifted) return '-'
             val letter = enLower[keyCode]
             if (letter != null) return if (letterUpper) letter.uppercaseChar() else letter
+            return if (rawUnicode != 0) rawUnicode.toChar() else null
+        }
+        if (lang == StripLang.KO) {
+            if (compactCaseKeyboard && keyCode == KeyEvent.KEYCODE_PERIOD) {
+                return if (shifted) ',' else '.'
+            }
+            val letter = enLower[keyCode]
+            if (letter != null) return if (shifted) letter.uppercaseChar() else letter
             return if (rawUnicode != 0) rawUnicode.toChar() else null
         }
         if (compactCaseKeyboard && keyCode == KeyEvent.KEYCODE_PERIOD) {

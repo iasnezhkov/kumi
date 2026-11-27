@@ -3,8 +3,8 @@
 <resources>
     <string name="app_name">Kumi</string>
     <string name="keyboard_layouts_label">Dispositions iKKO Snap</string>
-    <string name="remap_service_label">Réaffectation des touches Snap</string>
-    <string name="remap_service_description">Expérimental. Réaffecte les touches de l’étui iKKO Snap d’après le tableau de l’app Snap Case : la touche d’origine est consommée et la touche associée est injectée. L’injection ne fonctionne que dans la version système signée avec la clé de la plateforme.</string>
+    <string name="remap_service_label">Raccourcis clavier Kumi</string>
+    <string name="remap_service_description">Active la recherche d\'applis sur l\'écran d\'accueil, Retour arrière comme Précédent hors champs texte, les commandes média par double appui et les touches rapides. Ne lit ni n\'envoie les mots de passe ou le texte affiché.</string>
     <string name="demo_banner">Mode démo : réponses simulées, pas un vrai étui</string>
     <string name="tag_measured">mesuré</string>
     <string name="tag_unverified">non vérifié</string>
@@ -277,7 +277,7 @@
     <string name="kb_tester_text">Vérifier que toutes les touches fonctionnent</string>
     <string name="keys_title">Réaffecter les touches</string>
     <string name="keys_enable_title">Activer la réaffectation</string>
-    <string name="keys_enable_text">Ouvrez Accessibilité et activez « Réaffectation des touches Snap ». Sans cela, les touches gardent leur rôle habituel.</string>
+    <string name="keys_enable_text">Ouvrez Accessibilité et activez « Raccourcis clavier Kumi ». Sans cela, les touches conservent leur fonction habituelle.</string>
     <string name="keys_intro">Appuyez sur « Ajouter », puis sur une touche de l’étui, et choisissez ce qu’elle doit faire.</string>
     <string name="keys_empty">Rien n’est encore réaffecté</string>
     <string name="keys_disabled">Ne rien faire</string>
@@ -688,7 +688,7 @@
     <string name="kumi_case_ready">Connecté et prêt</string>
     <string name="kumi_crossfeed_hint">Mélange légèrement les canaux pour que le casque sonne plus comme des enceintes.</string>
     <string name="kumi_advanced_sound_title">Son avancé</string>
-    <string name="kumi_advanced_sound_summary">Phase, DSD, filtre DC, Line-Out</string>
+    <string name="kumi_advanced_sound_summary">Phase, DSD, filtre DC, inversion G/D</string>
     <string name="kumi_keys_timing_summary">Délais de maintien et de touche collante</string>
     <string name="kumi_eq_reset_confirm_title">Réinitialiser l’égaliseur ?</string>
     <string name="kumi_eq_reset_confirm_text">Remet toutes les bandes de ce slot à plat.</string>
@@ -832,7 +832,7 @@
     <string name="ime_subtype_uk">Ukrainien (Kumi Strip)</string>
     <string name="ime_subtype_ja">Japonais (Kumi Strip)</string>
     <string name="ime_settings_title">Barre d’autocomplétion et raccourcis</string>
-    <string name="ime_settings_subtitle">Barre de suggestions en bas, changement de disposition, emojis et dictionnaires</string>
+    <string name="ime_settings_subtitle">Suggestions, dispositions, vibration et dictionnaires</string>
     <string name="ime_setup_title">Barre de saisie Kumi Strip</string>
     <string name="ime_setup_body">Barre compacte de 46 dp en bas avec suggestions, disposition, emojis et presse-papiers pour la saisie au clavier physique ; fonctionne sur Android 15 et 16 sans masquer l’écran.</string>
     <string name="ime_switch_to_virtual">Clavier à l’écran ⌨</string>
@@ -895,7 +895,7 @@
     <string name="ime_long_press_upper">Majuscule</string>
     <string name="ime_default_lang_label">Dictionnaire par défaut</string>
     <string name="ime_dicts_title">Dictionnaires hors ligne</string>
-    <string name="ime_dicts_desc">L’anglais, le russe, l’ukrainien (MIT FrequencyWords) et le rōmaji→kana/kanji japonais (BSD-3-Clause Google Mozc) sont intégrés hors ligne. L’espagnol, l’allemand, le français, l’italien, le portugais, le polonais, le néerlandais, le turc, le tchèque, le suédois, le finnois, le roumain et le hongrois se téléchargent sur l’appareil (25 000 mots chacun) en moins d’une seconde.</string>
+    <string name="ime_dicts_desc">Anglais, russe, ukrainien, coréen (MIT FrequencyWords), japonais Romaji→Kana/Kanji (BSD-3-Clause Google Mozc) et chinois simplifié/traditionnel Pinyin (Apache-2.0 Rime + OpenCC) sont intégrés hors ligne. Espagnol, allemand, français, italien, portugais, polonais, néerlandais, turc, tchèque, suédois, finnois, roumain et hongrois se téléchargent sur l\'appareil (25 k mots) en moins d\'une seconde.</string>
     <string name="ime_langs_download_hint">Les langues marquées ↓ téléchargent leur dictionnaire à l’activation.</string>
     <string name="ime_dict_bundled">Intégré (15 000 mots, hors ligne)</string>
     <string name="ime_dict_downloaded">Téléchargé (25 000 mots, hors ligne)</string>
@@ -951,4 +951,42 @@
     <string name="home_search_placeholder">Rechercher des applis…</string>
     <string name="home_search_empty">Aucune application correspondante</string>
     <string name="home_search_footer_hint">Entrée ouvre · ↑↓ choisir · Échap ferme</string>
+    <string name="ime_tab_snippets">Extraits</string>
+    <string name="kumi_line_out_badge">Line-Out</string>
+    <string name="kumi_audio_dac_glitch">Brève coupure de sortie audio. Rebranchez le casque ou relancez la lecture si le son s\'est arrêté.</string>
+    <string name="kumi_diag_audio_counters">Compteurs audio</string>
+    <string name="kumi_err_generic">Impossible d\'effectuer l\'action sur l\'étui. Réessayez ou rebranchez l\'étui.</string>
+    <string name="kumi_err_no_reply">L\'étui n\'a pas répondu à temps. Patientez un instant ou rebranchez-le.</string>
+    <string name="kumi_err_usb_link">Lien USB avec l\'étui interrompu. Rebranchez l\'étui pour reconnecter.</string>
+    <string name="kumi_err_protocol">Réponse inattendue de l\'étui. Mettez à jour l\'application ou le micrologiciel si le problème persiste.</string>
+    <string name="kumi_err_not_connected">L\'étui n\'est pas connecté. Branchez-le et réessayez.</string>
+    <string name="kumi_err_network_offline">Aucune connexion Internet. Connectez-vous à un réseau et réessayez.</string>
+    <string name="kumi_err_network_timeout">Délai de connexion dépassé. Vérifiez votre réseau et réessayez.</string>
+    <string name="kumi_err_network_rate_limit">Limite de requêtes GitHub atteinte. Réessayez dans quelques minutes.</string>
+    <string name="kumi_err_network_generic">Impossible de joindre GitHub. Vérifiez votre connexion et réessayez.</string>
+    <string name="shortcuts_title">Raccourcis système</string>
+    <string name="shortcuts_tile">Raccourcis</string>
+    <string name="shortcuts_subtitle">Recherche, Retour = Précédent et média</string>
+    <string name="shortcuts_setup_title">Activer Raccourcis clavier Kumi</string>
+    <string name="shortcuts_setup_badge">2 étapes</string>
+    <string name="shortcuts_service_active_title">Raccourcis clavier Kumi actifs</string>
+    <string name="shortcuts_service_active_text">Recherche d\'accueil, Retour = Précédent et raccourcis prêts.</string>
+    <string name="shortcuts_service_active_launcher">Actif · lanceur : %1$s</string>
+    <string name="shortcuts_step1_title">Autoriser les paramètres restreints (APK)</string>
+    <string name="shortcuts_step1_hint">Ouvrez Infos appli → descendez ou touchez ⋮ → activez « Autoriser les paramètres restreints ». Ignorez si déjà fait.</string>
+    <string name="shortcuts_step1_cta">Infos appli</string>
+    <string name="shortcuts_step2_title">Activer Raccourcis clavier Kumi</string>
+    <string name="shortcuts_step2_hint">Ouvrez Accessibilité → Applis téléchargées → Raccourcis clavier Kumi → activez uniquement l\'interrupteur du haut (laissez « Raccourci » désactivé pour éviter le bouton flottant).</string>
+    <string name="shortcuts_back_title">Retour arrière = Précédent</string>
+    <string name="shortcuts_back_desc">Appuyez sur Retour arrière hors champs texte pour revenir en arrière dans Android. Ignore les champs texte, l\'accueil, l\'écran verrouillé et les applis exclues.</string>
+    <string name="shortcuts_back_toggle">Retour = Précédent</string>
+    <string name="shortcuts_back_excluded_btn">Applis exclues (%1$d)</string>
+    <string name="shortcuts_back_excluded_title">Applications exclues</string>
+    <string name="shortcuts_back_excluded_hint">Retour arrière reste normal dans les applis cochées (terminaux, SSH, jeux).</string>
+    <string name="shortcuts_media_title">Double appui multimédia</string>
+    <string name="shortcuts_media_desc">Hors champs texte (y compris écran verrouillé) : 2× Maj gauche = piste précédente, 2× Retour arrière = piste suivante, 2× Espace = lecture/pause.</string>
+    <string name="shortcuts_media_toggle">Activer les touches média double appui</string>
+    <string name="settings_launcher_title">Lanceur</string>
+    <string name="settings_launcher_bridge">Autoriser les commandes rapides du lanceur</string>
+    <string name="settings_launcher_bridge_text">Partage l\'état du DAC, de l\'égaliseur et des couches avec MindOne Launcher et autorise les commandes audio rapides.</string>
 </resources>

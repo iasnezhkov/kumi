@@ -20,10 +20,21 @@ FOLD_MAP = str.maketrans({
 })
 
 
+def is_hangul(ch: str) -> bool:
+    return ("\uac00" <= ch <= "\ud7a3") or ("\u3131" <= ch <= "\u318e")
+
+
 def fold_key(word: str) -> str:
     lower = word.lower().translate(FOLD_MAP)
-    decomposed = unicodedata.normalize("NFD", lower)
-    return "".join(ch for ch in decomposed if unicodedata.category(ch) != "Mn")
+    out = []
+    for ch in lower:
+        if is_hangul(ch):
+            out.append(ch)
+            continue
+        for c in unicodedata.normalize("NFD", ch):
+            if unicodedata.category(c) != "Mn":
+                out.append(c)
+    return "".join(out)
 
 
 def is_valid_word(word: str, script: str) -> bool:
@@ -31,6 +42,8 @@ def is_valid_word(word: str, script: str) -> bool:
         return False
     if script == "cyrillic":
         return all(("\u0400" <= ch <= "\u04ff") or ch in ("-", "'") for ch in word) and any("\u0400" <= ch <= "\u04ff" for ch in word)
+    if script == "hangul":
+        return all(is_hangul(ch) for ch in word)
     return all(ch.isalpha() or ch in ("-", "'") for ch in word) and word[0].isalpha()
 
 
@@ -90,7 +103,7 @@ def compile_dict(src: pathlib.Path, dst: pathlib.Path, max_words: int, script: s
 
 def main() -> None:
     if len(sys.argv) != 5:
-        print("usage: build_dict.py <input.txt> <output.snapdict> <max_words> <latin|cyrillic>", file=sys.stderr)
+        print("usage: build_dict.py <input.txt> <output.snapdict> <max_words> <latin|cyrillic|hangul>", file=sys.stderr)
         sys.exit(2)
     count = compile_dict(pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2]), int(sys.argv[3]), sys.argv[4])
     print(f"wrote {count} words -> {sys.argv[2]}")

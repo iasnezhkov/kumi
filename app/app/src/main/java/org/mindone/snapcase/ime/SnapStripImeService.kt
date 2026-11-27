@@ -121,6 +121,7 @@ class SnapStripImeService : InputMethodService() {
             dictProvider = { lang -> dictManager.get(lang.code) },
             personal = personalDict,
             jaDictProvider = { dictManager.getJapanese() },
+            pinyinDictProvider = { lang -> dictManager.getPinyin(lang.code) },
         )
 
         serviceScope.launch(Dispatchers.IO) {
@@ -343,6 +344,7 @@ class SnapStripImeService : InputMethodService() {
     override fun onStartInput(attribute: EditorInfo?, restarting: Boolean) {
         super.onStartInput(attribute, restarting)
         editableInput = isEditableInput(attribute)
+        editableInputActive = editableInput
         actualPasswordField = isActualPassword(attribute)
         numericField = isNumericField(attribute)
         literalPunctuationField = isLiteralPunctuationField(attribute)
@@ -388,6 +390,7 @@ class SnapStripImeService : InputMethodService() {
 
     override fun onFinishInput() {
         editableInput = false
+        editableInputActive = false
         hidingSelf = false
         userDismissed = false
         typingActive = false
@@ -423,14 +426,19 @@ class SnapStripImeService : InputMethodService() {
 
     override fun onCurrentInputMethodSubtypeChanged(newSubtype: InputMethodSubtype?) {
         super.onCurrentInputMethodSubtypeChanged(newSubtype)
-        val locale = newSubtype?.locale.orEmpty()
-        StripLang.entries.firstOrNull { locale.startsWith(it.code, ignoreCase = true) }
-            ?.let { processor.setLanguage(it, inputTarget) }
+        val locale = newSubtype?.locale.orEmpty().replace('_', '-').lowercase()
+        val matched = when {
+            locale.startsWith("zh-tw") || locale.startsWith("zh-hk") || locale.startsWith("zh-hant") -> StripLang.ZH_TW
+            locale.startsWith("zh") -> StripLang.ZH_CN
+            else -> StripLang.entries.firstOrNull { locale.startsWith(it.code, ignoreCase = true) }
+        }
+        matched?.let { processor.setLanguage(it, inputTarget) }
         publishState()
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
-        if (!stripEnabled || currentInputConnection == null || !isEditableInput(currentInputEditorInfo)) {
+        val info = currentInputEditorInfo
+        if (!stripEnabled || currentInputConnection == null || !isEditableInput(info) || isQuickSearchField(info)) {
             return super.onKeyDown(keyCode, event)
         }
         if (handleKeyDown(keyCode, event)) {
@@ -687,7 +695,7 @@ class SnapStripImeService : InputMethodService() {
             shiftPressedWithAlt = false
             shiftUsedInChord = false
             physicalShiftHeld = event.isShiftPressed
-            if (wasCleanTap && !uiState.value.isPasswordField && processor.currentLanguage() != StripLang.JA) {
+            if (wasCleanTap && !uiState.value.isPasswordField && !processor.currentLanguage().isCjkNoSpace) {
                 processor.onShiftTap()
             }
             publishState()
@@ -701,6 +709,7 @@ class SnapStripImeService : InputMethodService() {
     }
 
     override fun onDestroy() {
+        editableInputActive = false
         detachClipboard?.invoke()
         detachClipboard = null
         lifecycleOwner.onDestroy()
@@ -719,7 +728,11 @@ class SnapStripImeService : InputMethodService() {
         val enabledLangs = s.imeEnabledLangs.map(StripLang::fromCode).distinct().ifEmpty { listOf(StripLang.EN, StripLang.RU) }
         serviceScope.launch(Dispatchers.IO) {
             enabledLangs.forEach { lang ->
-                if (lang == StripLang.JA) dictManager.getJapanese() else dictManager.get(lang.code)
+                when {
+                    lang == StripLang.JA -> dictManager.getJapanese()
+                    lang.isPinyin -> dictManager.getPinyin(lang.code)
+                    else -> dictManager.get(lang.code)
+                }
             }
         }
         processor.updateConfig(
@@ -794,8 +807,15 @@ class SnapStripImeService : InputMethodService() {
             )
     }
 
+    private fun isQuickSearchField(info: EditorInfo?): Boolean {
+        if (info == null) return false
+        return info.packageName == packageName &&
+            (info.privateImeOptions == QUICK_SEARCH_IME_OPTION || (info.imeOptions and EditorInfo.IME_MASK_ACTION) == EditorInfo.IME_ACTION_SEARCH)
+    }
+
     private fun isSensitiveField(info: EditorInfo?): Boolean {
         if (info == null) return false
+        if (isQuickSearchField(info)) return true
         val type = info.inputType
         val cls = type and InputType.TYPE_MASK_CLASS
         val variation = type and InputType.TYPE_MASK_VARIATION
@@ -811,5 +831,13 @@ class SnapStripImeService : InputMethodService() {
             if (type and InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS != 0) return true
         }
         return false
+    }
+
+    companion object {
+        const val QUICK_SEARCH_IME_OPTION = "org.mindone.snapcase.QUICK_SEARCH"
+
+        @Volatile
+        var editableInputActive: Boolean = false
+            private set
     }
 }

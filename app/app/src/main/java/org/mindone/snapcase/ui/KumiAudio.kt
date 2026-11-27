@@ -38,6 +38,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -85,38 +86,37 @@ fun kumiFriendlyError(state: KumiState): String = when (state.errorKind) {
     CaseError.HardwareFault -> stringResource(R.string.kumi_err_hardware_fault)
     CaseError.InvalidArgument -> stringResource(R.string.kumi_dev_refused_argument)
     CaseError.VerifyFailed -> stringResource(R.string.kumi_err_verify_failed)
-    else -> state.error.orEmpty()
+    else -> when (state.errorBridgeKind) {
+        "NoReply" -> stringResource(R.string.kumi_err_no_reply)
+        "Transport", "Link" -> stringResource(R.string.kumi_err_usb_link)
+        "Decode" -> stringResource(R.string.kumi_err_protocol)
+        else -> {
+            val raw = state.error.orEmpty()
+            when {
+                raw.contains("not connected", ignoreCase = true) -> stringResource(R.string.kumi_err_not_connected)
+                raw.contains("timeout", ignoreCase = true) -> stringResource(R.string.kumi_err_no_reply)
+                raw.isBlank() -> stringResource(R.string.kumi_err_generic)
+                else -> stringResource(R.string.kumi_err_generic)
+            }
+        }
+    }
+}
+
+@Composable
+fun friendlyNetworkError(raw: String): String = when {
+    raw.contains("UnknownHost", ignoreCase = true) ||
+        raw.contains("Unable to resolve host", ignoreCase = true) ||
+        raw.contains("ConnectException", ignoreCase = true) ||
+        raw.contains("Network is unreachable", ignoreCase = true) -> stringResource(R.string.kumi_err_network_offline)
+    raw.contains("Timeout", ignoreCase = true) -> stringResource(R.string.kumi_err_network_timeout)
+    raw.contains("HTTP 403", ignoreCase = true) || raw.contains("429") -> stringResource(R.string.kumi_err_network_rate_limit)
+    else -> stringResource(R.string.kumi_err_network_generic)
 }
 
 @Composable
 fun KumiErrorBanner(state: KumiState, onDismiss: () -> Unit) {
     if (state.error == null) return
-    Surface(
-        color = MaterialTheme.colorScheme.errorContainer,
-        contentColor = MaterialTheme.colorScheme.onErrorContainer,
-        shape = RoundedCornerShape(14.dp),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Row(
-            Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Text(
-                kumiFriendlyError(state),
-                style = MaterialTheme.typography.labelMedium,
-                maxLines = 3,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
-            Text(
-                stringResource(R.string.action_dismiss),
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.clickable(onClick = onDismiss).padding(horizontal = 4.dp),
-            )
-        }
-    }
+    DismissibleErrorBanner(kumiFriendlyError(state), onDismiss = onDismiss)
 }
 
 @Composable
@@ -131,6 +131,7 @@ fun KumiAudioScreen(
     var page by rememberSaveable { mutableIntStateOf(0) }
     var lastEqSlot by rememberSaveable { mutableIntStateOf(0) }
     var confirmLineOut by remember { mutableStateOf(false) }
+    var dismissedDacFaults by rememberSaveable { mutableLongStateOf(0L) }
     val hasAudioControls = caps?.audioOut == true || state.output != null || state.dsp != null || state.dacExtras != null
     val hasEq = caps?.parametricEq == true || state.eqSlots.any { it != null } || state.output != null
     val uacSleeping = state.isUacSleeping()
@@ -144,12 +145,13 @@ fun KumiAudioScreen(
     val shLoud = stringResource(R.string.kumi_loudness)
     val shLimit = stringResource(R.string.kumi_limiter)
     val shClassH = stringResource(R.string.kumi_class_h_label)
+    val shLineOut = stringResource(R.string.kumi_line_out)
     val shFilter = stringResource(R.string.sound_filter)
     val shMeasure = stringResource(R.string.kumi_impedance_measure)
 
     val audioShortcuts = when (page) {
         0 -> listOf("E" to shEq, "␣" to shAb, "X" to shXfeed, "L" to shLoud, "M" to shLimit, "Tab" to shTab)
-        1 -> listOf("C" to shClassH, "F" to shFilter, "Tab" to shTab)
+        1 -> listOf("C" to shClassH, "O" to shLineOut, "F" to shFilter, "Tab" to shTab)
         else -> listOf("M" to shMeasure, "Q / W / E / R" to stringResource(R.string.kumi_test_tone_title), "Tab" to shTab)
     }
 
@@ -204,6 +206,10 @@ fun KumiAudioScreen(
                 KeyEvent.KEYCODE_C -> state.dacExtras?.let { ex ->
                     val modes = ClassHMode.entries
                     kumi.setDacExtras(ex.copy(classH = modes[(modes.indexOf(ex.classH) + 1) % modes.size]))
+                    true
+                } ?: false
+                KeyEvent.KEYCODE_O -> state.dacExtras?.let { ex ->
+                    if (ex.lineOut) kumi.setDacExtras(ex.copy(lineOut = false)) else confirmLineOut = true
                     true
                 } ?: false
                 KeyEvent.KEYCODE_F -> state.output?.let { out ->
@@ -270,7 +276,16 @@ fun KumiAudioScreen(
             }
             when (page) {
                 0 -> {
-                    item { NowPlayingAudioCard(state.audio, kumi.liveMeters, uacSleeping) }
+                    item {
+                        NowPlayingAudioCard(
+                            audio = state.audio,
+                            liveMeters = kumi.liveMeters,
+                            uacSleeping = uacSleeping,
+                            lineOutActive = state.dacExtras?.lineOut == true,
+                            dismissedDacFaults = dismissedDacFaults,
+                            onDismissDacFault = { dismissedDacFaults = state.audio?.counters?.dacFaults ?: dismissedDacFaults },
+                        )
+                    }
                     if (hasEq) {
                         item {
                             EqQuickCard(
@@ -299,7 +314,10 @@ fun KumiAudioScreen(
                                 extras = state.dacExtras,
                                 mic = state.mic.takeIf { caps?.audioIn == true },
                                 onOutput = { kumi.setOutput(it) },
-                                onExtras = { kumi.setDacExtras(it) },
+                                onExtras = { next ->
+                                    val wasLineOut = state.dacExtras?.lineOut == true
+                                    if (next.lineOut && !wasLineOut) confirmLineOut = true else kumi.setDacExtras(next)
+                                },
                                 onMic = { kumi.setMic(it) },
                             )
                         }
@@ -311,10 +329,7 @@ fun KumiAudioScreen(
                                 dsd = caps?.dsd == true || uacSleeping,
                                 onDsp = { kumi.setDsp(it) },
                                 onOutput = { kumi.setOutput(it) },
-                                onExtras = { next ->
-                                    val wasLineOut = state.dacExtras?.lineOut == true
-                                    if (next.lineOut && !wasLineOut) confirmLineOut = true else kumi.setDacExtras(next)
-                                },
+                                onExtras = { kumi.setDacExtras(it) },
                             )
                         }
                     }
@@ -339,7 +354,7 @@ fun KumiAudioScreen(
         KeyboardHintStrip(
             hints = when (page) {
                 0 -> listOf("E" to shEq, "X" to shXfeed, "L" to shLoud, "Tab" to shTab)
-                1 -> listOf("C" to shClassH, "F" to shFilter, "Tab" to shTab)
+                1 -> listOf("C" to shClassH, "O" to stringResource(R.string.kumi_line_out_badge), "F" to shFilter, "Tab" to shTab)
                 else -> listOf("M" to shMeasure, "Q–R" to stringResource(R.string.kumi_test_tone_title))
             },
         )
@@ -356,40 +371,53 @@ fun KumiAudioScreen(
 }
 
 @Composable
-private fun NowPlayingAudioCard(audio: AudioStatus?, liveMeters: StateFlow<AudioMeters?>, uacSleeping: Boolean) {
+private fun NowPlayingAudioCard(
+    audio: AudioStatus?,
+    liveMeters: StateFlow<AudioMeters?>,
+    uacSleeping: Boolean,
+    lineOutActive: Boolean,
+    dismissedDacFaults: Long,
+    onDismissDacFault: () -> Unit,
+) {
     val stream = audio?.stream
     SectionCard(
         title = if (stream == null) stringResource(R.string.kumi_nothing_playing) else streamTitle(stream.kind, stream.rateHz, stream.bits),
         trailing = {
-            if (audio != null) {
-                StatusPill(
-                    text = stringResource(jackName(audio.jack)),
-                    containerColor = if (audio.jack == Jack.Empty) MaterialTheme.colorScheme.surfaceContainerHighest else MaterialTheme.colorScheme.secondaryContainer,
-                    contentColor = if (audio.jack == Jack.Empty) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSecondaryContainer,
-                )
+            Row(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (lineOutActive) {
+                    StatusPill(
+                        text = stringResource(R.string.kumi_line_out_badge),
+                        containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+                    )
+                }
+                if (audio != null) {
+                    StatusPill(
+                        text = stringResource(jackName(audio.jack)),
+                        containerColor = if (audio.jack == Jack.Empty) MaterialTheme.colorScheme.surfaceContainerHighest else MaterialTheme.colorScheme.secondaryContainer,
+                        contentColor = if (audio.jack == Jack.Empty) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSecondaryContainer,
+                    )
+                }
             }
         },
     ) {
         if (uacSleeping && stream == null) {
             Note(stringResource(R.string.kumi_audio_unplugged_hint))
         }
-        LiveVuMeter(liveMeters = liveMeters, streaming = stream != null, showCounters = true)
-        if (audio != null) {
-            val c = audio.counters
-            if (audio.hostMuted || c.underruns + c.overruns + c.dacFaults > 0) {
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    if (audio.hostMuted) {
-                        StatusPill(
-                            stringResource(R.string.kumi_muted),
-                            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                            contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
-                        )
-                    }
-                    if (c.underruns + c.overruns + c.dacFaults > 0) {
-                        Note(stringResource(R.string.kumi_counters, c.underruns, c.overruns, c.dacFaults), MaterialTheme.colorScheme.error)
-                    }
-                }
-            }
+        LiveVuMeter(liveMeters = liveMeters, streaming = stream != null, showCounters = false)
+        if (audio != null && audio.hostMuted) {
+            StatusPill(
+                stringResource(R.string.kumi_muted),
+                containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+            )
+        }
+        val faults = audio?.counters?.dacFaults ?: 0L
+        if (faults > dismissedDacFaults) {
+            DismissibleErrorBanner(
+                message = stringResource(R.string.kumi_audio_dac_glitch),
+                onDismiss = onDismissDacFault,
+            )
         }
     }
 }
@@ -529,6 +557,13 @@ private fun HeadphoneOutputCard(
                     }
                 }
             }
+            ToggleRow(
+                title = stringResource(R.string.kumi_line_out),
+                subtitle = stringResource(R.string.kumi_line_out_text),
+                checked = extras.lineOut,
+                onCheckedChange = { onExtras(extras.copy(lineOut = it)) },
+                keyHint = "O",
+            )
         }
         if (output != null) {
             var open by remember { mutableStateOf(false) }
@@ -641,12 +676,6 @@ private fun AdvancedSoundCard(
                 subtitle = stringResource(R.string.kumi_de_emphasis_text),
                 checked = extras.deEmphasis,
                 onCheckedChange = { onExtras(extras.copy(deEmphasis = it)) },
-            )
-            ToggleRow(
-                title = stringResource(R.string.kumi_line_out),
-                subtitle = stringResource(R.string.kumi_line_out_text),
-                checked = extras.lineOut,
-                onCheckedChange = { onExtras(extras.copy(lineOut = it)) },
             )
         }
     }

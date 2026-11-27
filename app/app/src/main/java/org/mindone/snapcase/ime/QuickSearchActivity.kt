@@ -13,6 +13,11 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -24,11 +29,13 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -53,6 +60,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -65,12 +73,18 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.mindone.snapcase.R
+import org.mindone.snapcase.data.SettingsRepository
 import org.mindone.snapcase.ui.theme.SnapTheme
 
 class QuickSearchActivity : ComponentActivity() {
@@ -90,13 +104,19 @@ class QuickSearchActivity : ComponentActivity() {
         overrideActivityTransition(OVERRIDE_TRANSITION_OPEN, 0, 0)
         overrideActivityTransition(OVERRIDE_TRANSITION_CLOSE, 0, 0)
         applyPendingOrIntent(intent, replace = true)
+        lifecycleScope.launch(Dispatchers.IO) {
+            val saved = runCatching { SettingsRepository.from(applicationContext).settings.first().quickSearchRecent }.getOrDefault(emptyList())
+            QuickSearchBridge.seedRecent(saved)
+            withContext(Dispatchers.Main) { recentPackages = QuickSearchBridge.recentPackages() }
+        }
         setContent {
             SnapTheme {
-                QuickSearchOverlay(
+                QuickSearchCard(
                     query = queryValue,
                     allApps = allApps,
                     recentPackages = recentPackages,
                     selectedIndex = selectedIndex,
+                    readOnlyDisplay = false,
                     onAppsLoaded = { loaded ->
                         allApps = loaded
                         QuickSearchBridge.cachedApps = loaded
@@ -112,7 +132,7 @@ class QuickSearchActivity : ComponentActivity() {
                     onLaunch = { app -> launchApp(app) },
                     onLaunchSelected = { launchAt(selectedIndex) },
                     onDismiss = { dismissNow() },
-                    loadIcon = { pkg -> loadAppIcon(pkg) },
+                    loadIcon = { pkg -> loadAppIcon(this@QuickSearchActivity, pkg) },
                 )
             }
         }
@@ -156,10 +176,13 @@ class QuickSearchActivity : ComponentActivity() {
         }
         val initial = pending.text.ifEmpty { intent?.getStringExtra(EXTRA_INITIAL_TEXT).orEmpty() }
         if (replace) {
-            queryValue = TextFieldValue(initial, TextRange(initial.length))
+            val trimmed = if (pending.backspaces > 0) initial.dropLast(pending.backspaces) else initial
+            queryValue = TextFieldValue(trimmed, TextRange(trimmed.length))
             selectedIndex = 0
-        } else if (initial.isNotEmpty()) {
-            val merged = queryValue.text + initial
+        } else if (initial.isNotEmpty() || pending.backspaces > 0) {
+            var merged = queryValue.text
+            if (pending.backspaces > 0) merged = merged.dropLast(pending.backspaces)
+            merged += initial
             queryValue = TextFieldValue(merged, TextRange(merged.length))
             selectedIndex = 0
         }
@@ -179,8 +202,10 @@ class QuickSearchActivity : ComponentActivity() {
             dismissNow()
             return
         }
-        if (pending.text.isNotEmpty()) {
-            val merged = queryValue.text + pending.text
+        if (pending.text.isNotEmpty() || pending.backspaces > 0) {
+            var merged = queryValue.text
+            if (pending.backspaces > 0) merged = merged.dropLast(pending.backspaces)
+            merged += pending.text
             queryValue = TextFieldValue(merged, TextRange(merged.length))
             selectedIndex = 0
         }
@@ -210,6 +235,9 @@ class QuickSearchActivity : ComponentActivity() {
         val ok = QuickLauncher.launch(this, app)
         if (ok) {
             QuickSearchBridge.recordLaunch(app.packageName)
+            lifecycleScope.launch(Dispatchers.IO) {
+                runCatching { SettingsRepository.from(applicationContext).recordQuickSearchRecent(app.packageName) }
+            }
             dismissNow()
         }
         return ok
@@ -251,6 +279,13 @@ class QuickSearchActivity : ComponentActivity() {
                     moveSelection(if (event.isShiftPressed) -1 else 1)
                     return true
                 }
+                KeyEvent.KEYCODE_DEL -> {
+                    if (queryValue.text.isEmpty() && event.repeatCount == 0) {
+                        consumedUpKeys.add(code)
+                        dismissNow()
+                        return true
+                    }
+                }
                 KeyEvent.KEYCODE_ESCAPE -> {
                     if (event.repeatCount == 0) {
                         consumedUpKeys.add(code)
@@ -277,14 +312,6 @@ class QuickSearchActivity : ComponentActivity() {
         return super.dispatchKeyEvent(event)
     }
 
-    private fun loadAppIcon(packageName: String): ImageBitmap? {
-        QuickSearchBridge.getIcon(packageName)?.let { return it }
-        val drawable = runCatching { packageManager.getApplicationIcon(packageName) }.getOrNull() ?: return null
-        val bmp = drawableToImageBitmap(drawable, ICON_PX) ?: return null
-        QuickSearchBridge.putIcon(packageName, bmp)
-        return bmp
-    }
-
     companion object {
         private const val EXTRA_INITIAL_TEXT = "initial_text"
         private const val ICON_PX = 96
@@ -307,6 +334,14 @@ class QuickSearchActivity : ComponentActivity() {
             }.getOrDefault(false)
         }
 
+        fun loadAppIcon(context: Context, packageName: String): ImageBitmap? {
+            QuickSearchBridge.getIcon(packageName)?.let { return it }
+            val drawable = runCatching { context.packageManager.getApplicationIcon(packageName) }.getOrNull() ?: return null
+            val bmp = drawableToImageBitmap(drawable, ICON_PX) ?: return null
+            QuickSearchBridge.putIcon(packageName, bmp)
+            return bmp
+        }
+
         private fun drawableToImageBitmap(drawable: Drawable, sizePx: Int): ImageBitmap? = runCatching {
             val bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
             val canvas = Canvas(bitmap)
@@ -318,11 +353,13 @@ class QuickSearchActivity : ComponentActivity() {
 }
 
 @Composable
-private fun QuickSearchOverlay(
+fun QuickSearchCard(
     query: TextFieldValue,
     allApps: List<LaunchableApp>,
     recentPackages: List<String>,
     selectedIndex: Int,
+    readOnlyDisplay: Boolean,
+    extraTopPadding: Dp = 0.dp,
     onAppsLoaded: (List<LaunchableApp>) -> Unit,
     onQueryChange: (TextFieldValue) -> Unit,
     onLaunch: (LaunchableApp) -> Unit,
@@ -335,10 +372,14 @@ private fun QuickSearchOverlay(
     val listState = rememberLazyListState()
     val icons = remember { mutableStateMapOf<String, ImageBitmap>() }
 
-    BackHandler(onBack = onDismiss)
+    if (!readOnlyDisplay) {
+        BackHandler(onBack = onDismiss)
+    }
 
     LaunchedEffect(Unit) {
-        runCatching { focusRequester.requestFocus() }
+        if (!readOnlyDisplay) {
+            runCatching { focusRequester.requestFocus() }
+        }
         val loaded = withContext(Dispatchers.IO) { QuickLauncher.listLaunchableApps(context) }
         onAppsLoaded(loaded)
     }
@@ -357,21 +398,12 @@ private fun QuickSearchOverlay(
         }
     }
 
-    val visibleTop = remember(matches) { matches.take(12) }
-    LaunchedEffect(visibleTop) {
-        visibleTop.forEach { app ->
-            if (app.packageName !in icons) {
-                val bmp = QuickSearchBridge.getIcon(app.packageName) ?: withContext(Dispatchers.IO) {
-                    loadIcon(app.packageName)
-                }
-                if (bmp != null) icons[app.packageName] = bmp
-            }
-        }
-    }
+    val scrimColor = if (readOnlyDisplay) Color.Black.copy(alpha = 0.42f) else Color.Transparent
 
     Box(
         modifier = Modifier
             .fillMaxSize()
+            .background(scrimColor)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
@@ -382,6 +414,7 @@ private fun QuickSearchOverlay(
         Surface(
             modifier = Modifier
                 .statusBarsPadding()
+                .padding(top = extraTopPadding)
                 .imePadding()
                 .padding(horizontal = 12.dp, vertical = 14.dp)
                 .fillMaxWidth()
@@ -410,36 +443,41 @@ private fun QuickSearchOverlay(
                         modifier = Modifier.size(20.dp),
                     )
                     Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
-                        if (query.text.isEmpty()) {
-                            Text(
-                                text = stringResource(R.string.home_search_placeholder),
-                                style = MaterialTheme.typography.titleMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
+                        if (readOnlyDisplay) {
+                            ReadOnlySearchField(query.text)
+                        } else {
+                            if (query.text.isEmpty()) {
+                                Text(
+                                    text = stringResource(R.string.home_search_placeholder),
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                            BasicTextField(
+                                value = query,
+                                onValueChange = onQueryChange,
+                                singleLine = true,
+                                textStyle = MaterialTheme.typography.titleMedium.copy(
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                ),
+                                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                                keyboardOptions = KeyboardOptions(
+                                    autoCorrectEnabled = false,
+                                    keyboardType = KeyboardType.Uri,
+                                    imeAction = ImeAction.Search,
+                                ),
+                                keyboardActions = KeyboardActions(
+                                    onSearch = { onLaunchSelected() },
+                                    onGo = { onLaunchSelected() },
+                                    onDone = { onLaunchSelected() },
+                                ),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .focusRequester(focusRequester),
                             )
                         }
-                        BasicTextField(
-                            value = query,
-                            onValueChange = onQueryChange,
-                            singleLine = true,
-                            textStyle = MaterialTheme.typography.titleMedium.copy(
-                                color = MaterialTheme.colorScheme.onSurface,
-                            ),
-                            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                            keyboardOptions = KeyboardOptions(
-                                autoCorrectEnabled = false,
-                                imeAction = ImeAction.Search,
-                            ),
-                            keyboardActions = KeyboardActions(
-                                onSearch = { onLaunchSelected() },
-                                onGo = { onLaunchSelected() },
-                                onDone = { onLaunchSelected() },
-                            ),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .focusRequester(focusRequester),
-                        )
                     }
                     if (query.text.isNotEmpty()) {
                         IconButton(
@@ -477,12 +515,21 @@ private fun QuickSearchOverlay(
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
                         verticalArrangement = Arrangement.spacedBy(2.dp),
                     ) {
-                        itemsIndexed(matches, key = { _, app -> app.packageName }) { index, app ->
+                        itemsIndexed(matches, key = { _, app -> "${app.packageName}/${app.activityName}" }) { index, app ->
                             val selected = index == safeSelected
                             val showPackage = app.label.lowercase() in duplicateLabels
+                            val icon = icons[app.packageName] ?: QuickSearchBridge.getIcon(app.packageName)
+                            LaunchedEffect(app.packageName) {
+                                if (app.packageName !in icons) {
+                                    val bmp = QuickSearchBridge.getIcon(app.packageName) ?: withContext(Dispatchers.IO) {
+                                        loadIcon(app.packageName)
+                                    }
+                                    if (bmp != null) icons[app.packageName] = bmp
+                                }
+                            }
                             QuickSearchResultRow(
                                 app = app,
-                                icon = icons[app.packageName],
+                                icon = icon,
                                 selected = selected,
                                 showPackage = showPackage,
                                 onClick = { onLaunch(app) },
@@ -500,6 +547,44 @@ private fun QuickSearchOverlay(
                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun ReadOnlySearchField(text: String) {
+    val transition = rememberInfiniteTransition(label = "cursor")
+    val cursorAlpha by transition.animateFloat(
+        initialValue = 1f,
+        targetValue = 0f,
+        animationSpec = infiniteRepeatable(tween(520), RepeatMode.Reverse),
+        label = "cursorAlpha",
+    )
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        if (text.isEmpty()) {
+            Text(
+                text = stringResource(R.string.home_search_placeholder),
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        } else {
+            Text(
+                text = text,
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Box(
+                Modifier
+                    .padding(start = 1.dp)
+                    .width(2.dp)
+                    .height(20.dp)
+                    .alpha(cursorAlpha)
+                    .background(MaterialTheme.colorScheme.primary),
+            )
         }
     }
 }

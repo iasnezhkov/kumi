@@ -45,6 +45,7 @@ data class KumiState(
     val loading: Boolean = false,
     val error: String? = null,
     val errorKind: CaseError? = null,
+    val errorBridgeKind: String? = null,
     val permissionDenied: Boolean = false,
     val unlockedUntil: Long = 0,
     val peek: WordBlock? = null,
@@ -93,6 +94,42 @@ class KumiSession(
 
     val simulated: Boolean get() = port.simulated
 
+    val isLiveConnected: Boolean get() = client != null && _state.value.connected && !flowBusy()
+
+    fun enqueueBridgeCommand(command: String, value: Int): Boolean {
+        if (!isLiveConnected) return false
+        val st = _state.value
+        when (command) {
+            "toggle_eq" -> {
+                val active = st.audio?.eqActive
+                if (active != null) {
+                    selectEq(null)
+                } else {
+                    val slot = st.eqSlots.indexOfFirst { it != null && it.bands.isNotEmpty() }.takeIf { it >= 0 } ?: 0
+                    selectEq(slot)
+                }
+            }
+            "select_eq" -> selectEq(value.takeIf { it in 0 until EqProfile.SLOTS })
+            "cycle_crossfeed" -> {
+                val cur = st.dsp ?: DspSettings()
+                val modes = CrossfeedMode.entries
+                val next = modes[(modes.indexOf(cur.crossfeed) + 1) % modes.size]
+                setDsp(cur.copy(crossfeed = next))
+            }
+            "toggle_line_out" -> {
+                val cur = st.dacExtras ?: DacExtras()
+                setDacExtras(cur.copy(lineOut = !cur.lineOut))
+            }
+            "toggle_stay_awake" -> {
+                val cur = st.dacExtras ?: DacExtras()
+                setDacExtras(cur.copy(stayAwakeWhileActive = !cur.stayAwakeWhileActive))
+            }
+            "refresh" -> refresh()
+            else -> return false
+        }
+        return true
+    }
+
     fun refresh(): Job = scope.launch(dispatcher) { refreshNow() }
 
     suspend fun refreshOnDispatcher() = withContext(dispatcher) { refreshNow() }
@@ -103,7 +140,7 @@ class KumiSession(
         if (flowBusy()) return
         if (kind != CaseKind.KUMI) {
             if (client != null || _state.value.connected) disconnect()
-            if (_state.value.permissionDenied) _state.update { it.copy(permissionDenied = false, error = null, errorKind = null) }
+            if (_state.value.permissionDenied) _state.update { it.copy(permissionDenied = false, error = null, errorKind = null, errorBridgeKind = null) }
             return
         }
         val activeKey = port.deviceKey()
@@ -116,7 +153,7 @@ class KumiSession(
     }
 
     fun retry() {
-        _state.update { it.copy(permissionDenied = false, error = null, errorKind = null) }
+        _state.update { it.copy(permissionDenied = false, error = null, errorKind = null, errorBridgeKind = null) }
         refresh()
     }
 
@@ -226,8 +263,16 @@ class KumiSession(
             if (audio.stream == null) _liveMeters.value = null
             c.pollTopics()
             val prev = _state.value
-            if (prev.audio != audio || prev.keyboard != keyboard) {
-                _state.update { it.copy(audio = audio, keyboard = keyboard) }
+            val clearTransient = prev.error != null && prev.errorKind == null
+            if (prev.audio != audio || prev.keyboard != keyboard || clearTransient) {
+                _state.update {
+                    it.copy(
+                        audio = audio,
+                        keyboard = keyboard,
+                        error = if (clearTransient) null else it.error,
+                        errorBridgeKind = if (clearTransient) null else it.errorBridgeKind,
+                    )
+                }
                 SnapLiveMirror.update(_state.value)
             }
         }.onFailure(::fail)
@@ -242,19 +287,30 @@ class KumiSession(
     }
 
     private fun fail(error: Throwable) {
-        if (error is BridgeException) {
+        val bridgeKind = if (error is BridgeException) {
             if (error.failure.kind == "Link") {
                 disconnect()
             } else if (error.failure.kind == "NoReply" || error.failure.kind == "Transport") {
                 runCatching { bridge.resetSession() }
             }
+            error.failure.kind
+        } else {
+            null
         }
         val kind = (error as? CaseErrorException)?.error
-        _state.update { it.copy(loading = false, error = error.message ?: error.toString(), errorKind = kind) }
+        _state.update {
+            it.copy(
+                loading = false,
+                error = error.message ?: error.toString(),
+                errorKind = kind,
+                errorBridgeKind = bridgeKind,
+            )
+        }
     }
 
     private fun change(optimistic: (KumiState) -> KumiState, send: (KumiClient) -> Unit, recover: (KumiClient?) -> (KumiState) -> KumiState): Job {
-        _state.update { optimistic(it).copy(error = null, errorKind = null) }
+        _state.update { optimistic(it).copy(error = null, errorKind = null, errorBridgeKind = null) }
+        SnapLiveMirror.update(_state.value, _kind.value)
         return scope.launch(dispatcher) { perform(send, recover) }
     }
 
@@ -263,7 +319,10 @@ class KumiSession(
         val error = if (c == null) IllegalStateException("The case is not connected") else runCatching { send(c) }.exceptionOrNull()
         if (error != null) {
             _state.update(recover(c))
+            SnapLiveMirror.update(_state.value, _kind.value)
             fail(error)
+        } else {
+            SnapLiveMirror.update(_state.value, _kind.value)
         }
     }
 
@@ -535,7 +594,7 @@ class KumiSession(
         }
     }
 
-    fun clearError() = _state.update { it.copy(error = null, errorKind = null) }
+    fun clearError() = _state.update { it.copy(error = null, errorKind = null, errorBridgeKind = null) }
 
     fun close() {
         disconnect()

@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 package org.mindone.snapcase.ui
 
+import android.view.KeyEvent
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -35,11 +37,29 @@ fun AppSettingsScreen(prefs: AppPreferences) {
     val repoValid = repository.isBlank() || FirmwareCatalog.isValidRepository(repository)
     val bridge = remember { if (KumiNative.loaded) runCatching { JSONObject(KumiNative.info()) }.getOrNull() else null }
 
-    LazyColumn(
-        Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
+    val shChannel = stringResource(R.string.settings_update_channel)
+    val shDemo = stringResource(R.string.menu_demo)
+    val shLauncher = stringResource(R.string.settings_launcher_title)
+    val shBack = stringResource(R.string.action_back)
+    RegisterScreenKeys(
+        key = listOf(settings.includePrereleases, settings.demoMode, settings.launcherBridgeEnabled),
+        shortcuts = listOf("C" to shChannel, "L" to shLauncher, "D" to shDemo, "⌫" to shBack),
+    ) { code, repeat ->
+        if (repeat) return@RegisterScreenKeys false
+        when (code) {
+            KeyEvent.KEYCODE_C -> { prefs.setIncludePrereleases(!settings.includePrereleases); true }
+            KeyEvent.KEYCODE_L -> { prefs.setLauncherBridgeEnabled(!settings.launcherBridgeEnabled); true }
+            KeyEvent.KEYCODE_D -> { prefs.setDemoMode(!settings.demoMode); true }
+            else -> false
+        }
+    }
+
+    Column(Modifier.fillMaxSize()) {
+        LazyColumn(
+            Modifier.weight(1f).fillMaxWidth(),
+            contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
         item {
             SectionCard(stringResource(R.string.settings_legacy_title)) {
                 ToggleRow(
@@ -92,12 +112,24 @@ fun AppSettingsScreen(prefs: AppPreferences) {
             }
         }
         item {
+            SectionCard(stringResource(R.string.settings_launcher_title)) {
+                ToggleRow(
+                    title = stringResource(R.string.settings_launcher_bridge),
+                    subtitle = stringResource(R.string.settings_launcher_bridge_text),
+                    checked = settings.launcherBridgeEnabled,
+                    onCheckedChange = { prefs.setLauncherBridgeEnabled(it) },
+                    keyHint = "L",
+                )
+            }
+        }
+        item {
             SectionCard(stringResource(R.string.settings_demo_title)) {
                 ToggleRow(
                     title = stringResource(R.string.menu_demo),
                     subtitle = stringResource(R.string.settings_demo_text),
                     checked = settings.demoMode,
                     onCheckedChange = { prefs.setDemoMode(it) },
+                    keyHint = "D",
                 )
             }
         }
@@ -110,5 +142,9 @@ fun AppSettingsScreen(prefs: AppPreferences) {
                 Note(stringResource(R.string.settings_license_note))
             }
         }
+        }
+        KeyboardHintStrip(
+            hints = listOf("C" to shChannel, "L" to shLauncher, "D" to shDemo, "⌫" to shBack),
+        )
     }
 }

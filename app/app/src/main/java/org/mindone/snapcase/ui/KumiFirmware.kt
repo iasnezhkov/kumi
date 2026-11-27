@@ -328,6 +328,7 @@ fun KumiFirmwareScreen(
                             repository = settings.releaseRepository,
                             installError = installError,
                             installNotice = installNotice,
+                            onDismissInstallError = { installError = null },
                             onInstallPackage = { confirmInstall = it },
                             onUpdatePackage = { flows.update(it) },
                             onInstallApk = launchApkInstall,
@@ -410,6 +411,7 @@ fun KumiFirmwareScreen(
                             repository = settings.releaseRepository,
                             installError = installError,
                             installNotice = installNotice,
+                            onDismissInstallError = { installError = null },
                             onInstallPackage = { confirmInstall = it },
                             onUpdatePackage = { flows.update(it) },
                             onInstallApk = launchApkInstall,
@@ -530,6 +532,7 @@ fun KumiFirmwareScreen(
                                 repository = settings.releaseRepository,
                                 installError = installError,
                                 installNotice = installNotice,
+                                onDismissInstallError = { installError = null },
                                 onInstallPackage = { confirmInstall = it },
                                 onUpdatePackage = { flows.update(it) },
                                 onInstallApk = launchApkInstall,
@@ -632,6 +635,7 @@ private fun UpdatesCenterCard(
     repository: String,
     installError: String?,
     installNotice: String?,
+    onDismissInstallError: () -> Unit,
     onInstallPackage: (FirmwarePackage) -> Unit,
     onUpdatePackage: (FirmwarePackage) -> Unit,
     onInstallApk: (File) -> Unit,
@@ -685,8 +689,12 @@ private fun UpdatesCenterCard(
             }
         }
         if (firmware.checking) LinearProgressIndicator(Modifier.fillMaxWidth())
-        firmware.releaseError?.let { Note(it, MaterialTheme.colorScheme.error) }
-        installError?.let { Note(it, MaterialTheme.colorScheme.error) }
+        firmware.releaseError?.let { err ->
+            DismissibleErrorBanner(friendlyNetworkError(err), onDismiss = { catalog.clearReleaseError() })
+        }
+        installError?.let { err ->
+            DismissibleErrorBanner(err, onDismiss = onDismissInstallError)
+        }
         installNotice?.let { notice ->
             Surface(
                 color = MaterialTheme.colorScheme.tertiaryContainer,

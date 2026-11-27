@@ -128,6 +128,10 @@ class ReleaseCatalog(
         if (!demo) fetchReleases()
     }
 
+    fun clearReleaseError() {
+        _state.update { it.copy(releaseError = null) }
+    }
+
     private suspend fun fetchReleases() = fetchMutex.withLock {
         val config = settings()
         val repository = config.repository.ifBlank { defaultRepository }

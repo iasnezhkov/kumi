@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 package org.mindone.snapcase.ui
 
-import android.content.Intent
-import android.provider.Settings
 import android.view.KeyEvent
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -19,9 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -42,7 +38,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
@@ -57,85 +52,98 @@ fun keyName(code: Int): String = KeyNames.label(code)
 
 @Composable
 fun KeysScreen(prefs: AppPreferences) {
-    val context = LocalContext.current
     val settings by prefs.settings.collectAsStateWithLifecycle()
     var adding by remember { mutableStateOf(false) }
-    val active = RemapAccessibilityService.active
+    val active = rememberAccessibilityActive()
+    val detectedHome by RemapAccessibilityService.detectedHomeFlow.collectAsStateWithLifecycle()
 
-    LazyColumn(
-        Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        if (!active) {
+    val shAdd = stringResource(R.string.action_add_mapping)
+    val shBack = stringResource(R.string.action_back)
+    RegisterScreenKeys(
+        key = Unit,
+        shortcuts = listOf("A" to shAdd, "⌫" to shBack),
+    ) { code, repeat ->
+        if (repeat) return@RegisterScreenKeys false
+        when (code) {
+            KeyEvent.KEYCODE_A -> { adding = true; true }
+            else -> false
+        }
+    }
+
+    Column(Modifier.fillMaxSize()) {
+        LazyColumn(
+            Modifier.weight(1f).fillMaxWidth(),
+            contentPadding = PaddingValues(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            if (!active) {
+                item {
+                    AccessibilitySetupCard(active = false, detectedHome = detectedHome)
+                }
+            }
             item {
-                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
-                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(stringResource(R.string.keys_enable_title), style = MaterialTheme.typography.titleMedium)
-                        Text(stringResource(R.string.keys_enable_text), style = MaterialTheme.typography.bodyMedium)
-                        Button(onClick = { context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }) {
-                            Text(stringResource(R.string.action_open_accessibility))
+                Text(stringResource(R.string.keys_intro), style = MaterialTheme.typography.bodyMedium)
+            }
+            if (settings.remapTable.entries.isEmpty()) {
+                item {
+                    Text(
+                        stringResource(R.string.keys_empty),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp),
+                        textAlign = TextAlign.Center,
+                    )
+                }
+            }
+            items(settings.remapTable.entries.toSortedMap().entries.toList(), key = { it.key }) { (from, to) ->
+                Card(Modifier.fillMaxWidth()) {
+                    ListItem(
+                        headlineContent = {
+                            Text("${keyName(from)}  →  ${if (to == Keys.UNKNOWN) stringResource(R.string.keys_disabled) else keyName(to)}")
+                        },
+                        trailingContent = {
+                            IconButton(onClick = { prefs.removeRemap(from) }) {
+                                Icon(painterResource(R.drawable.ic_delete), contentDescription = stringResource(R.string.action_remove))
+                            }
+                        },
+                    )
+                }
+            }
+            item {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilledTonalButton(onClick = { adding = true }) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            KeycapBadge("A")
+                            Text(stringResource(R.string.action_add_mapping))
                         }
+                    }
+                    if (settings.remapTable.entries.isNotEmpty()) {
+                        TextButton(onClick = { prefs.clearRemap() }) { Text(stringResource(R.string.action_clear)) }
                     }
                 }
             }
-        }
-        item {
-            Text(stringResource(R.string.keys_intro), style = MaterialTheme.typography.bodyMedium)
-        }
-        if (settings.remapTable.entries.isEmpty()) {
+            item {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(stringResource(R.string.keys_only_snap), style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            stringResource(R.string.keys_only_snap_text),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(checked = settings.remapOnlySnap, onCheckedChange = { prefs.setRemapOnlySnap(it) })
+                }
+            }
             item {
                 Text(
-                    stringResource(R.string.keys_empty),
-                    style = MaterialTheme.typography.bodyMedium,
+                    stringResource(R.string.keys_layout_hint),
+                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp),
-                    textAlign = TextAlign.Center,
                 )
             }
         }
-        items(settings.remapTable.entries.toSortedMap().entries.toList(), key = { it.key }) { (from, to) ->
-            Card(Modifier.fillMaxWidth()) {
-                ListItem(
-                    headlineContent = {
-                        Text("${keyName(from)}  →  ${if (to == Keys.UNKNOWN) stringResource(R.string.keys_disabled) else keyName(to)}")
-                    },
-                    trailingContent = {
-                        IconButton(onClick = { prefs.removeRemap(from) }) {
-                            Icon(painterResource(R.drawable.ic_delete), contentDescription = stringResource(R.string.action_remove))
-                        }
-                    },
-                )
-            }
-        }
-        item {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilledTonalButton(onClick = { adding = true }) { Text(stringResource(R.string.action_add_mapping)) }
-                if (settings.remapTable.entries.isNotEmpty()) {
-                    TextButton(onClick = { prefs.clearRemap() }) { Text(stringResource(R.string.action_clear)) }
-                }
-            }
-        }
-        item {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(stringResource(R.string.keys_only_snap), style = MaterialTheme.typography.bodyLarge)
-                    Text(
-                        stringResource(R.string.keys_only_snap_text),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                Switch(checked = settings.remapOnlySnap, onCheckedChange = { prefs.setRemapOnlySnap(it) })
-            }
-        }
-        item {
-            Text(
-                stringResource(R.string.keys_layout_hint),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
+        KeyboardHintStrip(hints = listOf("A" to shAdd, "⌫" to shBack))
     }
 
     if (adding) {
@@ -151,6 +159,7 @@ fun KeysScreen(prefs: AppPreferences) {
 
 @Composable
 private fun AddMappingDialog(onDismiss: () -> Unit, onAdd: (Int, Int) -> Unit) {
+    SuppressScreenKeys()
     var source by remember { mutableStateOf<Int?>(null) }
     var target by remember { mutableStateOf<Int?>(null) }
     var query by remember { mutableStateOf("") }

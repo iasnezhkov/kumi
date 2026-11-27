@@ -238,6 +238,21 @@ class CpuTests(unittest.TestCase):
             with self.subTest(csr=hex(csr)):
                 result = emu.call(0x2000)
                 self.assertEqual(result['guest_traps'][0]['cause'], 2)
+        for csr in (0x001, 0x002, 0x003):
+            emu = machine()
+            program(emu, 0x2000, csrr(A0, csr), RET)
+            with self.subTest(fp_off=hex(csr)):
+                result = emu.call(0x2000)
+                self.assertEqual(result['guest_traps'][0]['cause'], 2)
+            emu = machine()
+            emu.uc.reg_write(emu.r.UC_RISCV_REG_MSTATUS, brom_emu.MSTATUS_FS_INITIAL)
+            emu.uc.reg_write(emu.r.UC_RISCV_REG_FCSR, 0x25)
+            program(emu, 0x2000, csrr(A0, csr), RET)
+            with self.subTest(fp_on=hex(csr)):
+                result = emu.call(0x2000)
+                self.assertFalse(result['guest_traps'])
+                expected = {0x001: 0x05, 0x002: 0x01, 0x003: 0x25}[csr]
+                self.assertEqual(result['outcome']['a0'], expected)
 
     def test_atomic_and_double_precision_instructions_trap(self):
         for word in (0x00B6252F, 0x02000053):
@@ -424,6 +439,20 @@ class SnapshotTests(unittest.TestCase):
             self.assertEqual(len(list(Path(directory).glob('*.snapshot'))), 2)
         with self.assertRaises(ValueError):
             restored.boot(5_000, start=0x2000)
+
+    def test_snapshot_registers_reads_fp_csrs_deterministically_with_fs_off(self):
+        first = machine()
+        second = machine()
+        second.uc.reg_write(second.r.UC_RISCV_REG_MSTATUS, brom_emu.MSTATUS_FS_INITIAL)
+        second.uc.reg_write(second.r.UC_RISCV_REG_FFLAGS, 0x15)
+        second.uc.reg_write(second.r.UC_RISCV_REG_MSTATUS, 0)
+        self.assertEqual(first.cpu.reg(first.r.UC_RISCV_REG_MSTATUS), 0)
+        self.assertEqual(second.cpu.reg(second.r.UC_RISCV_REG_MSTATUS), 0)
+        self.assertNotEqual(first.snapshot_registers(), second.snapshot_registers())
+        self.assertEqual(first.cpu.reg(first.r.UC_RISCV_REG_MSTATUS), 0)
+        self.assertEqual(second.cpu.reg(second.r.UC_RISCV_REG_MSTATUS), 0)
+        third = machine()
+        self.assertEqual(first.snapshot_key(5_000, [], 0x2000), third.snapshot_key(5_000, [], 0x2000))
 
 
 class PlicTests(unittest.TestCase):

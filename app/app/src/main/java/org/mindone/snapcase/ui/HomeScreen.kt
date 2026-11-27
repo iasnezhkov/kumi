@@ -3,6 +3,7 @@ package org.mindone.snapcase.ui
 
 import android.content.Intent
 import android.provider.Settings
+import android.view.KeyEvent
 import androidx.annotation.DrawableRes
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -62,7 +63,6 @@ import org.mindone.snapcase.protocol.DacFilter
 import org.mindone.snapcase.protocol.EqPreset
 import org.mindone.snapcase.protocol.EqPresets
 import org.mindone.snapcase.protocol.SnapProtocol
-import org.mindone.snapcase.remap.RemapAccessibilityService
 import org.mindone.snapcase.stock.StockSound
 import org.mindone.snapcase.stock.StockRepository
 import org.mindone.snapcase.stock.CaseLink
@@ -78,6 +78,7 @@ fun HomeScreen(
     appUpdate: AppReleaseAsset? = null,
     onOpenKeys: () -> Unit,
     onOpenIme: () -> Unit,
+    onOpenShortcuts: () -> Unit,
     onOpenTester: () -> Unit,
     onOpenFirmware: () -> Unit,
     onOpenUpdates: () -> Unit = onOpenFirmware,
@@ -93,6 +94,26 @@ fun HomeScreen(
     val usable = link == CaseLink.CONNECTED || link == CaseLink.DEMO
     val guarded: (() -> Unit) -> Unit = { action -> if (settings.experimentalWrites) action() else pending = action }
     val mergedOffer = offer.takeIf { link == CaseLink.NO_ACCESS }
+
+    val shStrip = stringResource(R.string.kumi_tile_strip)
+    val shShortcuts = stringResource(R.string.shortcuts_tile)
+    val shFirmware = stringResource(R.string.kumi_tab_case)
+    RegisterScreenKeys(
+        key = Unit,
+        shortcuts = listOf(
+            "S" to shStrip,
+            "F" to shShortcuts,
+            "R" to shFirmware,
+        ),
+    ) { code, repeat ->
+        if (repeat) return@RegisterScreenKeys false
+        when (code) {
+            KeyEvent.KEYCODE_S -> { onOpenIme(); true }
+            KeyEvent.KEYCODE_F -> { onOpenShortcuts(); true }
+            KeyEvent.KEYCODE_R -> { onOpenFirmware(); true }
+            else -> false
+        }
+    }
 
     Column(Modifier.fillMaxSize()) {
         if (showHeader) {
@@ -137,17 +158,24 @@ fun HomeScreen(
                     )
                 }
             }
-            item { KeyboardCard(settings.remapTable.entries.size, onOpenKeys, onOpenIme, onOpenTester) }
+            item { KeyboardCard(settings.remapTable.entries.size, onOpenKeys, onOpenIme, onOpenShortcuts, onOpenTester) }
             if (mergedOffer == null && offer == null && link != CaseLink.SERVICE_MODE) {
                 item {
                     Card(Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
-                            NavRow(R.drawable.ic_memory, R.string.kumi_offer_title, stringResource(R.string.kumi_offer_compact_text), onOpenFirmware)
+                            NavRow(R.drawable.ic_memory, R.string.kumi_offer_title, stringResource(R.string.kumi_offer_compact_text), onOpenFirmware, keyHint = "R")
                         }
                     }
                 }
             }
         }
+        KeyboardHintStrip(
+            hints = listOf(
+                "S" to shStrip,
+                "F" to shShortcuts,
+                "R" to shFirmware,
+            ),
+        )
     }
 
     pending?.let { action ->
@@ -238,6 +266,31 @@ private fun CaseCard(link: CaseLink, version: String?, audioActive: Boolean, onD
         CaseLink.DEMO -> Triple(R.drawable.ic_status, R.string.case_demo, R.string.case_demo_text)
     }
     val good = link == CaseLink.CONNECTED
+    if (link == CaseLink.ABSENT) {
+        Card(
+            Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        ) {
+            Column(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                MindOneCaseIllustration(animated = true)
+                Text(stringResource(title), style = MaterialTheme.typography.titleMedium)
+                Text(
+                    stringResource(text),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                )
+                TextButton(onClick = { onDemo(true) }) {
+                    Text(stringResource(R.string.action_try_demo))
+                }
+            }
+        }
+        return
+    }
     Card(
         Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
@@ -466,15 +519,22 @@ private fun MicSlider(gain: Double?, enabled: Boolean, onCommit: (Double) -> Uni
 }
 
 @Composable
-private fun KeyboardCard(mappings: Int, onOpenKeys: () -> Unit, onOpenIme: () -> Unit, onOpenTester: () -> Unit) {
+private fun KeyboardCard(
+    mappings: Int,
+    onOpenKeys: () -> Unit,
+    onOpenIme: () -> Unit,
+    onOpenShortcuts: () -> Unit,
+    onOpenTester: () -> Unit,
+) {
     Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(vertical = 8.dp)) {
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
             Text(
                 stringResource(R.string.kb_title),
                 style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                modifier = Modifier.padding(vertical = 4.dp),
             )
-            NavRow(R.drawable.ic_keyboard, R.string.ime_settings_title, stringResource(R.string.ime_settings_subtitle), onOpenIme)
+            NavRow(R.drawable.ic_keyboard, R.string.ime_settings_title, stringResource(R.string.ime_settings_subtitle), onOpenIme, keyHint = "S")
+            NavRow(R.drawable.ic_search, R.string.shortcuts_title, stringResource(R.string.shortcuts_subtitle), onOpenShortcuts, keyHint = "F")
             AndroidKeyboardRows(mappings, onOpenKeys)
             NavRow(R.drawable.ic_check, R.string.kb_tester_title, stringResource(R.string.kb_tester_text), onOpenTester)
         }
@@ -484,6 +544,7 @@ private fun KeyboardCard(mappings: Int, onOpenKeys: () -> Unit, onOpenIme: () ->
 @Composable
 fun AndroidKeyboardRows(mappings: Int, onOpenKeys: () -> Unit, remapKeyHint: String? = null) {
     val context = LocalContext.current
+    val accessibilityActive = rememberAccessibilityActive()
     NavRow(R.drawable.ic_keyboard, R.string.kb_layout, stringResource(R.string.kb_layout_text), onClick = {
         context.startActivity(Intent(Settings.ACTION_HARD_KEYBOARD_SETTINGS))
     })
@@ -492,7 +553,7 @@ fun AndroidKeyboardRows(mappings: Int, onOpenKeys: () -> Unit, remapKeyHint: Str
         R.string.kb_remap,
         when {
             mappings == 0 -> stringResource(R.string.kb_remap_none)
-            !RemapAccessibilityService.active -> stringResource(R.string.kb_remap_off, mappings)
+            !accessibilityActive -> stringResource(R.string.kb_remap_off, mappings)
             else -> stringResource(R.string.kb_remap_on, mappings)
         },
         onOpenKeys,

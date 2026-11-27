@@ -4,13 +4,16 @@ package org.mindone.snapcase.ime
 import android.view.KeyEvent
 import java.util.Locale
 
-enum class StripScript { LATIN, CYRILLIC, KANA }
+enum class StripScript { LATIN, CYRILLIC, KANA, HANGUL, PINYIN }
 
 enum class StripLang(val code: String, val label: String, val script: StripScript = StripScript.LATIN) {
     EN("en", "EN"),
     RU("ru", "RU", StripScript.CYRILLIC),
     UK("uk", "UK", StripScript.CYRILLIC),
     JA("ja", "JA", StripScript.KANA),
+    KO("ko", "KO", StripScript.HANGUL),
+    ZH_CN("zh-cn", "简", StripScript.PINYIN),
+    ZH_TW("zh-tw", "繁", StripScript.PINYIN),
     ES("es", "ES"),
     DE("de", "DE"),
     FR("fr", "FR"),
@@ -28,6 +31,9 @@ enum class StripLang(val code: String, val label: String, val script: StripScrip
 
     val isLatin: Boolean get() = script == StripScript.LATIN
     val isCyrillic: Boolean get() = script == StripScript.CYRILLIC
+    val isHangul: Boolean get() = script == StripScript.HANGUL
+    val isPinyin: Boolean get() = script == StripScript.PINYIN
+    val isCjkNoSpace: Boolean get() = script == StripScript.KANA || script == StripScript.PINYIN
 
     fun next(): StripLang = entries[(ordinal + 1) % entries.size]
 
@@ -157,6 +163,9 @@ object LocaleVariations {
     val ruExtraRow: List<String> = listOf("ё", "ъ", "э", "х", "ж", "б", "ю", "№", "«", "»", "—", "…")
     val ukExtraRow: List<String> = listOf("ґ", "є", "і", "ї", "х", "ж", "б", "ю", "'", "«", "»", "—")
     val jaExtraRow: List<String> = listOf("。", "、", "ー", "「", "」", "・", "？", "！", "〜", "（", "）", "…")
+    val koExtraRow: List<String> = listOf(",", ".", "?", "!", "~", "₩", "ㅋ", "ㅎ", "ㅠ", "—", "…", "·")
+    val zhCnExtraRow: List<String> = listOf("，", "。", "？", "！", "、", "：", "；", "“", "”", "（", "）", "……")
+    val zhTwExtraRow: List<String> = listOf("，", "。", "？", "！", "、", "「", "」", "：", "；", "（", "）", "……")
     val commonSymbols: List<String> = listOf(
         "!", "?", "@", "#", "$", "%", "^", "&", "*", "(", ")",
         "-", "_", "+", "=", "/", "\\", "|", "~", "`", "[", "]",
@@ -201,7 +210,7 @@ object LocaleVariations {
         val base = when (lang) {
             StripLang.RU -> russian[lower] ?: latin[lower]
             StripLang.UK -> ukrainian[lower] ?: russian[lower] ?: latin[lower]
-            StripLang.EN, StripLang.JA -> latin[lower]
+            StripLang.EN, StripLang.JA, StripLang.KO, StripLang.ZH_CN, StripLang.ZH_TW -> latin[lower]
             else -> {
                 val specific = perLang[lang]?.get(lower).orEmpty()
                 val generic = latin[lower].orEmpty()
@@ -215,6 +224,9 @@ object LocaleVariations {
         StripLang.RU -> ruExtraRow
         StripLang.UK -> ukExtraRow
         StripLang.JA -> jaExtraRow
+        StripLang.KO -> koExtraRow
+        StripLang.ZH_CN -> zhCnExtraRow
+        StripLang.ZH_TW -> zhTwExtraRow
         StripLang.EN -> commonSymbols.take(12)
         else -> extraRows[lang] ?: commonSymbols.take(12)
     }

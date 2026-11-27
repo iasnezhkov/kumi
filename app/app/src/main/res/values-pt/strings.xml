@@ -3,8 +3,8 @@
 <resources>
     <string name="app_name">Kumi</string>
     <string name="keyboard_layouts_label">Layouts iKKO Snap</string>
-    <string name="remap_service_label">Remapeamento de teclas Snap</string>
-    <string name="remap_service_description">Experimental. Remapeia as teclas da capa iKKO Snap com base na tabela do app Snap Case: consome a tecla original e injeta a mapeada. A injeção só funciona na compilação do sistema assinada com a chave da plataforma.</string>
+    <string name="remap_service_label">Atalhos de teclado Kumi</string>
+    <string name="remap_service_description">Ativa a busca de apps na tela inicial, Backspace como Voltar fora de campos de texto, controle de mídia com toque duplo e teclas rápidas. Não lê nem envia senhas ou texto da tela.</string>
     <string name="demo_banner">Modo demo: respostas simuladas, não é uma capa real</string>
     <string name="tag_measured">medido</string>
     <string name="tag_unverified">não verificado</string>
@@ -277,7 +277,7 @@
     <string name="kb_tester_text">Verificar se todas as teclas funcionam</string>
     <string name="keys_title">Remapear teclas</string>
     <string name="keys_enable_title">Ativar o remapeamento</string>
-    <string name="keys_enable_text">Abra Acessibilidade e ative «Remapeamento de teclas Snap». Sem isso, as teclas mantêm a função habitual.</string>
+    <string name="keys_enable_text">Abra Acessibilidade e ative «Atalhos de teclado Kumi». Sem isso, as teclas mantêm o comportamento padrão.</string>
     <string name="keys_intro">Pressione «Adicionar», pressione uma tecla da capa e escolha o que ela deve fazer.</string>
     <string name="keys_empty">Nada foi remapeado ainda</string>
     <string name="keys_disabled">Não fazer nada</string>
@@ -688,7 +688,7 @@
     <string name="kumi_case_ready">Conectada e pronta</string>
     <string name="kumi_crossfeed_hint">Mistura levemente os canais para que os fones soem mais como caixas de som.</string>
     <string name="kumi_advanced_sound_title">Som avançado</string>
-    <string name="kumi_advanced_sound_summary">Fase, DSD, filtro DC, Line-Out</string>
+    <string name="kumi_advanced_sound_summary">Fase, DSD, filtro DC, troca E/D</string>
     <string name="kumi_keys_timing_summary">Atraso para segurar e tecla fixa</string>
     <string name="kumi_eq_reset_confirm_title">Redefinir o equalizador?</string>
     <string name="kumi_eq_reset_confirm_text">Zera todas as bandas deste slot para Neutro.</string>
@@ -832,7 +832,7 @@
     <string name="ime_subtype_uk">Ucraniano (Kumi Strip)</string>
     <string name="ime_subtype_ja">Japonês (Kumi Strip)</string>
     <string name="ime_settings_title">Barra de autocompletar e atalhos</string>
-    <string name="ime_settings_subtitle">Barra de sugestões inferior, troca de layout, emojis e dicionários</string>
+    <string name="ime_settings_subtitle">Sugestões, layouts, vibração e dicionários</string>
     <string name="ime_setup_title">Barra de entrada Kumi Strip</string>
     <string name="ime_setup_body">Barra compacta de 46 dp na parte inferior com sugestões, layout, emojis e área de transferência para digitar com teclado físico; funciona no Android 15 e 16 sem cobrir a tela.</string>
     <string name="ime_switch_to_virtual">Teclado na tela ⌨</string>
@@ -895,7 +895,7 @@
     <string name="ime_long_press_upper">Maiúscula</string>
     <string name="ime_default_lang_label">Dicionário padrão</string>
     <string name="ime_dicts_title">Dicionários off-line</string>
-    <string name="ime_dicts_desc">Inglês, russo, ucraniano (MIT FrequencyWords) e romaji→kana/kanji japonês (BSD-3-Clause Google Mozc) já vêm integrados off-line. Espanhol, alemão, francês, italiano, português, polonês, holandês, turco, tcheco, sueco, finlandês, romeno e húngaro são baixados no dispositivo (25 mil palavras cada) em menos de um segundo.</string>
+    <string name="ime_dicts_desc">Inglês, russo, ucraniano, coreano (MIT FrequencyWords), japonês Romaji→Kana/Kanji (BSD-3-Clause Google Mozc) e chinês simplificado/tradicional Pinyin (Apache-2.0 Rime + OpenCC) vêm integrados offline. Espanhol, alemão, francês, italiano, português, polonês, holandês, turco, tcheco, sueco, finlandês, romeno e húngaro são baixados no aparelho (25 mil palavras cada) em menos de um segundo.</string>
     <string name="ime_langs_download_hint">Idiomas marcados com ↓ baixam o dicionário quando ativados.</string>
     <string name="ime_dict_bundled">Integrado (15 mil palavras, off-line)</string>
     <string name="ime_dict_downloaded">Baixado (25 mil palavras, off-line)</string>
@@ -951,4 +951,42 @@
     <string name="home_search_placeholder">Buscar apps…</string>
     <string name="home_search_empty">Nenhum app correspondente</string>
     <string name="home_search_footer_hint">Enter abre · ↑↓ seleciona · Esc fecha</string>
+    <string name="ime_tab_snippets">Snippets</string>
+    <string name="kumi_line_out_badge">Line-Out</string>
+    <string name="kumi_audio_dac_glitch">Breve falha na saída de áudio. Reconecte os fones ou reinicie a reprodução se o som parar.</string>
+    <string name="kumi_diag_audio_counters">Contadores de áudio</string>
+    <string name="kumi_err_generic">Não foi possível concluir a ação na capa. Tente novamente ou reconecte a capa.</string>
+    <string name="kumi_err_no_reply">A capa não respondeu a tempo. Aguarde um instante ou reconecte-a.</string>
+    <string name="kumi_err_usb_link">A conexão USB com a capa foi interrompida. Reconecte a capa.</string>
+    <string name="kumi_err_protocol">Resposta inesperada da capa. Atualize o app ou o firmware se continuar acontecendo.</string>
+    <string name="kumi_err_not_connected">A capa não está conectada. Conecte a capa e tente novamente.</string>
+    <string name="kumi_err_network_offline">Sem conexão com a internet. Conecte-se a uma rede e tente novamente.</string>
+    <string name="kumi_err_network_timeout">Tempo de conexão esgotado. Verifique sua rede e tente novamente.</string>
+    <string name="kumi_err_network_rate_limit">Limite de requisições do GitHub atingido. Tente novamente em alguns minutos.</string>
+    <string name="kumi_err_network_generic">Não foi possível acessar o GitHub. Verifique sua conexão e tente novamente.</string>
+    <string name="shortcuts_title">Atalhos do sistema</string>
+    <string name="shortcuts_tile">Atalhos</string>
+    <string name="shortcuts_subtitle">Busca, Backspace = Voltar e mídia</string>
+    <string name="shortcuts_setup_title">Ativar Atalhos de teclado Kumi</string>
+    <string name="shortcuts_setup_badge">2 passos</string>
+    <string name="shortcuts_service_active_title">Atalhos de teclado Kumi ativos</string>
+    <string name="shortcuts_service_active_text">Busca na tela inicial, Backspace = Voltar e atalhos prontos.</string>
+    <string name="shortcuts_service_active_launcher">Ativo · launcher: %1$s</string>
+    <string name="shortcuts_step1_title">Permitir configurações restritas (APK)</string>
+    <string name="shortcuts_step1_hint">Abra Informações do app → role até o fim ou toque em ⋮ → ative «Permitir configurações restritas». Pule se já permitido.</string>
+    <string name="shortcuts_step1_cta">Info do app</string>
+    <string name="shortcuts_step2_title">Ativar Atalhos de teclado Kumi</string>
+    <string name="shortcuts_step2_hint">Abra Acessibilidade → Apps transferidos → Atalhos de teclado Kumi → ative apenas a chave superior (deixe «Atalho» desligado para não aparecer o botão flutuante).</string>
+    <string name="shortcuts_back_title">Backspace como Voltar</string>
+    <string name="shortcuts_back_desc">Pressione Backspace fora de campos de texto para voltar no Android. Ignora campos de texto, tela inicial, tela de bloqueio e apps excluídos.</string>
+    <string name="shortcuts_back_toggle">Backspace = Voltar</string>
+    <string name="shortcuts_back_excluded_btn">Apps excluídos (%1$d)</string>
+    <string name="shortcuts_back_excluded_title">Apps excluídos</string>
+    <string name="shortcuts_back_excluded_hint">O Backspace permanece normal nos apps marcados (terminais, SSH, jogos).</string>
+    <string name="shortcuts_media_title">Controle de mídia por toque duplo</string>
+    <string name="shortcuts_media_desc">Fora de campos de texto (inclusive na tela de bloqueio): 2× Shift esq. = faixa anterior, 2× Backspace = próxima faixa, 2× Espaço = tocar/pausar.</string>
+    <string name="shortcuts_media_toggle">Ativar toque duplo de mídia</string>
+    <string name="settings_launcher_title">Launcher</string>
+    <string name="settings_launcher_bridge">Permitir controles rápidos do launcher</string>
+    <string name="settings_launcher_bridge_text">Compartilha o status de DAC, EQ e camadas com o MindOne Launcher e permite controles rápidos de áudio.</string>
 </resources>

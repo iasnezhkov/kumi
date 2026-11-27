@@ -54,6 +54,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -89,9 +90,10 @@ fun KumiHomeScreen(
     onOpenEq: (Int) -> Unit,
     onOpenKeys: () -> Unit,
     onOpenIme: () -> Unit,
-    onOpenTester: () -> Unit,
+    onOpenShortcuts: () -> Unit,
     onOpenFirmware: () -> Unit,
     onOpenUpdates: () -> Unit = onOpenFirmware,
+    onEnableDemo: () -> Unit = {},
     overflowMenu: @Composable () -> Unit = {},
 ) {
     val kind by kumi.kind.collectAsStateWithLifecycle()
@@ -138,7 +140,7 @@ fun KumiHomeScreen(
     val shXfeed = stringResource(R.string.kumi_tile_crossfeed)
     val shAwake = stringResource(R.string.kumi_tile_awake)
     val shStrip = stringResource(R.string.kumi_tile_strip)
-    val shTester = stringResource(R.string.kb_tester_title)
+    val shShortcuts = stringResource(R.string.shortcuts_tile)
 
     RegisterScreenKeys(
         key = listOf(state.connected, activeEq, lastEqSlot, state.eqSlots, state.dsp, state.dacExtras),
@@ -151,20 +153,20 @@ fun KumiHomeScreen(
             "X" to shXfeed,
             "A" to shAwake,
             "S" to shStrip,
-            "T" to shTester,
+            "F" to shShortcuts,
         ),
     ) { code, repeat ->
         if (repeat) return@RegisterScreenKeys false
         when (code) {
-            KeyEvent.KEYCODE_Q -> { onOpenAudio(); true }
-            KeyEvent.KEYCODE_W -> { onOpenEq(activeEq ?: lastEqSlot); true }
+            KeyEvent.KEYCODE_Q -> if (state.connected) { onOpenAudio(); true } else false
+            KeyEvent.KEYCODE_W -> if (state.connected) { onOpenEq(activeEq ?: lastEqSlot); true } else false
             KeyEvent.KEYCODE_E -> { onOpenKeys(); true }
             KeyEvent.KEYCODE_R -> { caseOpenTarget(); true }
             KeyEvent.KEYCODE_SPACE -> if (state.connected) { toggleEq(); true } else false
             KeyEvent.KEYCODE_X -> if (state.connected && state.dsp != null) { cycleCrossfeed(); true } else false
             KeyEvent.KEYCODE_A -> if (state.connected && state.dacExtras != null) { toggleStayAwake(); true } else false
             KeyEvent.KEYCODE_S -> { onOpenIme(); true }
-            KeyEvent.KEYCODE_T -> { onOpenTester(); true }
+            KeyEvent.KEYCODE_F -> { onOpenShortcuts(); true }
             else -> false
         }
     }
@@ -238,20 +240,53 @@ fun KumiHomeScreen(
                 }
                 Card(
                     Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+                    shape = RoundedCornerShape(18.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
                 ) {
-                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(stringResource(caseText(kind)), style = MaterialTheme.typography.bodyMedium)
+                    Column(
+                        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        MindOneCaseIllustration(animated = kind == CaseKind.NONE)
+                        Text(
+                            stringResource(caseTitle(kind)),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Text(
+                            stringResource(if (state.permissionDenied) R.string.kumi_case_absent_text else caseText(kind)),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center,
+                        )
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            if (kind == CaseKind.SERVICE) {
+                            if (kind == CaseKind.SERVICE || kind == CaseKind.STOCK) {
                                 Button(onClick = onOpenFirmware) { Text(stringResource(R.string.kumi_open_firmware)) }
+                            } else {
+                                FilledTonalButton(onClick = onEnableDemo) { Text(stringResource(R.string.action_try_demo)) }
                             }
                             if (state.permissionDenied) {
                                 TextButton(onClick = kumi::retry) { Text(stringResource(R.string.action_retry)) }
                             }
                         }
                     }
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    CompactShortcutButton(
+                        icon = R.drawable.ic_keyboard,
+                        label = stringResource(R.string.kumi_tile_strip),
+                        keyHint = "S",
+                        onClick = onOpenIme,
+                        modifier = Modifier.weight(1f),
+                    )
+                    CompactShortcutButton(
+                        icon = R.drawable.ic_search,
+                        label = stringResource(R.string.shortcuts_tile),
+                        keyHint = "F",
+                        onClick = onOpenShortcuts,
+                        modifier = Modifier.weight(1f),
+                    )
                 }
             } else {
                 if (state.error != null || state.diagnostics?.safeMode == true || state.ramOnly) {
@@ -283,7 +318,12 @@ fun KumiHomeScreen(
                     )
                 }
 
-                val filterSummary = state.output?.let { stringResource(filterTitle(it.filter.stock())) } ?: stringResource(R.string.value_unavailable)
+                val rawFilterSummary = state.output?.let { stringResource(filterTitle(it.filter.stock())) } ?: stringResource(R.string.value_unavailable)
+                val filterSummary = if (state.dacExtras?.lineOut == true) {
+                    "${stringResource(R.string.kumi_line_out_badge)} · $rawFilterSummary"
+                } else {
+                    rawFilterSummary
+                }
                 val eqSummary = activeEq?.let { idx ->
                     val p = state.eqSlots.getOrNull(idx)
                     val matched = p?.let { prof -> org.mindone.snapcase.kumi.KumiEqPresets.ALL.firstOrNull { it.bands == prof.bands } }
@@ -376,10 +416,10 @@ fun KumiHomeScreen(
                         modifier = Modifier.weight(1f),
                     )
                     CompactShortcutButton(
-                        icon = R.drawable.ic_check,
-                        label = stringResource(R.string.kb_tester_title),
-                        keyHint = "T",
-                        onClick = onOpenTester,
+                        icon = R.drawable.ic_search,
+                        label = stringResource(R.string.shortcuts_tile),
+                        keyHint = "F",
+                        onClick = onOpenShortcuts,
                         modifier = Modifier.weight(1f),
                     )
                 }
@@ -387,11 +427,19 @@ fun KumiHomeScreen(
         }
 
         KeyboardHintStrip(
-            hints = listOf(
-                "Q–R" to stringResource(R.string.kumi_key_hint_open),
-                "␣" to shToggleEq,
-                "X" to shXfeed,
-            ),
+            hints = if (good) {
+                listOf(
+                    "Q–R" to stringResource(R.string.kumi_key_hint_open),
+                    "␣" to shToggleEq,
+                    "X" to shXfeed,
+                )
+            } else {
+                listOf(
+                    "S" to shStrip,
+                    "F" to shShortcuts,
+                    "R" to shCase,
+                )
+            },
         )
     }
 }

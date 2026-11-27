@@ -28,6 +28,24 @@
         android:imeSubtypeLocale="ja_JP"
         android:imeSubtypeMode="keyboard"
         android:label="@string/ime_subtype_ja" />
+
+    <subtype
+        android:icon="@mipmap/ic_launcher"
+        android:imeSubtypeLocale="ko_KR"
+        android:imeSubtypeMode="keyboard"
+        android:label="@string/ime_subtype_ko" />
+
+    <subtype
+        android:icon="@mipmap/ic_launcher"
+        android:imeSubtypeLocale="zh_CN"
+        android:imeSubtypeMode="keyboard"
+        android:label="@string/ime_subtype_zh_cn" />
+
+    <subtype
+        android:icon="@mipmap/ic_launcher"
+        android:imeSubtypeLocale="zh_TW"
+        android:imeSubtypeMode="keyboard"
+        android:label="@string/ime_subtype_zh_tw" />
     <subtype
         android:icon="@mipmap/ic_launcher"
         android:imeSubtypeLocale="es_ES"

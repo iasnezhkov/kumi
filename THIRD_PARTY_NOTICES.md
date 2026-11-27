@@ -15,11 +15,19 @@ components and compiled open-corpus assets that retain their respective upstream
 
 ## FrequencyWords (`MIT`)
 
-- **Files:** `app/app/src/main/assets/dict/en.snapdict`, `ru.snapdict`, `uk.snapdict` (reproducible
-  via `app/tools/build_dict.py`)
+- **Files:** `app/app/src/main/assets/dict/en.snapdict`, `ru.snapdict`, `uk.snapdict`, `ko.snapdict`
+  (reproducible via `app/tools/build_dict.py`)
 - **Source:** <https://github.com/hermitdave/FrequencyWords> (2018 OpenSubtitles word frequency
   lists)
 - **License:** MIT License
+
+## Rime Pinyin Simplified & OpenCC (`Apache-2.0`)
+
+- **Files:** `app/app/src/main/assets/dict/zh_cn.snappy`, `zh_tw.snappy` (reproducible via
+  `app/tools/build_zh_dict.py`)
+- **Source:** <https://github.com/rime/rime-pinyin-simp> (`pinyin_simp.dict.yaml`) and
+  <https://github.com/BYVoid/OpenCC> (`STCharacters.txt`, `STPhrases.txt`)
+- **License:** Apache License 2.0 (<https://www.apache.org/licenses/LICENSE-2.0>)
 
 ## Google Mozc (`BSD-3-Clause`)
 

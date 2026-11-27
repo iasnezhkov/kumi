@@ -3,8 +3,8 @@
 <resources>
     <string name="app_name">Kumi</string>
     <string name="keyboard_layouts_label">Distribuciones iKKO Snap</string>
-    <string name="remap_service_label">Reasignación de teclas Snap</string>
-    <string name="remap_service_description">Experimental. Reasigna las teclas de la funda iKKO Snap según la tabla de la app Snap Case: consume la tecla original e inyecta la asignada. La inyección solo funciona en la compilación del sistema firmada con la clave de la plataforma.</string>
+    <string name="remap_service_label">Atajos de teclado Kumi</string>
+    <string name="remap_service_description">Activa la búsqueda de apps en la pantalla de inicio, Backspace como Atrás fuera de campos de texto, controles multimedia con doble toque y teclas rápidas. No lee ni envía contraseñas ni texto en pantalla.</string>
     <string name="demo_banner">Modo demo: respuestas simuladas, no es una funda real</string>
     <string name="tag_measured">medido</string>
     <string name="tag_unverified">sin verificar</string>
@@ -277,7 +277,7 @@
     <string name="kb_tester_text">Comprobar que todas las teclas funcionan</string>
     <string name="keys_title">Reasignar teclas</string>
     <string name="keys_enable_title">Activar la reasignación</string>
-    <string name="keys_enable_text">Abra Accesibilidad y active «Reasignación de teclas Snap». Sin ello, las teclas conservan su función habitual.</string>
+    <string name="keys_enable_text">Abra Accesibilidad y active «Atajos de teclado Kumi». Sin ello, las teclas conservan su función normal.</string>
     <string name="keys_intro">Pulse «Añadir», pulse una tecla de la funda y elija qué debe hacer.</string>
     <string name="keys_empty">Aún no hay nada reasignado</string>
     <string name="keys_disabled">No hacer nada</string>
@@ -688,7 +688,7 @@
     <string name="kumi_case_ready">Conectada y lista</string>
     <string name="kumi_crossfeed_hint">Mezcla ligeramente los canales para que los auriculares suenen más como altavoces.</string>
     <string name="kumi_advanced_sound_title">Sonido avanzado</string>
-    <string name="kumi_advanced_sound_summary">Fase, DSD, filtro DC, Line-Out</string>
+    <string name="kumi_advanced_sound_summary">Fase, DSD, filtro DC, cambio I/D</string>
     <string name="kumi_keys_timing_summary">Retardo de mantenido y tecla fija</string>
     <string name="kumi_eq_reset_confirm_title">¿Restablecer el ecualizador?</string>
     <string name="kumi_eq_reset_confirm_text">Deja todas las bandas de esta ranura en Plano.</string>
@@ -832,7 +832,7 @@
     <string name="ime_subtype_uk">Ucraniano (Kumi Strip)</string>
     <string name="ime_subtype_ja">Japonés (Kumi Strip)</string>
     <string name="ime_settings_title">Barra de autocompletado y atajos</string>
-    <string name="ime_settings_subtitle">Barra inferior de sugerencias, cambio de distribución, emojis y diccionarios</string>
+    <string name="ime_settings_subtitle">Sugerencias, distribuciones, vibración y diccionarios</string>
     <string name="ime_setup_title">Barra de entrada Kumi Strip</string>
     <string name="ime_setup_body">Barra compacta de 46 dp con sugerencias, distribución, emojis y portapapeles, en la parte inferior, para escribir con teclado físico; funciona en Android 15 y 16 sin tapar la pantalla.</string>
     <string name="ime_switch_to_virtual">Teclado en pantalla ⌨</string>
@@ -895,7 +895,7 @@
     <string name="ime_long_press_upper">Mayúscula</string>
     <string name="ime_default_lang_label">Diccionario predeterminado</string>
     <string name="ime_dicts_title">Diccionarios sin conexión</string>
-    <string name="ime_dicts_desc">Inglés, ruso, ucraniano (MIT FrequencyWords) y romaji→kana/kanji japonés (BSD-3-Clause Google Mozc) están integrados sin conexión. Español, alemán, francés, italiano, portugués, polaco, neerlandés, turco, checo, sueco, finés, rumano y húngaro se descargan en el dispositivo (25 mil palabras cada uno) en menos de un segundo.</string>
+    <string name="ime_dicts_desc">Inglés, ruso, ucraniano, coreano (MIT FrequencyWords), japonés Romaji→Kana/Kanji (BSD-3-Clause Google Mozc) y chino simplificado/tradicional Pinyin (Apache-2.0 Rime + OpenCC) vienen integrados sin conexión. Español, alemán, francés, italiano, portugués, polaco, neerlandés, turco, checo, sueco, finés, rumano y húngaro se descargan en el dispositivo (25 mil palabras) en menos de un segundo.</string>
     <string name="ime_langs_download_hint">Los idiomas marcados con ↓ descargan su diccionario al activarse.</string>
     <string name="ime_dict_bundled">Integrado (15 mil palabras, sin conexión)</string>
     <string name="ime_dict_downloaded">Descargado (25 mil palabras, sin conexión)</string>
@@ -951,4 +951,42 @@
     <string name="home_search_placeholder">Buscar aplicaciones…</string>
     <string name="home_search_empty">No hay aplicaciones coincidentes</string>
     <string name="home_search_footer_hint">Intro abre · ↑↓ selecciona · Esc cierra</string>
+    <string name="ime_tab_snippets">Fragmentos</string>
+    <string name="kumi_line_out_badge">Line-Out</string>
+    <string name="kumi_audio_dac_glitch">Breve fallo en la salida de audio. Vuelva a conectar los auriculares o reinicie la reproducción si se detuvo el sonido.</string>
+    <string name="kumi_diag_audio_counters">Contadores de audio</string>
+    <string name="kumi_err_generic">No se pudo completar la acción en la funda. Inténtelo de nuevo o vuelva a conectarla.</string>
+    <string name="kumi_err_no_reply">La funda no respondió a tiempo. Espere un momento o vuelva a conectarla.</string>
+    <string name="kumi_err_usb_link">Se interrumpió el enlace USB con la funda. Vuelva a conectarla para reconectar.</string>
+    <string name="kumi_err_protocol">Respuesta inesperada de la funda. Actualice la app o el firmware si continúa ocurriendo.</string>
+    <string name="kumi_err_not_connected">La funda no está conectada. Conéctela e inténtelo de nuevo.</string>
+    <string name="kumi_err_network_offline">Sin conexión a internet. Conéctese a una red e inténtelo de nuevo.</string>
+    <string name="kumi_err_network_timeout">Se agotó el tiempo de conexión. Revise su red e inténtelo de nuevo.</string>
+    <string name="kumi_err_network_rate_limit">Se alcanzó el límite de GitHub. Inténtelo de nuevo en unos minutos.</string>
+    <string name="kumi_err_network_generic">No se pudo conectar con GitHub. Revise su conexión e inténtelo de nuevo.</string>
+    <string name="shortcuts_title">Atajos del sistema</string>
+    <string name="shortcuts_tile">Atajos</string>
+    <string name="shortcuts_subtitle">Búsqueda, Backspace = Atrás y multimedia</string>
+    <string name="shortcuts_setup_title">Activar Atajos de teclado Kumi</string>
+    <string name="shortcuts_setup_badge">2 pasos</string>
+    <string name="shortcuts_service_active_title">Atajos de teclado Kumi activos</string>
+    <string name="shortcuts_service_active_text">La búsqueda en inicio, Backspace = Atrás y los atajos están listos.</string>
+    <string name="shortcuts_service_active_launcher">Activo · lanzador: %1$s</string>
+    <string name="shortcuts_step1_title">Permitir ajustes restringidos (APK)</string>
+    <string name="shortcuts_step1_hint">Abra Información de la app → baje o toque ⋮ → active «Permitir ajustes restringidos». Omita si ya está permitido.</string>
+    <string name="shortcuts_step1_cta">Info de la app</string>
+    <string name="shortcuts_step2_title">Activar Atajos de teclado Kumi</string>
+    <string name="shortcuts_step2_hint">Abra Accesibilidad → Apps descargadas → Atajos de teclado Kumi → active solo el interruptor superior (deje «Acceso directo» desactivado para evitar el botón flotante).</string>
+    <string name="shortcuts_back_title">Backspace como Atrás</string>
+    <string name="shortcuts_back_desc">Pulse Backspace fuera de campos de texto para volver atrás en Android. Omite campos de texto, inicio, pantalla de bloqueo y apps excluidas.</string>
+    <string name="shortcuts_back_toggle">Backspace = Atrás</string>
+    <string name="shortcuts_back_excluded_btn">Apps excluidas (%1$d)</string>
+    <string name="shortcuts_back_excluded_title">Apps excluidas</string>
+    <string name="shortcuts_back_excluded_hint">Backspace funciona normal en las apps marcadas (terminales, SSH, juegos).</string>
+    <string name="shortcuts_media_title">Controles multimedia con doble toque</string>
+    <string name="shortcuts_media_desc">Fuera de campos de texto (también en pantalla de bloqueo): 2× Shift izq. = pista anterior, 2× Backspace = siguiente pista, 2× Espacio = reproducir/pausar.</string>
+    <string name="shortcuts_media_toggle">Activar doble toque multimedia</string>
+    <string name="settings_launcher_title">Launcher</string>
+    <string name="settings_launcher_bridge">Permitir controles rápidos del launcher</string>
+    <string name="settings_launcher_bridge_text">Comparte el estado de DAC, EQ y capas con MindOne Launcher y permite controles rápidos de audio.</string>
 </resources>

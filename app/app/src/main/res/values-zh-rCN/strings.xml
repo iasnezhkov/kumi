@@ -3,8 +3,8 @@
 <resources>
     <string name="app_name">Kumi</string>
     <string name="keyboard_layouts_label">iKKO Snap 布局</string>
-    <string name="remap_service_label">Snap 按键重映射</string>
-    <string name="remap_service_description">实验性功能。按 Snap Case 应用中的映射表重映射 iKKO Snap 键盘壳的按键：拦截原按键并注入映射后的按键。注入仅在使用平台密钥签名的系统版本中可用。</string>
+    <string name="remap_service_label">Kumi 键盘快捷键</string>
+    <string name="remap_service_description">启用主屏幕应用搜索、非输入状态 Backspace 返回、双击媒体控制和快速启动键。不会读取或发送密码及屏幕文本。</string>
     <string name="demo_banner">演示模式：脚本化应答，并非真实键盘壳</string>
     <string name="tag_measured">已实测</string>
     <string name="tag_unverified">未验证</string>
@@ -277,7 +277,7 @@
     <string name="kb_tester_text">检查每个按键是否正常</string>
     <string name="keys_title">重映射按键</string>
     <string name="keys_enable_title">开启重映射</string>
-    <string name="keys_enable_text">打开“无障碍”，开启“Snap 按键重映射”。未开启时，按键保持原有功能。</string>
+    <string name="keys_enable_text">打开无障碍设置并启用「Kumi 键盘快捷键」。未启用时按键保持原有功能。</string>
     <string name="keys_intro">点按“添加”，按下键盘壳上的一个键，然后选择它的功能。</string>
     <string name="keys_empty">尚未重映射任何按键</string>
     <string name="keys_disabled">不执行任何操作</string>
@@ -688,7 +688,7 @@
     <string name="kumi_case_ready">已连接，准备就绪</string>
     <string name="kumi_crossfeed_hint">轻微混合左右声道，让耳机听感更接近音箱。</string>
     <string name="kumi_advanced_sound_title">高级音效</string>
-    <string name="kumi_advanced_sound_summary">相位、DSD、直流滤波、线路输出</string>
+    <string name="kumi_advanced_sound_summary">相位、DSD、直流滤波、左右声道互换</string>
     <string name="kumi_keys_timing_summary">按住延迟与粘滞键超时</string>
     <string name="kumi_eq_reset_confirm_title">重置均衡器？</string>
     <string name="kumi_eq_reset_confirm_text">将此槽位的所有频段清除为平直。</string>
@@ -832,7 +832,7 @@
     <string name="ime_subtype_uk">乌克兰语 (Kumi Strip)</string>
     <string name="ime_subtype_ja">日语 (Kumi Strip)</string>
     <string name="ime_settings_title">自动补全条与快捷键</string>
-    <string name="ime_settings_subtitle">底部建议栏、布局切换、表情符号与词典</string>
+    <string name="ime_settings_subtitle">候选词、键盘布局、振动与词典</string>
     <string name="ime_setup_title">Kumi Strip 输入栏</string>
     <string name="ime_setup_body">为实体键盘输入设计的底部紧凑条（高 46 dp），集成建议词、布局、表情符号和剪贴板，适用于 Android 15 和 16，且不会遮挡屏幕。</string>
     <string name="ime_switch_to_virtual">点按使用屏幕键盘 ⌨</string>
@@ -895,7 +895,7 @@
     <string name="ime_long_press_upper">大写</string>
     <string name="ime_default_lang_label">默认词典</string>
     <string name="ime_dicts_title">离线词典</string>
-    <string name="ime_dicts_desc">英语、俄语、乌克兰语 (MIT FrequencyWords) 和日语罗马字→假名/汉字 (BSD-3-Clause Google Mozc) 已内置，可离线使用。西班牙语、德语、法语、意大利语、葡萄牙语、波兰语、荷兰语、土耳其语、捷克语、瑞典语、芬兰语、罗马尼亚语和匈牙利语可在设备上下载（每种 2.5 万词），耗时不到一秒。</string>
+    <string name="ime_dicts_desc">英语、俄语、乌克兰语、韩语（MIT FrequencyWords）、日语罗马音→假名/汉字（BSD-3-Clause Google Mozc）以及简体/繁体中文拼音（Apache-2.0 Rime + OpenCC）已离线内置。西班牙语、德语、法语、意大利语、葡萄牙语、波兰语、荷兰语、土耳其语、捷克语、瑞典语、芬兰语、罗马尼亚语和匈牙利语可在 1 秒内下载到本机（各 2.5 万词）。</string>
     <string name="ime_langs_download_hint">标有 ↓ 的语言在启用时会下载其词典。</string>
     <string name="ime_dict_bundled">内置（1.5 万词，离线）</string>
     <string name="ime_dict_downloaded">已下载（2.5 万词，离线）</string>
@@ -951,4 +951,42 @@
     <string name="home_search_placeholder">搜索应用…</string>
     <string name="home_search_empty">没有匹配的应用</string>
     <string name="home_search_footer_hint">Enter 打开 · ↑↓ 选择 · Esc 关闭</string>
+    <string name="ime_tab_snippets">短语</string>
+    <string name="kumi_line_out_badge">线路输出</string>
+    <string name="kumi_audio_dac_glitch">音频输出出现短暂异常。如果声音中断，请重新插拔耳机或重新开始播放。</string>
+    <string name="kumi_diag_audio_counters">音频计数</string>
+    <string name="kumi_err_generic">无法在保护壳上完成该操作。请重试或重新装上保护壳。</string>
+    <string name="kumi_err_no_reply">保护壳响应超时。请稍候片刻或重新装上保护壳。</string>
+    <string name="kumi_err_usb_link">与保护壳的 USB 连接已中断。请重新装上保护壳以重连。</string>
+    <string name="kumi_err_protocol">保护壳返回了意外数据。若频繁出现，请更新应用或固件。</string>
+    <string name="kumi_err_not_connected">保护壳未连接。请装上保护壳后重试。</string>
+    <string name="kumi_err_network_offline">无网络连接。请联网后重试。</string>
+    <string name="kumi_err_network_timeout">连接超时。请检查网络后重试。</string>
+    <string name="kumi_err_network_rate_limit">已达到 GitHub 请求限制，请几分钟后再试。</string>
+    <string name="kumi_err_network_generic">无法连接到 GitHub。请检查网络后重试。</string>
+    <string name="shortcuts_title">系统快捷键</string>
+    <string name="shortcuts_tile">快捷键</string>
+    <string name="shortcuts_subtitle">主屏搜索、Backspace 返回与媒体</string>
+    <string name="shortcuts_setup_title">启用 Kumi 键盘快捷键</string>
+    <string name="shortcuts_setup_badge">2 步</string>
+    <string name="shortcuts_service_active_title">Kumi 键盘快捷键已启用</string>
+    <string name="shortcuts_service_active_text">主屏搜索、Backspace 返回和快捷键已就绪。</string>
+    <string name="shortcuts_service_active_launcher">已启用 · 桌面：%1$s</string>
+    <string name="shortcuts_step1_title">允许受限制的设置（APK 安装）</string>
+    <string name="shortcuts_step1_hint">打开应用信息 → 滑到底部或点 ⋮ → 开启「允许受限制的设置」。若已允许可跳过。</string>
+    <string name="shortcuts_step1_cta">打开应用信息</string>
+    <string name="shortcuts_step2_title">开启 Kumi 键盘快捷键</string>
+    <string name="shortcuts_step2_hint">打开无障碍 → 已下载的应用 → Kumi 键盘快捷键 → 仅打开上方总开关（请保持「快捷方式」关闭，以免出现悬浮按钮）。</string>
+    <string name="shortcuts_back_title">Backspace 作为返回键</string>
+    <string name="shortcuts_back_desc">在非输入区域按 Backspace 即可在 Android 中返回。自动跳过输入框、主屏幕、锁屏及排除应用。</string>
+    <string name="shortcuts_back_toggle">Backspace = 返回</string>
+    <string name="shortcuts_back_excluded_btn">排除应用（%1$d）</string>
+    <string name="shortcuts_back_excluded_title">排除的应用</string>
+    <string name="shortcuts_back_excluded_hint">在勾选的应用中 Backspace 保持原样（终端、SSH、游戏等）。</string>
+    <string name="shortcuts_media_title">双击控制媒体播放</string>
+    <string name="shortcuts_media_desc">在非输入区域（包括锁屏）：双击左 Shift = 上一首，双击 Backspace = 下一首，双击空格 = 播放/暂停。</string>
+    <string name="shortcuts_media_toggle">启用双击媒体键</string>
+    <string name="settings_launcher_title">启动器</string>
+    <string name="settings_launcher_bridge">允许启动器快捷控制</string>
+    <string name="settings_launcher_bridge_text">向 MindOne Launcher 共享 DAC、均衡器和图层状态，并允许快捷切换音频选项。</string>
 </resources>

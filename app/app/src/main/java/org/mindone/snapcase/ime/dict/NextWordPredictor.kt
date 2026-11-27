@@ -40,13 +40,16 @@ class NextWordPredictor(
         StripLang.EN -> EN_BIGRAMS
         StripLang.UK -> UK_BIGRAMS
         StripLang.JA -> JA_BIGRAMS
+        StripLang.KO -> KO_BIGRAMS
+        StripLang.ZH_CN -> ZH_CN_BIGRAMS
+        StripLang.ZH_TW -> ZH_TW_BIGRAMS
         else -> LatinBigrams.forLang(lang)
     }
 
     private fun normalizeKey(word: String, lang: StripLang): String {
         val trimmed = word.trim()
         if (trimmed.isEmpty()) return ""
-        return if (lang == StripLang.JA) trimmed else SnapDictBinary.foldKey(trimmed)
+        return if (lang.isCjkNoSpace || lang.isHangul) trimmed else SnapDictBinary.foldKey(trimmed)
     }
 
     private fun formatCase(word: String, capitalize: Boolean): String =
@@ -278,6 +281,61 @@ class NextWordPredictor(
             "日本" to listOf("語", "の", "で"),
             "今" to listOf("から", "は", "すぐ"),
             "また" to listOf("明日", "後で", "ね"),
+        )
+
+        private val KO_BIGRAMS: Map<String, List<String>> = mapOf(
+            "안녕" to listOf("하세요", "하십니까"),
+            "감사" to listOf("합니다", "드려요"),
+            "죄송" to listOf("합니다", "해요"),
+            "좋은" to listOf("하루", "아침", "생각"),
+            "오늘" to listOf("도", "저녁", "시간"),
+            "내일" to listOf("봐요", "아침", "시간"),
+            "지금" to listOf("가고", "바로", "시간"),
+            "정말" to listOf("감사합니다", "좋아요", "다행이네요"),
+            "너무" to listOf("좋아요", "감사합니다", "고마워"),
+            "알겠" to listOf("습니다", "어요"),
+            "수고" to listOf("하셨습니다", "하세요"),
+            "잘" to listOf("부탁드립니다", "자요", "지내세요"),
+            "어디" to listOf("세요", "에", "야"),
+            "무슨" to listOf("일", "말씀"),
+            "괜찮" to listOf("아요", "습니다", "아"),
+            "고마워" to listOf("요"),
+        )
+
+        private val ZH_CN_BIGRAMS: Map<String, List<String>> = mapOf(
+            "你好" to listOf("请问", "吗", "呀"),
+            "谢谢" to listOf("你", "大家", "啦"),
+            "好的" to listOf("谢谢", "没问题", "我"),
+            "没问题" to listOf("谢谢", "好的"),
+            "不好意思" to listOf("打扰", "请问", "我"),
+            "今天" to listOf("天气", "有空", "晚上"),
+            "明天" to listOf("见", "早上", "有空"),
+            "现在" to listOf("有空", "过去", "开始"),
+            "我们" to listOf("一起", "可以", "现在"),
+            "可以" to listOf("吗", "的", "一起"),
+            "什么" to listOf("时候", "意思", "地方"),
+            "怎么" to listOf("样", "办", "回事"),
+            "非常" to listOf("感谢", "好", "开心"),
+            "辛苦" to listOf("了", "啦"),
+            "晚安" to listOf("好梦"),
+        )
+
+        private val ZH_TW_BIGRAMS: Map<String, List<String>> = mapOf(
+            "你好" to listOf("請問", "嗎", "呀"),
+            "謝謝" to listOf("你", "大家", "喔"),
+            "好的" to listOf("謝謝", "沒問題", "我"),
+            "沒問題" to listOf("謝謝", "好的"),
+            "不好意思" to listOf("打擾", "請問", "我"),
+            "今天" to listOf("天氣", "有空", "晚上"),
+            "明天" to listOf("見", "早上", "有空"),
+            "現在" to listOf("有空", "過去", "開始"),
+            "我們" to listOf("一起", "可以", "現在"),
+            "可以" to listOf("嗎", "的", "一起"),
+            "什麼" to listOf("時候", "意思", "地方"),
+            "怎麼" to listOf("樣", "辦", "回事"),
+            "非常" to listOf("感謝", "好", "開心"),
+            "辛苦" to listOf("了", "啦"),
+            "晚安" to listOf("好夢"),
         )
     }
 }

@@ -3,8 +3,8 @@
 <resources>
     <string name="app_name">Kumi</string>
     <string name="keyboard_layouts_label">iKKO Snap layouts</string>
-    <string name="remap_service_label">Snap key remap</string>
-    <string name="remap_service_description">Experimental. Remaps keys of the iKKO Snap case from the table in the Snap Case app by consuming the key and injecting the mapped one. Injection works only in the system build signed with the platform key.</string>
+    <string name="remap_service_label">Kumi Keyboard Shortcuts</string>
+    <string name="remap_service_description">Enables Home screen app search, Backspace-as-Back outside text fields, double-tap media controls, and speed keys for your physical keyboard. Does not read or send passwords or screen text.</string>
     <string name="demo_banner">Demo mode: scripted replies, not a real case</string>
     <string name="tag_measured">measured</string>
     <string name="tag_unverified">unverified</string>
@@ -277,7 +277,7 @@
     <string name="kb_tester_text">Check that every key works</string>
     <string name="keys_title">Remap keys</string>
     <string name="keys_enable_title">Switch remapping on</string>
-    <string name="keys_enable_text">Open Accessibility and turn on \"Snap key remap\". Without it the keys keep their usual meaning.</string>
+    <string name="keys_enable_text">Open Accessibility and turn on \"Kumi Keyboard Shortcuts\". Without it the keys keep their usual meaning.</string>
     <string name="keys_intro">Press \"Add\", press a key on the case and choose what it should do.</string>
     <string name="keys_empty">Nothing is remapped yet</string>
     <string name="keys_disabled">Do nothing</string>
@@ -688,7 +688,7 @@
     <string name="kumi_case_ready">Connected and ready</string>
     <string name="kumi_crossfeed_hint">Blends channels slightly so headphones feel more like speakers.</string>
     <string name="kumi_advanced_sound_title">Advanced sound</string>
-    <string name="kumi_advanced_sound_summary">Phase, DSD, DC filter, Line-Out</string>
+    <string name="kumi_advanced_sound_summary">Phase, DSD, DC filter, L/R swap</string>
     <string name="kumi_keys_timing_summary">Hold delay &amp; sticky key timeout</string>
     <string name="kumi_eq_reset_confirm_title">Reset equalizer?</string>
     <string name="kumi_eq_reset_confirm_text">Clears all bands in this slot back to Flat.</string>
@@ -832,7 +832,7 @@
     <string name="ime_subtype_uk">Ukrainian (Kumi Strip)</string>
     <string name="ime_subtype_ja">Japanese (Kumi Strip)</string>
     <string name="ime_settings_title">Autocomplete strip &amp; shortcuts</string>
-    <string name="ime_settings_subtitle">Bottom suggestion bar, layout switching, emoji &amp; dictionaries</string>
+    <string name="ime_settings_subtitle">Suggestions, layouts, haptics &amp; dictionaries</string>
     <string name="ime_setup_title">Kumi Strip input bar</string>
     <string name="ime_setup_body">Compact 46 dp suggestion, layout, emoji and clipboard strip at the bottom for physical keyboard typing — works on Android 15 &amp; 16 without blocking the screen.</string>
     <string name="ime_switch_to_virtual">Tap for on-screen keyboard ⌨</string>
@@ -895,7 +895,7 @@
     <string name="ime_long_press_upper">Capitalize</string>
     <string name="ime_default_lang_label">Default dictionary</string>
     <string name="ime_dicts_title">Offline dictionaries</string>
-    <string name="ime_dicts_desc">English, Russian, Ukrainian (MIT FrequencyWords) and Japanese Romaji→Kana/Kanji (BSD-3-Clause Google Mozc) are built in offline. Spanish, German, French, Italian, Portuguese, Polish, Dutch, Turkish, Czech, Swedish, Finnish, Romanian and Hungarian download on-device (25k words each) in under a second.</string>
+    <string name="ime_dicts_desc">English, Russian, Ukrainian, Korean (MIT FrequencyWords), Japanese Romaji→Kana/Kanji (BSD-3-Clause Google Mozc), and Simplified/Traditional Chinese Pinyin (Apache-2.0 Rime + OpenCC) are built in offline. Spanish, German, French, Italian, Portuguese, Polish, Dutch, Turkish, Czech, Swedish, Finnish, Romanian and Hungarian download on-device (25k words each) in under a second.</string>
     <string name="ime_langs_download_hint">Languages marked ↓ download their dictionary when enabled.</string>
     <string name="ime_subtype_es" translatable="false">Español (Kumi Strip)</string>
     <string name="ime_subtype_de" translatable="false">Deutsch (Kumi Strip)</string>
@@ -964,4 +964,45 @@
     <string name="home_search_placeholder">Search apps…</string>
     <string name="home_search_empty">No matching apps</string>
     <string name="home_search_footer_hint">Enter opens · ↑↓ select · Esc closes</string>
+    <string name="ime_subtype_ko" translatable="false">한국어 (Kumi Strip)</string>
+    <string name="ime_subtype_zh_cn" translatable="false">简体中文 (Kumi Strip)</string>
+    <string name="ime_subtype_zh_tw" translatable="false">繁體中文 (Kumi Strip)</string>
+    <string name="ime_tab_snippets">Snippets</string>
+    <string name="kumi_line_out_badge">Line-Out</string>
+    <string name="kumi_audio_dac_glitch">Audio output had a brief glitch. Replug headphones or restart playback if sound stopped.</string>
+    <string name="kumi_diag_audio_counters">Audio counters</string>
+    <string name="kumi_err_generic">Could not complete the action on the case. Try again or reattach the case.</string>
+    <string name="kumi_err_no_reply">The case did not respond in time. Wait a moment or reattach the case.</string>
+    <string name="kumi_err_usb_link">USB link to the case was interrupted. Reattach the case to reconnect.</string>
+    <string name="kumi_err_protocol">Unexpected reply from the case. Update the app or firmware if this keeps happening.</string>
+    <string name="kumi_err_not_connected">Case is not connected. Attach the case and try again.</string>
+    <string name="kumi_err_network_offline">No internet connection. Connect to a network and try again.</string>
+    <string name="kumi_err_network_timeout">Connection timed out. Check your network and try again.</string>
+    <string name="kumi_err_network_rate_limit">GitHub rate limit reached. Try again in a few minutes.</string>
+    <string name="kumi_err_network_generic">Could not reach GitHub. Check your connection and try again.</string>
+    <string name="shortcuts_title">System shortcuts</string>
+    <string name="shortcuts_tile">Shortcuts</string>
+    <string name="shortcuts_subtitle">Home search, Backspace = Back &amp; media</string>
+    <string name="shortcuts_setup_title">Enable Kumi Keyboard Shortcuts</string>
+    <string name="shortcuts_setup_badge">2 steps</string>
+    <string name="shortcuts_service_active_title">Kumi Keyboard Shortcuts active</string>
+    <string name="shortcuts_service_active_text">Home search, Backspace = Back and shortcuts are ready.</string>
+    <string name="shortcuts_service_active_launcher">Active · launcher: %1$s</string>
+    <string name="shortcuts_step1_title">Allow restricted settings (APK install)</string>
+    <string name="shortcuts_step1_hint">Open App Info → scroll down or tap ⋮ → enable “Allow restricted settings”. Skip if already allowed.</string>
+    <string name="shortcuts_step1_cta">Open App Info</string>
+    <string name="shortcuts_step2_title">Turn on Kumi Keyboard Shortcuts</string>
+    <string name="shortcuts_step2_hint">Open Accessibility → Downloaded apps → Kumi Keyboard Shortcuts → enable the top switch only (keep “Shortcut” off so no floating button appears).</string>
+    <string name="shortcuts_back_title">Backspace as Back</string>
+    <string name="shortcuts_back_desc">Press Backspace outside text fields to go Back anywhere in Android. Skips text inputs, Home, lock screen and excluded apps.</string>
+    <string name="shortcuts_back_toggle">Use Backspace to go Back</string>
+    <string name="shortcuts_back_excluded_btn">Excluded apps (%1$d)</string>
+    <string name="shortcuts_back_excluded_title">Excluded apps</string>
+    <string name="shortcuts_back_excluded_hint">Backspace stays normal inside checked apps (terminals, SSH, games).</string>
+    <string name="shortcuts_media_title">Double-tap media controls</string>
+    <string name="shortcuts_media_desc">Outside text fields (including lock screen): 2× Left Shift = previous track, 2× Backspace = next track, 2× Space = play/pause.</string>
+    <string name="shortcuts_media_toggle">Enable double-tap media keys</string>
+    <string name="settings_launcher_title">Launcher</string>
+    <string name="settings_launcher_bridge">Allow Launcher quick controls</string>
+    <string name="settings_launcher_bridge_text">Share live DAC, EQ, and layer status with MindOne Launcher and let it toggle quick audio controls.</string>
 </resources>

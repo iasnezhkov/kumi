@@ -3,11 +3,13 @@ package org.mindone.snapcase.ime.ui
 
 import android.content.Context
 import android.content.Intent
+import android.os.VibrationAttributes
+import android.os.VibrationEffect
+import android.os.VibratorManager
 import android.provider.Settings
 import android.view.KeyEvent
 import android.view.inputmethod.InputMethodManager
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,8 +23,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
@@ -75,28 +75,36 @@ import kotlinx.coroutines.withContext
 import org.mindone.snapcase.R
 import org.mindone.snapcase.data.AppPreferences
 import org.mindone.snapcase.ime.HapticMode
-import org.mindone.snapcase.ime.LaunchableApp
 import org.mindone.snapcase.ime.LongPressBehavior
-import org.mindone.snapcase.ime.QuickLauncher
-import org.mindone.snapcase.ime.QuickSearchActivity
-import org.mindone.snapcase.ime.SpeedKeyBinding
 import org.mindone.snapcase.ime.StripLang
 import org.mindone.snapcase.ime.dict.DictionaryPackManager
 import org.mindone.snapcase.ime.dict.LanguagePackInfo
-import org.mindone.snapcase.remap.RemapAccessibilityService
 import org.mindone.snapcase.ui.CompactPageTabs
+import org.mindone.snapcase.ui.DismissibleErrorBanner
+import org.mindone.snapcase.ui.InlineTabHeader
+import org.mindone.snapcase.ui.KeyboardHintStrip
+import org.mindone.snapcase.ui.KeycapBadge
+import org.mindone.snapcase.ui.NavRow
 import org.mindone.snapcase.ui.Note
+import org.mindone.snapcase.ui.RegisterScreenKeys
 import org.mindone.snapcase.ui.SectionCard
 import org.mindone.snapcase.ui.StatusPill
+import org.mindone.snapcase.ui.SuppressScreenKeys
 import org.mindone.snapcase.ui.ToggleRow
+import org.mindone.snapcase.ui.friendlyNetworkError
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun ImeSettingsScreen(prefs: AppPreferences) {
+fun ImeSettingsScreen(
+    prefs: AppPreferences,
+    onBack: () -> Unit = {},
+    onOpenShortcuts: () -> Unit = {},
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val settings by prefs.settings.collectAsStateWithLifecycle()
     val imm = remember { context.getSystemService(InputMethodManager::class.java) }
+    val vibrator = remember { context.getSystemService(VibratorManager::class.java)?.defaultVibrator }
     val dictManager = remember { DictionaryPackManager.shared(context.applicationContext) }
     val lifecycleOwner = LocalLifecycleOwner.current
     val windowFocused = LocalWindowInfo.current.isWindowFocused
@@ -107,11 +115,18 @@ fun ImeSettingsScreen(prefs: AppPreferences) {
     val downloading = remember { mutableStateMapOf<String, Boolean>() }
     var dictError by remember { mutableStateOf<String?>(null) }
     var addingSnippet by remember { mutableStateOf(false) }
-    var addingSpeedKey by remember { mutableStateOf(false) }
     var waitingForEnable by rememberSaveable { mutableStateOf(false) }
     var autoOpenPicker by remember { mutableStateOf(false) }
     var imeEnabled by remember { mutableStateOf(isKumiImeEnabled(context, imm)) }
     var imeSelected by remember { mutableStateOf(isKumiImeSelected(context, imm)) }
+
+    val pulseHaptic: (Int) -> Unit = { ms ->
+        if (vibrator != null && vibrator.hasVibrator()) {
+            val effect = VibrationEffect.createOneShot(ms.coerceIn(4, 15).toLong(), VibrationEffect.DEFAULT_AMPLITUDE)
+            val attrs = VibrationAttributes.Builder().setUsage(VibrationAttributes.USAGE_TOUCH).build()
+            runCatching { vibrator.vibrate(effect, attrs) }
+        }
+    }
 
     val refreshImeStatus: () -> Unit = {
         val enabled = isKumiImeEnabled(context, imm)
@@ -169,20 +184,63 @@ fun ImeSettingsScreen(prefs: AppPreferences) {
         }
     }
 
-    Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
-        CompactPageTabs(
-            labels = listOf(
+    val shTab = stringResource(R.string.kumi_key_hint_tab)
+    val shHaptic = stringResource(R.string.ime_haptic_label)
+    val shLong = stringResource(R.string.ime_long_press_label)
+    val shBack = stringResource(R.string.action_back)
+
+    RegisterScreenKeys(
+        key = listOf(page, settings.imeHapticMode, settings.imeHapticDurationMs, settings.imeLongPressBehavior),
+        shortcuts = when (page) {
+            0 -> listOf("H" to shHaptic, "L" to shLong, "Tab" to shTab, "⌫" to shBack)
+            2 -> listOf("A" to stringResource(R.string.ime_snippets_add), "F" to stringResource(R.string.shortcuts_tile), "Tab" to shTab, "⌫" to shBack)
+            else -> listOf("Tab" to shTab, "⌫" to shBack)
+        },
+    ) { code, repeat ->
+        if (repeat) return@RegisterScreenKeys false
+        if (code == KeyEvent.KEYCODE_TAB) {
+            page = (page + 1) % 3
+            return@RegisterScreenKeys true
+        }
+        when (page) {
+            0 -> when (code) {
+                KeyEvent.KEYCODE_H -> {
+                    val modes = HapticMode.entries
+                    val next = modes[(modes.indexOf(settings.imeHapticMode) + 1) % modes.size]
+                    prefs.setImeHapticMode(next)
+                    if (next != HapticMode.OFF) pulseHaptic(settings.imeHapticDurationMs)
+                    true
+                }
+                KeyEvent.KEYCODE_L -> {
+                    val behaviors = LongPressBehavior.entries
+                    prefs.setImeLongPressBehavior(behaviors[(behaviors.indexOf(settings.imeLongPressBehavior) + 1) % behaviors.size])
+                    true
+                }
+                else -> false
+            }
+            2 -> when (code) {
+                KeyEvent.KEYCODE_A -> { addingSnippet = true; true }
+                KeyEvent.KEYCODE_F -> { onOpenShortcuts(); true }
+                else -> false
+            }
+            else -> false
+        }
+    }
+
+    Column(Modifier.fillMaxSize()) {
+        InlineTabHeader(
+            tabs = listOf(
                 stringResource(R.string.ime_tab_typing),
                 stringResource(R.string.ime_tab_langs),
-                stringResource(R.string.ime_tab_shortcuts),
+                stringResource(R.string.ime_tab_snippets),
             ),
             selectedIndex = page,
             onSelect = { page = it },
-            modifier = Modifier.padding(top = 2.dp, bottom = 8.dp),
+            onBack = onBack,
         )
         LazyColumn(
-            Modifier.weight(1f).fillMaxWidth(),
-            contentPadding = PaddingValues(bottom = 16.dp),
+            Modifier.weight(1f).fillMaxWidth().padding(horizontal = 12.dp),
+            contentPadding = PaddingValues(top = 2.dp, bottom = 12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             when (page) {
@@ -199,22 +257,19 @@ fun ImeSettingsScreen(prefs: AppPreferences) {
                         )
                     }
                     item {
-                        SectionCard(stringResource(R.string.ime_long_press_label)) {
-                            val behaviors = LongPressBehavior.entries
-                            CompactPageTabs(
-                                labels = behaviors.map { stringResource(longPressTitle(it)) },
-                                selectedIndex = behaviors.indexOf(settings.imeLongPressBehavior).coerceAtLeast(0),
-                                onSelect = { prefs.setImeLongPressBehavior(behaviors[it]) },
-                            )
-                            if (settings.imeLongPressBehavior == LongPressBehavior.ALT_SYMBOL) {
-                                Note(stringResource(R.string.ime_long_press_alt_hint))
-                            }
-                            Text(stringResource(R.string.ime_haptic_label), style = MaterialTheme.typography.labelLarge)
+                        SectionCard(
+                            title = stringResource(R.string.ime_haptic_label),
+                            trailing = { KeycapBadge("H") },
+                        ) {
                             val haptics = HapticMode.entries
                             CompactPageTabs(
                                 labels = haptics.map { stringResource(hapticModeTitle(it)) },
                                 selectedIndex = haptics.indexOf(settings.imeHapticMode).coerceAtLeast(0),
-                                onSelect = { prefs.setImeHapticMode(haptics[it]) },
+                                onSelect = {
+                                    val chosen = haptics[it]
+                                    prefs.setImeHapticMode(chosen)
+                                    if (chosen != HapticMode.OFF) pulseHaptic(settings.imeHapticDurationMs)
+                                },
                             )
                             if (settings.imeHapticMode != HapticMode.OFF) {
                                 Row(
@@ -226,7 +281,10 @@ fun ImeSettingsScreen(prefs: AppPreferences) {
                                     listOf(5, 8, 12).forEach { ms ->
                                         FilterChip(
                                             selected = settings.imeHapticDurationMs == ms || (ms == 5 && settings.imeHapticDurationMs == 6),
-                                            onClick = { prefs.setImeHapticDurationMs(ms) },
+                                            onClick = {
+                                                prefs.setImeHapticDurationMs(ms)
+                                                pulseHaptic(ms)
+                                            },
                                             label = { Text(stringResource(R.string.kumi_unit_ms, ms)) },
                                         )
                                     }
@@ -234,6 +292,22 @@ fun ImeSettingsScreen(prefs: AppPreferences) {
                                 if (settings.imeHapticMode == HapticMode.EVENTS) {
                                     Note(stringResource(R.string.ime_haptic_events_hint))
                                 }
+                            }
+                        }
+                    }
+                    item {
+                        SectionCard(
+                            title = stringResource(R.string.ime_long_press_label),
+                            trailing = { KeycapBadge("L") },
+                        ) {
+                            val behaviors = LongPressBehavior.entries
+                            CompactPageTabs(
+                                labels = behaviors.map { stringResource(longPressTitle(it)) },
+                                selectedIndex = behaviors.indexOf(settings.imeLongPressBehavior).coerceAtLeast(0),
+                                onSelect = { prefs.setImeLongPressBehavior(behaviors[it]) },
+                            )
+                            if (settings.imeLongPressBehavior == LongPressBehavior.ALT_SYMBOL) {
+                                Note(stringResource(R.string.ime_long_press_alt_hint))
                             }
                         }
                     }
@@ -300,7 +374,7 @@ fun ImeSettingsScreen(prefs: AppPreferences) {
                                                 settings.imeEnabledLangs + lang.code
                                             }
                                             if (next.isNotEmpty()) prefs.setImeEnabledLangs(next)
-                                            if (!enabled && needsDict && pack != null) startDownload(pack)
+                                            if (!enabled && needsDict) startDownload(pack)
                                         },
                                         label = {
                                             Text(
@@ -330,7 +404,9 @@ fun ImeSettingsScreen(prefs: AppPreferences) {
                             title = stringResource(R.string.ime_dicts_title),
                             trailing = { Note(stringResource(R.string.ime_dicts_summary, installedDicts.size)) },
                         ) {
-                            dictError?.let { Note(it, MaterialTheme.colorScheme.error) }
+                            dictError?.let { err ->
+                                DismissibleErrorBanner(friendlyNetworkError(err), onDismiss = { dictError = null })
+                            }
                             DictionaryPackManager.CATALOG.forEach { pack ->
                                 val busy = downloading[pack.code] == true
                                 val downloaded = pack.code in downloadedDicts
@@ -358,58 +434,19 @@ fun ImeSettingsScreen(prefs: AppPreferences) {
                 }
                 else -> {
                     item {
-                        SectionCard(title = stringResource(R.string.home_search_title)) {
-                            Note(stringResource(R.string.home_search_desc))
-                            ToggleRow(
-                                title = stringResource(R.string.home_search_enable),
-                                checked = settings.homeTypeToSearch,
-                                onCheckedChange = prefs::setHomeTypeToSearch,
-                            )
-                            if (!RemapAccessibilityService.active) {
-                                FilledTonalButton(
-                                    onClick = { context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) },
-                                    modifier = Modifier.fillMaxWidth(),
-                                ) {
-                                    Text(stringResource(R.string.action_open_accessibility))
-                                }
-                            }
-                            OutlinedButton(
-                                onClick = { QuickSearchActivity.launch(context, null) },
-                                modifier = Modifier.fillMaxWidth(),
-                            ) {
-                                Text(stringResource(R.string.home_search_try))
-                            }
-                        }
-                    }
-                    item {
-                        SectionCard(
-                            title = stringResource(R.string.ime_speed_keys_title),
-                            trailing = { Note(stringResource(R.string.ime_speed_keys_summary, settings.speedKeys.size)) },
+                        Card(
+                            Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
                         ) {
-                            Note(stringResource(R.string.ime_speed_keys_desc))
-                            ToggleRow(
-                                title = stringResource(R.string.ime_speed_keys_enable),
-                                checked = settings.speedKeysEnabled,
-                                onCheckedChange = prefs::setSpeedKeysEnabled,
-                            )
-                            if (settings.speedKeys.isEmpty()) {
-                                Note(stringResource(R.string.ime_speed_keys_empty))
-                            } else {
-                                settings.speedKeys.sortedBy { it.keyCode }.forEach { binding ->
-                                    ListItem(
-                                        headlineContent = { Text("${QuickLauncher.keyLetter(binding.keyCode)}  →  ${binding.label}") },
-                                        supportingContent = { Text(binding.packageName) },
-                                        trailingContent = {
-                                            IconButton(onClick = { prefs.removeSpeedKey(binding.keyCode) }) {
-                                                Icon(painterResource(R.drawable.ic_delete), contentDescription = stringResource(R.string.action_remove))
-                                            }
-                                        },
-                                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                                    )
-                                }
-                            }
-                            FilledTonalButton(onClick = { addingSpeedKey = true }, modifier = Modifier.fillMaxWidth()) {
-                                Text(stringResource(R.string.ime_speed_key_add_title))
+                            Column(Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
+                                NavRow(
+                                    R.drawable.ic_search,
+                                    R.string.shortcuts_title,
+                                    stringResource(R.string.shortcuts_subtitle),
+                                    onOpenShortcuts,
+                                    keyHint = "F",
+                                )
                             }
                         }
                     }
@@ -430,13 +467,23 @@ fun ImeSettingsScreen(prefs: AppPreferences) {
                                 )
                             }
                             FilledTonalButton(onClick = { addingSnippet = true }, modifier = Modifier.fillMaxWidth()) {
-                                Text(stringResource(R.string.ime_snippets_add))
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    KeycapBadge("A")
+                                    Text(stringResource(R.string.ime_snippets_add))
+                                }
                             }
                         }
                     }
                 }
             }
         }
+        KeyboardHintStrip(
+            hints = when (page) {
+                0 -> listOf("H" to shHaptic, "L" to shLong, "Tab" to shTab, "⌫" to shBack)
+                2 -> listOf("A" to stringResource(R.string.ime_snippets_add), "Tab" to shTab, "⌫" to shBack)
+                else -> listOf("Tab" to shTab, "⌫" to shBack)
+            },
+        )
     }
 
     if (addingSnippet) {
@@ -445,16 +492,6 @@ fun ImeSettingsScreen(prefs: AppPreferences) {
             onAdd = { trigger, expansion ->
                 addingSnippet = false
                 prefs.addImeSnippet(trigger, expansion)
-            },
-        )
-    }
-
-    if (addingSpeedKey) {
-        AddSpeedKeyDialog(
-            onDismiss = { addingSpeedKey = false },
-            onAdd = { binding ->
-                addingSpeedKey = false
-                prefs.setSpeedKey(binding)
             },
         )
     }
@@ -658,6 +695,7 @@ private fun DictPackRow(
 
 @Composable
 private fun AddSnippetDialog(onDismiss: () -> Unit, onAdd: (String, String) -> Unit) {
+    SuppressScreenKeys()
     var trigger by remember { mutableStateOf("") }
     var expansion by remember { mutableStateOf("") }
     AlertDialog(
@@ -686,68 +724,6 @@ private fun AddSnippetDialog(onDismiss: () -> Unit, onAdd: (String, String) -> U
                 enabled = trigger.isNotBlank() && expansion.isNotBlank(),
             ) {
                 Text(stringResource(R.string.action_add))
-            }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) } },
-    )
-}
-
-@Composable
-private fun AddSpeedKeyDialog(onDismiss: () -> Unit, onAdd: (SpeedKeyBinding) -> Unit) {
-    val context = LocalContext.current
-    var apps by remember { mutableStateOf<List<LaunchableApp>>(emptyList()) }
-    var selectedKey by remember { mutableIntStateOf(KeyEvent.KEYCODE_A) }
-    var selectedApp by remember { mutableStateOf<LaunchableApp?>(null) }
-    var query by remember { mutableStateOf("") }
-
-    LaunchedEffect(Unit) {
-        apps = withContext(Dispatchers.IO) { QuickLauncher.listLaunchableApps(context) }
-    }
-    val filtered = remember(apps, query) {
-        val q = query.trim()
-        if (q.isEmpty()) apps else apps.filter { it.label.contains(q, ignoreCase = true) || it.packageName.contains(q, ignoreCase = true) }
-    }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.ime_speed_key_add_title)) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    items((KeyEvent.KEYCODE_A..KeyEvent.KEYCODE_Z).toList()) { code ->
-                        FilterChip(
-                            selected = selectedKey == code,
-                            onClick = { selectedKey = code },
-                            label = { Text(QuickLauncher.keyLetter(code)) },
-                        )
-                    }
-                }
-                OutlinedTextField(
-                    value = query,
-                    onValueChange = { query = it },
-                    label = { Text(stringResource(R.string.keys_search)) },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                LazyColumn(Modifier.heightIn(max = 220.dp)) {
-                    items(filtered, key = { it.packageName }) { app ->
-                        ListItem(
-                            headlineContent = { Text(app.label) },
-                            supportingContent = { Text(app.packageName) },
-                            tonalElevation = if (selectedApp?.packageName == app.packageName) 6.dp else 0.dp,
-                            modifier = Modifier.clickable { selectedApp = app },
-                        )
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            val app = selectedApp
-            TextButton(
-                onClick = { if (app != null) onAdd(SpeedKeyBinding(selectedKey, app.packageName, app.label)) },
-                enabled = app != null,
-            ) {
-                Text(stringResource(R.string.action_save))
             }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) } },

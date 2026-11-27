@@ -179,16 +179,16 @@ class LatinLanguagesTest {
         assertEquals(StripLang.ES, StripLang.fromCode("ES"))
         assertEquals(StripLang.EN, StripLang.fromCode("xx"))
         assertEquals(StripLang.EN, StripLang.fromCode(null))
-        assertEquals(17, StripLang.entries.size)
+        assertEquals(20, StripLang.entries.size)
         val catalog = DictionaryPackManager.CATALOG
         assertEquals(StripLang.entries.map { it.code }.toSet(), catalog.map { it.code }.toSet())
         assertEquals(catalog.size, catalog.map { it.code }.toSet().size)
-        assertEquals(setOf("en", "ru", "uk", "ja"), catalog.filter { it.bundled }.map { it.code }.toSet())
+        assertEquals(setOf("en", "ru", "uk", "ja", "ko", "zh-cn", "zh-tw"), catalog.filter { it.bundled }.map { it.code }.toSet())
         assertEquals(setOf("ja"), catalog.filter { it.japanese }.map { it.code }.toSet())
         assertEquals(setOf("ru", "uk"), catalog.filter { it.cyrillic }.map { it.code }.toSet())
         val downloadable = catalog.filter { !it.bundled }
         assertEquals(13, downloadable.size)
-        assertTrue(downloadable.all { !it.cyrillic && !it.japanese })
+        assertTrue(downloadable.all { !it.cyrillic && !it.japanese && !it.hangul && !it.pinyin })
         newLatin.forEach { lang ->
             val pack = catalog.first { it.code == lang.code }
             assertFalse(pack.bundled)

@@ -55,8 +55,12 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import org.mindone.snapcase.BuildConfig
 import org.mindone.snapcase.R
+import org.mindone.snapcase.bridge.KumiBridgeProvider
 import org.mindone.snapcase.ime.ui.ImeSettingsScreen
 import org.mindone.snapcase.kumi.HomeKind
 import org.mindone.snapcase.kumi.SnapLiveMirror
@@ -64,9 +68,13 @@ import org.mindone.snapcase.stock.UserMessage
 import org.mindone.snapcase.transport.CaseKind
 import org.mindone.snapcase.ui.theme.SnapTheme
 
+data class DeepLinkRoute(val screen: String, val eqSlot: Int? = null, val nonce: Long = System.nanoTime())
+
 class MainActivity : ComponentActivity() {
     private val appViewModel: AppViewModel by viewModels()
     private val keyBus = ScreenKeyBus()
+    private val _deepLink = MutableStateFlow<DeepLinkRoute?>(null)
+    private val deepLink: StateFlow<DeepLinkRoute?> = _deepLink.asStateFlow()
     private val usbReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             appViewModel.refresh()
@@ -76,9 +84,10 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        consumeRouteIntent(intent)
         setContent {
             SnapTheme {
-                SnapApp(appViewModel, keyBus)
+                SnapApp(appViewModel, keyBus, deepLink) { _deepLink.value = null }
             }
         }
     }
@@ -100,7 +109,16 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        consumeRouteIntent(intent)
         appViewModel.refresh()
+    }
+
+    private fun consumeRouteIntent(intent: Intent?) {
+        if (intent?.action != KumiBridgeProvider.ACTION_OPEN_SCREEN) return
+        val target = intent.getStringExtra(KumiBridgeProvider.EXTRA_SCREEN)?.trim()?.lowercase().orEmpty()
+        if (target.isEmpty()) return
+        val slot = intent.getIntExtra(KumiBridgeProvider.EXTRA_EQ_SLOT, -1).takeIf { it in 0..3 }
+        _deepLink.value = DeepLinkRoute(target, slot)
     }
 
     @SuppressLint("RestrictedApi")
@@ -124,6 +142,7 @@ enum class Screen(@StringRes val title: Int) {
     KUMI_DETAILS(R.string.kumi_details_title),
     KUMI_DEV(R.string.kumi_dev_title),
     IME_SETTINGS(R.string.ime_settings_title),
+    SHORTCUTS(R.string.shortcuts_title),
     SETTINGS(R.string.settings_title),
 }
 
@@ -133,20 +152,53 @@ private val SELF_HEADER_SCREENS = setOf(
     Screen.KUMI_EQ,
     Screen.KUMI_KEYS,
     Screen.KUMI_FIRMWARE,
+    Screen.IME_SETTINGS,
+    Screen.SHORTCUTS,
 )
 
 @Composable
-fun SnapApp(viewModel: AppViewModel = viewModel(), keyBus: ScreenKeyBus = remember { ScreenKeyBus() }) {
+fun SnapApp(
+    viewModel: AppViewModel = viewModel(),
+    keyBus: ScreenKeyBus = remember { ScreenKeyBus() },
+    deepLinkFlow: StateFlow<DeepLinkRoute?> = remember { MutableStateFlow(null) },
+    onDeepLinkConsumed: () -> Unit = {},
+) {
     var screen by rememberSaveable { mutableStateOf(Screen.HOME) }
     var testerReturn by rememberSaveable { mutableStateOf(Screen.HOME) }
     var eqReturn by rememberSaveable { mutableStateOf(Screen.HOME) }
     var imeReturn by rememberSaveable { mutableStateOf(Screen.HOME) }
+    var shortcutsReturn by rememberSaveable { mutableStateOf(Screen.HOME) }
     var eqSlot by rememberSaveable { mutableIntStateOf(0) }
     var firmwareTab by rememberSaveable { mutableIntStateOf(0) }
     var menu by remember { mutableStateOf(false) }
+    val pendingDeepLink by deepLinkFlow.collectAsStateWithLifecycle()
     val openFirmware: (Int) -> Unit = { tab ->
         firmwareTab = tab
         screen = Screen.KUMI_FIRMWARE
+    }
+    LaunchedEffect(pendingDeepLink?.nonce) {
+        val req = pendingDeepLink ?: return@LaunchedEffect
+        when (req.screen) {
+            "home" -> screen = Screen.HOME
+            "audio" -> screen = Screen.KUMI_AUDIO
+            "eq" -> {
+                req.eqSlot?.let { eqSlot = it }
+                eqReturn = Screen.HOME
+                screen = Screen.KUMI_EQ
+            }
+            "keys" -> screen = Screen.KUMI_KEYS
+            "ime" -> {
+                imeReturn = Screen.HOME
+                screen = Screen.IME_SETTINGS
+            }
+            "shortcuts" -> {
+                shortcutsReturn = Screen.HOME
+                screen = Screen.SHORTCUTS
+            }
+            "firmware" -> openFirmware(0)
+            "settings" -> screen = Screen.SETTINGS
+        }
+        onDeepLinkConsumed()
     }
     val settings by viewModel.prefs.settings.collectAsStateWithLifecycle()
     val offer by viewModel.installOffer.collectAsStateWithLifecycle()
@@ -169,6 +221,7 @@ fun SnapApp(viewModel: AppViewModel = viewModel(), keyBus: ScreenKeyBus = rememb
         Screen.KUMI_DEV -> Screen.KUMI_DETAILS
         Screen.KEYS -> if (home == HomeKind.KUMI) Screen.KUMI_KEYS else Screen.HOME
         Screen.IME_SETTINGS -> imeReturn
+        Screen.SHORTCUTS -> shortcutsReturn
         Screen.HOME -> Screen.HOME
         else -> Screen.HOME
     }
@@ -332,6 +385,10 @@ fun SnapApp(viewModel: AppViewModel = viewModel(), keyBus: ScreenKeyBus = rememb
                             imeReturn = screen
                             screen = Screen.IME_SETTINGS
                         },
+                        onOpenShortcuts = {
+                            shortcutsReturn = screen
+                            screen = Screen.SHORTCUTS
+                        },
                         onOpenTester = {
                             testerReturn = screen
                             screen = Screen.TESTER
@@ -359,12 +416,13 @@ fun SnapApp(viewModel: AppViewModel = viewModel(), keyBus: ScreenKeyBus = rememb
                                 imeReturn = Screen.HOME
                                 screen = Screen.IME_SETTINGS
                             },
-                            onOpenTester = {
-                                testerReturn = screen
-                                screen = Screen.TESTER
+                            onOpenShortcuts = {
+                                shortcutsReturn = Screen.HOME
+                                screen = Screen.SHORTCUTS
                             },
                             onOpenFirmware = { openFirmware(0) },
                             onOpenUpdates = { openFirmware(1) },
+                            onEnableDemo = { viewModel.prefs.setDemoMode(true) },
                             overflowMenu = overflowMenu,
                         )
                     } else {
@@ -399,12 +457,27 @@ fun SnapApp(viewModel: AppViewModel = viewModel(), keyBus: ScreenKeyBus = rememb
                             imeReturn = Screen.KUMI_KEYS
                             screen = Screen.IME_SETTINGS
                         },
+                        onOpenShortcuts = {
+                            shortcutsReturn = Screen.KUMI_KEYS
+                            screen = Screen.SHORTCUTS
+                        },
                         onOpenTester = {
                             testerReturn = screen
                             screen = Screen.TESTER
                         },
                     )
-                    Screen.IME_SETTINGS -> ImeSettingsScreen(viewModel.prefs)
+                    Screen.IME_SETTINGS -> ImeSettingsScreen(
+                        prefs = viewModel.prefs,
+                        onBack = { screen = imeReturn },
+                        onOpenShortcuts = {
+                            shortcutsReturn = Screen.IME_SETTINGS
+                            screen = Screen.SHORTCUTS
+                        },
+                    )
+                    Screen.SHORTCUTS -> SystemShortcutsScreen(
+                        prefs = viewModel.prefs,
+                        onBack = { screen = shortcutsReturn },
+                    )
                     Screen.KUMI_FIRMWARE -> KumiFirmwareScreen(
                         kumi = viewModel.kumi,
                         catalog = viewModel.catalog,
@@ -440,7 +513,7 @@ fun SnapApp(viewModel: AppViewModel = viewModel(), keyBus: ScreenKeyBus = rememb
 private val LEGACY_SCREENS = setOf(Screen.LEGACY, Screen.TECH)
 
 private const val POLL_MS = 3500L
-private const val METER_POLL_MS = 200L
+private const val METER_POLL_MS = 40L
 
 private fun messageText(message: UserMessage): Int = when (message) {
     UserMessage.CASE_NOT_ANSWERING -> R.string.msg_case_not_answering
