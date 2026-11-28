@@ -151,9 +151,17 @@ class LogicTest {
         assertEquals("1.1.0-rc1", rc1Pkg.displayVersion)
         assertEquals("1.1.0", finalPkg.displayVersion)
         assertTrue(FirmwareCatalog.isPackageNewerThan(rc2Pkg, KumiVersion(1, 1, 0), "1.1.0-rc1-aaa1111"))
+        assertTrue(FirmwareCatalog.isPackageNewerThan(rc2Pkg, KumiVersion(1, 1, 0), "slot"))
+        assertFalse(FirmwareCatalog.isPackageNewerThan(finalPkg, KumiVersion(1, 1, 0), "slot"))
         assertTrue(FirmwareCatalog.isPackageNewerThan(finalPkg, KumiVersion(1, 1, 0), "1.1.0-rc2-bbb2222"))
         assertFalse(FirmwareCatalog.isPackageNewerThan(rc2Pkg, KumiVersion(1, 1, 0), "1.1.0-ccc3333"))
         assertFalse(FirmwareCatalog.isPackageNewerThan(rc1Pkg, KumiVersion(1, 1, 0), "1.1.0-rc1-aaa1111"))
+
+        val devFw = ReleaseAsset.parseReleases(json, includePrereleases = true)
+        assertEquals("1.1.0-rc2", FirmwareCatalog.releaseUpdateFor(KumiVersion(1, 1, 0), devFw, "slot")?.displayVersion)
+        assertEquals("1.1.0-rc2", FirmwareCatalog.releaseUpdateFor(KumiVersion(1, 1, 0), devFw, "1.1.0-rc1-aaa1111")?.displayVersion)
+        assertNull(FirmwareCatalog.releaseUpdateFor(KumiVersion(1, 1, 0), devFw, "1.1.0-rc2-bbb2222"))
+        assertNull(FirmwareCatalog.releaseUpdateFor(KumiVersion(1, 1, 0), devFw, "1.1.0-ccc3333"))
     }
 
     @Test

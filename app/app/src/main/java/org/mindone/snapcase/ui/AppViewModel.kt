@@ -73,6 +73,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val usbPort = UsbCasePort(application, stock::releaseForServiceMode)
     private val casePort = SwitchableCasePort(usbPort)
     private var simulated: SimulatedCase? = null
+    private var appliedDemo: Boolean = false
     @Volatile private var flashFocusRequest: AudioFocusRequest? = null
 
     val kumi: KumiSession = KumiSession(viewModelScope, caseDispatcher, NativeBridge, casePort, flowBusy = { flows.busy }, onConnected = {
@@ -123,9 +124,21 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         org.mindone.snapcase.kumi.SnapLiveMirror.bindContext(application)
         org.mindone.snapcase.kumi.SnapLiveMirror.bindSession(kumi)
         viewModelScope.launch {
-            prefs.rawSettings.map { it.demoMode }.distinctUntilChanged().collect {
-                stock.reconnect()
-                applyDemo(it)
+            prefs.rawSettings.map { it.demoMode }.distinctUntilChanged().collect { enabled ->
+                if (enabled != appliedDemo) {
+                    appliedDemo = enabled
+                    if (enabled || usbPort.kind() != CaseKind.KUMI) {
+                        stock.reconnect()
+                    }
+                    applyDemo(enabled)
+                } else {
+                    viewModelScope.launch(caseDispatcher) {
+                        if (!flows.busy) {
+                            flows.refreshGates()
+                            reloadCatalog()
+                        }
+                    }
+                }
             }
         }
         viewModelScope.launch {
@@ -149,8 +162,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun refresh() {
-        stock.refreshStatus()
         kumi.refresh()
+        if (usbPort.kind() != CaseKind.KUMI && home.value != HomeKind.KUMI) {
+            stock.refreshStatus()
+        }
     }
 
     suspend fun refreshNow() {

@@ -938,6 +938,11 @@ private fun InteractiveResponseCurve(
     val bandPath = remember { Path() }
     val bandFillPath = remember { Path() }
     val dashEffect = remember { PathEffect.dashPathEffect(floatArrayOf(10f, 7f), 0f) }
+    val curveFillBrush = remember(primary) {
+        Brush.verticalGradient(
+            colors = listOf(primary.copy(alpha = 0.24f), primary.copy(alpha = 0.04f), primary.copy(alpha = 0.20f)),
+        )
+    }
 
     Card(
         modifier = modifier,
@@ -1109,12 +1114,7 @@ private fun InteractiveResponseCurve(
                 }
                 fillPath.lineTo(size.width, zeroY)
                 fillPath.close()
-                drawPath(
-                    fillPath,
-                    brush = Brush.verticalGradient(
-                        colors = listOf(primary.copy(alpha = 0.24f), primary.copy(alpha = 0.04f), primary.copy(alpha = 0.20f)),
-                    ),
-                )
+                drawPath(fillPath, brush = curveFillBrush)
                 drawPath(path, primary, style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round))
 
                 profile.bands.forEachIndexed { idx, band ->

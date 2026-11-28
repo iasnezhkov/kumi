@@ -24,13 +24,41 @@ pub const BAND_CENTERS_HZ: [f32; SPECTRUM_BANDS] = [
     3_223.0, 4_292.0, 5_715.0, 7_610.0, 10_133.0, 13_493.0, 17_966.0,
 ];
 
+const BAND_EDGES_HZ: [f32; SPECTRUM_BANDS + 1] = [
+    20.0,
+    28.722_813,
+    38.105_118,
+    50.950_96,
+    67.838_04,
+    90.066_64,
+    119.799_833,
+    159.348_68,
+    212.320_51,
+    282.612_82,
+    376.143_6,
+    500.851_3,
+    667.128_2,
+    888.397_46,
+    1_182.846_2,
+    1_575.3,
+    2_097.512_7,
+    2_792.787,
+    3_719.289_8,
+    4_952.654,
+    6_594.782,
+    8_781.352,
+    11_692.928,
+    15_569.689,
+    20_000.0,
+];
+
 #[inline]
 pub fn decim_step_for(sample_rate: u32) -> u8 {
     let step = (sample_rate.saturating_add(24_000) / 48_000).clamp(1, 16);
     step as u8
 }
 
-const SPECTRUM_BANDS_PER_STEP: usize = 4;
+const SPECTRUM_BANDS_PER_STEP: usize = 2;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum SpectrumStage {
@@ -488,14 +516,11 @@ impl Analyzer {
                 let end = (start + SPECTRUM_BANDS_PER_STEP).min(SPECTRUM_BANDS);
                 let df_lo = self.job.fs_lo / LO_LEN as f32;
                 let df_hi = self.job.fs_hi / HI_LEN as f32;
+                let nyquist_cap = (self.job.fs_hi * 0.48).min(20_000.0);
                 for b in start..end {
                     let fc = BAND_CENTERS_HZ[b];
-                    let f_lo_edge = if b == 0 { 20.0 } else { libm::sqrtf(BAND_CENTERS_HZ[b - 1] * fc) };
-                    let f_hi_edge = if b + 1 == SPECTRUM_BANDS {
-                        (self.job.fs_hi * 0.48).min(20_000.0)
-                    } else {
-                        libm::sqrtf(fc * BAND_CENTERS_HZ[b + 1])
-                    };
+                    let f_lo_edge = BAND_EDGES_HZ[b];
+                    let f_hi_edge = if b + 1 == SPECTRUM_BANDS { nyquist_cap } else { BAND_EDGES_HZ[b + 1] };
                     let power = if fc < LOW_BAND_CUTOFF_HZ && self.job.has_lo {
                         band_peak_power(&self.job.lo_mag, df_lo, f_lo_edge, f_hi_edge)
                     } else {

@@ -407,16 +407,23 @@ class FirmwareCatalog(
                     .thenBy { it.source != FirmwareSource.BUNDLED },
             )
 
+        private fun isLegacySlotBuild(build: String?): Boolean {
+            val trimmed = build?.trim() ?: return false
+            return trimmed == "slot" || trimmed == "slot-lab"
+        }
+
         fun isPackageNewerThan(pkg: FirmwarePackage, installed: KumiVersion?, installedBuild: String? = null): Boolean {
             if (installed == null) return true
             if (pkg.version != installed) return pkg.version > installed
             if (installedBuild.isNullOrBlank()) return false
+            if (isLegacySlotBuild(installedBuild)) return pkg.releaseVersion.isPrerelease
             return pkg.releaseVersion > ReleaseVersion.fromBuild(installed, installedBuild)
         }
 
         fun isReleaseNewerThan(asset: ReleaseAsset, installed: KumiVersion?, installedBuild: String? = null): Boolean {
             val candidate = asset.releaseVersion ?: return false
             if (installed == null) return true
+            if (candidate.core == installed && isLegacySlotBuild(installedBuild) && candidate.isPrerelease) return true
             return candidate > ReleaseVersion.fromBuild(installed, installedBuild)
         }
 

@@ -80,6 +80,7 @@ import org.mindone.snapcase.kumi.KumiSession
 import org.mindone.snapcase.kumi.KumiVersion
 import org.mindone.snapcase.kumi.ReleaseAsset
 import org.mindone.snapcase.kumi.ReleaseCatalog
+import org.mindone.snapcase.kumi.ReleaseVersion
 import org.mindone.snapcase.kumi.SlotState
 import org.mindone.snapcase.kumi.StoredBackup
 import org.mindone.snapcase.transport.CaseKind
@@ -757,7 +758,7 @@ private fun UpdatesCenterCard(
             }
             UpdateSummaryTile(
                 label = stringResource(R.string.kumi_updates_firmware_section),
-                version = installed?.let { "v$it" } ?: "—",
+                version = installed?.let { "v${ReleaseVersion.fromBuild(it, installedBuild)}" } ?: "—",
                 status = when {
                     pendingFwVersion != null -> "→ $pendingFwVersion"
                     installed != null -> stringResource(R.string.kumi_updates_up_to_date_short)

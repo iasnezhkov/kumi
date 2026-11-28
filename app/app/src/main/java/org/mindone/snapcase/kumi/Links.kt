@@ -31,13 +31,16 @@ class UsbKumiLink private constructor(
     private val output: UsbEndpoint,
 ) : CaseChannel {
 
+    private val readBuffer = ByteArray(FRAME_LIMIT)
+    private val emptyPacket = ByteArray(0)
+
     @Synchronized
     override fun send(data: ByteArray): Boolean {
         val link = connection ?: return false
         if (link.bulkTransfer(output, data, data.size, SEND_TIMEOUT_MS) != data.size) return false
         val maxPacket = output.maxPacketSize
         if (data.isNotEmpty() && maxPacket > 0 && data.size % maxPacket == 0) {
-            if (link.bulkTransfer(output, ByteArray(0), 0, SEND_TIMEOUT_MS) != 0) return false
+            if (link.bulkTransfer(output, emptyPacket, 0, SEND_TIMEOUT_MS) != 0) return false
         }
         return true
     }
@@ -50,9 +53,8 @@ class UsbKumiLink private constructor(
 
     private fun readWithTimeout(timeoutMs: Int): ByteArray? {
         val link = connection ?: return null
-        val buffer = ByteArray(FRAME_LIMIT)
-        val read = link.bulkTransfer(input, buffer, buffer.size, timeoutMs)
-        return if (read > 0) buffer.copyOf(read) else null
+        val read = link.bulkTransfer(input, readBuffer, readBuffer.size, timeoutMs)
+        return if (read > 0) readBuffer.copyOf(read) else null
     }
 
     @Synchronized

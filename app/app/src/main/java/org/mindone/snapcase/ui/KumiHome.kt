@@ -96,6 +96,7 @@ import org.mindone.snapcase.kumi.KumiSession
 import org.mindone.snapcase.kumi.KumiState
 import org.mindone.snapcase.kumi.KumiVersion
 import org.mindone.snapcase.kumi.OutputFilter
+import org.mindone.snapcase.kumi.ReleaseVersion
 import org.mindone.snapcase.kumi.SlotState
 import org.mindone.snapcase.kumi.ToneEqSettings
 import org.mindone.snapcase.protocol.DacFilter
@@ -214,7 +215,7 @@ fun KumiHomeScreen(
                     .background(if (good) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline),
             )
             Text(
-                if (good) stringResource(R.string.kumi_name_version, device.firmware.toString()) else stringResource(caseTitle(kind)),
+                if (good) stringResource(R.string.kumi_name_version, ReleaseVersion.fromBuild(device.firmware, device.build).toString()) else stringResource(caseTitle(kind)),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
@@ -901,6 +902,10 @@ class SpectrumVisualState {
     internal val ys = FloatArray(KumiLimits.SPECTRUM_BANDS + 2)
     internal val linePath = Path()
     internal val fillPath = Path()
+    internal var cachedColor: Color = Color.Unspecified
+    internal var cachedFillBrush: Brush? = null
+    internal var cachedStrokeWidth: Float = -1f
+    internal var cachedStroke: Stroke? = null
 
     internal fun hasEnergy(): Boolean {
         for (v in bands) {
@@ -1033,17 +1038,27 @@ fun DrawScope.drawRtaSpectrum(
     fillPath.lineTo(size.width, size.height)
     fillPath.lineTo(0f, size.height)
     fillPath.close()
-    drawPath(
-        path = fillPath,
-        brush = Brush.verticalGradient(
+    val fillBrush = if (visual.cachedColor == barColor && visual.cachedFillBrush != null) {
+        visual.cachedFillBrush!!
+    } else {
+        Brush.verticalGradient(
             colors = listOf(barColor.copy(alpha = 0.28f), barColor.copy(alpha = 0.09f), barColor.copy(alpha = 0.01f)),
-        ),
-    )
-    drawPath(
-        path = linePath,
-        color = barColor.copy(alpha = 0.74f),
-        style = Stroke(width = 1.35.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
-    )
+        ).also {
+            visual.cachedColor = barColor
+            visual.cachedFillBrush = it
+        }
+    }
+    val strokeWidth = 1.35.dp.toPx()
+    val stroke = if (visual.cachedStrokeWidth == strokeWidth && visual.cachedStroke != null) {
+        visual.cachedStroke!!
+    } else {
+        Stroke(width = strokeWidth, cap = StrokeCap.Round, join = StrokeJoin.Round).also {
+            visual.cachedStrokeWidth = strokeWidth
+            visual.cachedStroke = it
+        }
+    }
+    drawPath(path = fillPath, brush = fillBrush)
+    drawPath(path = linePath, color = barColor.copy(alpha = 0.74f), style = stroke)
 }
 
 @Composable
@@ -1074,6 +1089,11 @@ fun ResponseCurve(
     val fillPath = remember { Path() }
     val basePath = remember { Path() }
     val dashEffect = remember { PathEffect.dashPathEffect(floatArrayOf(8f, 6f), 0f) }
+    val curveFillBrush = remember(line) {
+        Brush.verticalGradient(
+            colors = listOf(line.copy(alpha = 0.20f), line.copy(alpha = 0.03f), line.copy(alpha = 0.16f)),
+        )
+    }
     Canvas(modifier) {
         @Suppress("UNUSED_VARIABLE")
         val rev = spectrumVisual.tick.longValue
@@ -1119,12 +1139,7 @@ fun ResponseCurve(
         }
         fillPath.lineTo(size.width, zeroY)
         fillPath.close()
-        drawPath(
-            fillPath,
-            brush = Brush.verticalGradient(
-                colors = listOf(line.copy(alpha = 0.20f), line.copy(alpha = 0.03f), line.copy(alpha = 0.16f)),
-            ),
-        )
+        drawPath(fillPath, brush = curveFillBrush)
         drawPath(path, line, style = Stroke(width = 2.4.dp.toPx(), cap = StrokeCap.Round))
     }
 }

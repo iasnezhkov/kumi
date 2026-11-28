@@ -590,14 +590,15 @@ impl<'d> Stream<'d> {
         if ms.wrapping_sub(self.publish_ms) >= PUBLISH_INTERVAL_MS || !matches!(self.phase, Phase::Running { .. }) {
             self.publish_ms = ms;
             self.publish(shared);
-        }
-        if self.equalizer.spectrum_busy()
-            && let Some(spectrum) = self.equalizer.step_spectrum()
-        {
-            let mut function = shared.uac.borrow_mut();
-            function.spectrum = spectrum;
-            function.spectrum_consumed = false;
-            self.spectrum_ms = shared.milliseconds.get();
+            self.receive(board::cycles());
+        } else if self.equalizer.spectrum_busy() && !self.out.readable() {
+            if let Some(spectrum) = self.equalizer.step_spectrum() {
+                let mut function = shared.uac.borrow_mut();
+                function.spectrum = spectrum;
+                function.spectrum_consumed = false;
+                self.spectrum_ms = shared.milliseconds.get();
+            }
+            self.receive(board::cycles());
         }
     }
 
@@ -1119,15 +1120,17 @@ impl<'d> Stream<'d> {
             function.spectrum = AudioSpectrum::default();
             function.spectrum_consumed = false;
         } else {
+            let mut meters_updated = false;
             if function.meters_consumed || ms.wrapping_sub(self.meter_ms) >= METER_INTERVAL_MS {
                 function.meters = self.equalizer.take_meters(true);
                 function.meters_consumed = false;
                 self.meter_ms = ms;
+                meters_updated = true;
             }
             if !want_spectrum {
                 function.spectrum = AudioSpectrum::default();
                 function.spectrum_consumed = false;
-            } else if !self.equalizer.spectrum_busy() {
+            } else if !meters_updated && !self.equalizer.spectrum_busy() {
                 let elapsed = ms.wrapping_sub(self.spectrum_ms);
                 let due = elapsed >= SPECTRUM_INTERVAL_MS || (function.spectrum_consumed && elapsed >= SPECTRUM_MIN_INTERVAL_MS);
                 if due && let Some(spectrum) = self.equalizer.start_spectrum(true) {

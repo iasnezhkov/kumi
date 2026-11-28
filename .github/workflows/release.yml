@@ -193,7 +193,7 @@ jobs:
           BUILD_NAME: ${{ needs.plan.outputs.build_name }}
         run: |
           export CARGO_TARGET_RISCV32IMC_UNKNOWN_NONE_ELF_RUSTFLAGS="--cfg sha2_backend_soft=\"compact\" -C target-feature=+f --remap-path-prefix=${CARGO_HOME:-$HOME/.cargo}=/cargo --remap-path-prefix=${GITHUB_WORKSPACE}=/kumi"
-          (cd firmware && cargo build --locked --release -p kumi-stage0 -p kumi-fw)
+          (cd firmware && KUMI_BUILD_NAME="$BUILD_NAME" cargo build --locked --release -p kumi-stage0 -p kumi-fw)
           mkdir -p "$RUNNER_TEMP/dist"
           cargo run --locked --release -p kumi-install --bin kumi-pack -- stage0 firmware/target/riscv32imc-unknown-none-elf/release/kumi-stage0 "$RUNNER_TEMP/stage0.bin" "$KUMI_PUBLIC_KEY_HEX"
           cargo run --locked --release -p kumi-install --bin kumi-pack -- image firmware/target/riscv32imc-unknown-none-elf/release/kumi-fw "$RUNNER_TEMP/runtime.bin" "$RUNNER_TEMP/release.key" "$FW_VER" "$FW_GEN"

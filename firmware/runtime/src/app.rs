@@ -25,6 +25,7 @@ use crate::{audio, board, uac, usb};
 const MIRROR_QUEUE: usize = 8;
 const RAM_BUILD: &str = if board::LAB { "ram-lab" } else { "ram" };
 const SLOT_BUILD: &str = if board::LAB { "slot-lab" } else { "slot" };
+const RELEASE_BUILD: Option<&str> = option_env!("KUMI_BUILD_NAME");
 const PRESENCE_TIER2_HOLD_MS: u32 = 2_000;
 const PRESENCE_PASSTHROUGH_HOLD_MS: u32 = 3_000;
 const PRESENCE_TIER2_WINDOW_MS: u32 = 60_000;
@@ -662,10 +663,21 @@ impl Provider for Services<'_> {
             .and_then(|slot| table.slots.iter().find(|s| s.slot == slot).and_then(|s| s.version))
             .unwrap_or(Version { major: 0, minor: 1, patch: 0 });
         let audio_present = self.shared.uac.borrow().present();
+        let build = if board::loaded_by_host() {
+            RAM_BUILD
+        } else if !board::LAB
+            && let Some(name) = RELEASE_BUILD
+            && !name.is_empty()
+            && name.len() <= 24
+        {
+            name
+        } else {
+            SLOT_BUILD
+        };
         DeviceInfo {
             protocol: PROTOCOL_VERSION,
             firmware,
-            build: (if board::loaded_by_host() { RAM_BUILD } else { SLOT_BUILD }).try_into().unwrap(),
+            build: build.try_into().unwrap(),
             chip_id: board::read(kumi_chip::regs::CHIP_ID),
             flash_jedec: self.jedec,
             serial: board::serial(),

@@ -9,6 +9,7 @@ fn main() {
     println!("cargo:rustc-link-search={out}");
     println!("cargo:rustc-link-arg=-Truntime.x");
     println!("cargo:rerun-if-changed=runtime.x");
+    println!("cargo:rerun-if-env-changed=KUMI_BUILD_NAME");
     let memory = format!(
         "MEMORY {{\n  ILM (rx) : ORIGIN = {:#x}, LENGTH = {:#x}\n  DLM (rwx) : ORIGIN = {:#x}, LENGTH = {:#x}\n  RT40 (rwx) : ORIGIN = {:#x}, LENGTH = {:#x}\n}}\n\
          KUMI_RUNTIME_ENTRY = {:#x};\nKUMI_RUNTIME_TRAP_STACK = {:#x};\nKUMI_RUNTIME_MIN_STACK = {:#x};\n",
