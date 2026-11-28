@@ -59,13 +59,18 @@ fun KeysScreen(prefs: AppPreferences) {
 
     val shAdd = stringResource(R.string.action_add_mapping)
     val shBack = stringResource(R.string.action_back)
+    val screenKeys = rememberMnemonicKeys(
+        specs = listOf(
+            ShortcutSpec("add", shAdd, KeyEvent.KEYCODE_A),
+        ),
+    )
     RegisterScreenKeys(
-        key = Unit,
-        shortcuts = listOf("A" to shAdd, "⌫" to shBack),
+        key = screenKeys,
+        shortcuts = screenKeys.pairs() + ("⌫" to shBack),
     ) { code, repeat ->
         if (repeat) return@RegisterScreenKeys false
-        when (code) {
-            KeyEvent.KEYCODE_A -> { adding = true; true }
+        when (screenKeys.idFor(code)) {
+            "add" -> { adding = true; true }
             else -> false
         }
     }
@@ -117,7 +122,7 @@ fun KeysScreen(prefs: AppPreferences) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FilledTonalButton(onClick = { adding = true }) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            KeycapBadge("A")
+                            KeycapBadge(screenKeys.label("add"))
                             Text(stringResource(R.string.action_add_mapping))
                         }
                     }
@@ -147,7 +152,7 @@ fun KeysScreen(prefs: AppPreferences) {
                 )
             }
         }
-        KeyboardHintStrip(hints = listOf("A" to shAdd, "⌫" to shBack))
+        KeyboardHintStrip(hints = screenKeys.pairs() + ("⌫" to shBack))
     }
 
     if (adding) {

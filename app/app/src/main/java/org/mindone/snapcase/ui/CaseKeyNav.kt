@@ -36,6 +36,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -43,6 +44,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
@@ -50,6 +52,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import java.text.Normalizer
+import java.util.Locale
 import kotlinx.coroutines.launch
 import org.mindone.snapcase.R
 
@@ -162,6 +166,15 @@ class ScreenKeyBus {
 val LocalCaseKeyboard = compositionLocalOf { false }
 val LocalScreenKeyBus = compositionLocalOf<ScreenKeyBus?> { null }
 
+val GLOBAL_RESERVED_KEYS: Set<Int> = setOf(
+    KeyEvent.KEYCODE_G,
+    KeyEvent.KEYCODE_B,
+)
+
+private val CJK_LANGUAGES: Set<String> = setOf("ja", "ko", "zh")
+
+private val ALL_LETTER_KEYCODES: IntArray = IntArray(26) { KeyEvent.KEYCODE_A + it }
+
 val TOP_ROW_KEYCODES = intArrayOf(
     KeyEvent.KEYCODE_Q,
     KeyEvent.KEYCODE_W,
@@ -175,19 +188,185 @@ val TOP_ROW_KEYCODES = intArrayOf(
     KeyEvent.KEYCODE_P,
 )
 
-val PRESET_GRID_KEYCODES = intArrayOf(
-    KeyEvent.KEYCODE_Q,
-    KeyEvent.KEYCODE_W,
-    KeyEvent.KEYCODE_E,
-    KeyEvent.KEYCODE_R,
-    KeyEvent.KEYCODE_A,
-    KeyEvent.KEYCODE_S,
-    KeyEvent.KEYCODE_D,
-    KeyEvent.KEYCODE_F,
+val TOP_ROW_LABELS = listOf("Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P")
+
+data class ShortcutSpec(
+    val id: String,
+    val label: String,
+    val fallbackKeyCode: Int,
+    val fixedPreference: List<Int> = emptyList(),
+    val hintLabel: String = label,
 )
 
-val PRESET_GRID_LABELS = listOf("Q", "W", "E", "R", "A", "S", "D", "F")
-val TOP_ROW_LABELS = listOf("Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P")
+data class BoundShortcut(
+    val id: String,
+    val keyCode: Int,
+    val keyLabel: String,
+    val description: String,
+)
+
+class ScreenKeyMap(val bindings: List<BoundShortcut>) {
+    private val byId: Map<String, BoundShortcut> = bindings.associateBy { it.id }
+    private val byCode: Map<Int, BoundShortcut> = bindings.associateBy { it.keyCode }
+
+    fun label(id: String): String = byId[id]?.keyLabel.orEmpty()
+
+    fun code(id: String): Int = byId[id]?.keyCode ?: KeyEvent.KEYCODE_UNKNOWN
+
+    fun idFor(keyCode: Int): String? = byCode[keyCode]?.id
+
+    fun pairs(): List<Pair<String, String>> = bindings.map { it.keyLabel to it.description }
+
+    fun pair(id: String): Pair<String, String>? = byId[id]?.let { it.keyLabel to it.description }
+}
+
+fun letterKeyLabel(keyCode: Int): String =
+    if (keyCode in KeyEvent.KEYCODE_A..KeyEvent.KEYCODE_Z) {
+        ('A' + (keyCode - KeyEvent.KEYCODE_A)).toString()
+    } else {
+        ""
+    }
+
+fun foldCharToKeyCode(ch: Char): Int {
+    val upper = ch.uppercaseChar()
+    if (upper in 'A'..'Z') return KeyEvent.KEYCODE_A + (upper - 'A')
+    val mapped = when (upper) {
+        '\u0410' -> 'A'
+        '\u0411' -> 'B'
+        '\u0412' -> 'V'
+        '\u0413', '\u0490' -> 'G'
+        '\u0414' -> 'D'
+        '\u0415', '\u0401', '\u0404', '\u042D' -> 'E'
+        '\u0416' -> 'J'
+        '\u0417' -> 'Z'
+        '\u0418', '\u0406', '\u0407' -> 'I'
+        '\u0419', '\u042B', '\u042F' -> 'Y'
+        '\u041A' -> 'K'
+        '\u041B' -> 'L'
+        '\u041C' -> 'M'
+        '\u041D' -> 'N'
+        '\u041E' -> 'O'
+        '\u041F' -> 'P'
+        '\u0420' -> 'R'
+        '\u0421', '\u0428', '\u0429' -> 'S'
+        '\u0422' -> 'T'
+        '\u0423', '\u042E' -> 'U'
+        '\u0424' -> 'F'
+        '\u0425' -> 'H'
+        '\u0426', '\u0427' -> 'C'
+        '\u0141' -> 'L'
+        '\u0110' -> 'D'
+        '\u00D8', '\u0152' -> 'O'
+        '\u00DF' -> 'S'
+        '\u00C6' -> 'A'
+        else -> {
+            val decomp = Normalizer.normalize(upper.toString(), Normalizer.Form.NFD)
+            decomp.firstOrNull { it in 'A'..'Z' } ?: '\u0000'
+        }
+    }
+    return if (mapped in 'A'..'Z') KeyEvent.KEYCODE_A + (mapped - 'A') else KeyEvent.KEYCODE_UNKNOWN
+}
+
+private data class FoldedWord(
+    val codes: List<Int>,
+    val startsUpper: Boolean,
+)
+
+private fun extractFoldedWords(label: String): List<FoldedWord> {
+    val words = mutableListOf<FoldedWord>()
+    var i = 0
+    while (i < label.length) {
+        while (i < label.length && !Character.isLetter(label[i])) i++
+        if (i >= label.length) break
+        val start = i
+        val codes = mutableListOf<Int>()
+        while (i < label.length && Character.isLetter(label[i])) {
+            val code = foldCharToKeyCode(label[i])
+            if (code != KeyEvent.KEYCODE_UNKNOWN) codes.add(code)
+            i++
+        }
+        if (codes.isNotEmpty()) {
+            words.add(FoldedWord(codes, Character.isUpperCase(label[start])))
+        }
+    }
+    return words
+}
+
+fun allocateMnemonicKeys(
+    specs: List<ShortcutSpec>,
+    locale: Locale = Locale.getDefault(),
+    extraReserved: Set<Int> = emptySet(),
+): ScreenKeyMap {
+    val used = HashSet<Int>(GLOBAL_RESERVED_KEYS.size + extraReserved.size + specs.size)
+    used.addAll(GLOBAL_RESERVED_KEYS)
+    used.addAll(extraReserved)
+    val cjk = locale.language.lowercase(Locale.ROOT) in CJK_LANGUAGES
+    val bound = ArrayList<BoundShortcut>(specs.size)
+
+    for (spec in specs) {
+        var chosen = KeyEvent.KEYCODE_UNKNOWN
+        for (pref in spec.fixedPreference) {
+            if (pref in KeyEvent.KEYCODE_A..KeyEvent.KEYCODE_Z && pref !in used) {
+                chosen = pref
+                break
+            }
+        }
+        if (chosen == KeyEvent.KEYCODE_UNKNOWN && cjk) {
+            if (spec.fallbackKeyCode in KeyEvent.KEYCODE_A..KeyEvent.KEYCODE_Z && spec.fallbackKeyCode !in used) {
+                chosen = spec.fallbackKeyCode
+            }
+        }
+        if (chosen == KeyEvent.KEYCODE_UNKNOWN) {
+            val words = extractFoldedWords(spec.label)
+            val candidates = ArrayList<Int>(16)
+            if (words.isNotEmpty()) {
+                candidates.add(words[0].codes[0])
+                for (idx in 1 until words.size) {
+                    val w = words[idx]
+                    if (w.codes.size >= 2 || w.startsUpper) candidates.add(w.codes[0])
+                }
+                for (w in words) {
+                    for (j in 1 until w.codes.size) candidates.add(w.codes[j])
+                }
+                for (idx in 1 until words.size) {
+                    val w = words[idx]
+                    if (w.codes.size == 1 && !w.startsUpper) candidates.add(w.codes[0])
+                }
+            }
+            if (spec.fallbackKeyCode in KeyEvent.KEYCODE_A..KeyEvent.KEYCODE_Z) {
+                candidates.add(spec.fallbackKeyCode)
+            }
+            for (c in candidates) {
+                if (c !in used) {
+                    chosen = c
+                    break
+                }
+            }
+        }
+        if (chosen == KeyEvent.KEYCODE_UNKNOWN) {
+            for (c in ALL_LETTER_KEYCODES) {
+                if (c !in used) {
+                    chosen = c
+                    break
+                }
+            }
+        }
+        used.add(chosen)
+        bound.add(BoundShortcut(spec.id, chosen, letterKeyLabel(chosen), spec.hintLabel))
+    }
+    return ScreenKeyMap(bound)
+}
+
+@Composable
+fun rememberMnemonicKeys(
+    specs: List<ShortcutSpec>,
+    extraReserved: Set<Int> = emptySet(),
+): ScreenKeyMap {
+    val locale = LocalLocale.current.platformLocale
+    return remember(specs, locale, extraReserved) {
+        allocateMnemonicKeys(specs, locale, extraReserved)
+    }
+}
 
 @Composable
 fun RegisterScreenKeys(

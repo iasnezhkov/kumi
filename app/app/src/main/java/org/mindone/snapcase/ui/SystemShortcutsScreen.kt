@@ -249,10 +249,28 @@ fun SystemShortcutsScreen(
 
     val shTab = stringResource(R.string.kumi_key_hint_tab)
     val shSearch = stringResource(R.string.home_search_try)
+    val shSearchTitle = stringResource(R.string.home_search_title)
     val shSearchToggle = stringResource(R.string.home_search_enable)
+    val shBackTitle = stringResource(R.string.shortcuts_back_title)
     val shBack = stringResource(R.string.shortcuts_back_toggle)
+    val shMediaTitle = stringResource(R.string.shortcuts_media_title)
     val shMedia = stringResource(R.string.shortcuts_media_toggle)
     val shSpeed = stringResource(R.string.ime_speed_key_add_title)
+    val shNavBack = stringResource(R.string.action_back)
+
+    val page0Keys = rememberMnemonicKeys(
+        specs = listOf(
+            ShortcutSpec("search_toggle", shSearchTitle, KeyEvent.KEYCODE_T, hintLabel = shSearchToggle),
+            ShortcutSpec("search_try", shSearch, KeyEvent.KEYCODE_Q),
+            ShortcutSpec("back_toggle", shBackTitle, KeyEvent.KEYCODE_A, hintLabel = shBack),
+            ShortcutSpec("media_toggle", shMediaTitle, KeyEvent.KEYCODE_M, hintLabel = shMedia),
+        ),
+    )
+    val page1Keys = rememberMnemonicKeys(
+        specs = listOf(
+            ShortcutSpec("add_speed", shSpeed, KeyEvent.KEYCODE_A),
+        ),
+    )
 
     val listState = rememberLazyListState()
     LaunchedEffect(page) { listState.scrollToItem(0) }
@@ -260,36 +278,25 @@ fun SystemShortcutsScreen(
     RegisterScreenScroll(listState)
 
     RegisterScreenKeys(
-        key = listOf(page, settings.homeTypeToSearch, settings.backspaceAsBack, settings.mediaDoubleTap, settings.speedKeysEnabled),
+        key = listOf(page, settings.homeTypeToSearch, settings.backspaceAsBack, settings.mediaDoubleTap, settings.speedKeysEnabled, page0Keys, page1Keys),
         shortcuts = if (page == 0) {
-            listOf(
-                "Q" to shSearchToggle,
-                "W" to shSearch,
-                "E" to shBack,
-                "M" to shMedia,
-                "↵" to shTab,
-                "⌫" to stringResource(R.string.action_back),
-            )
+            page0Keys.pairs() + listOf("↵" to shTab, "⌫" to shNavBack)
         } else {
-            listOf(
-                "R" to shSpeed,
-                "↵" to shTab,
-                "⌫" to stringResource(R.string.action_back),
-            )
+            page1Keys.pairs() + listOf("↵" to shTab, "⌫" to shNavBack)
         },
     ) { code, repeat ->
         if (repeat) return@RegisterScreenKeys false
         if (page == 0) {
-            when (code) {
-                KeyEvent.KEYCODE_Q -> { prefs.setHomeTypeToSearch(!settings.homeTypeToSearch); true }
-                KeyEvent.KEYCODE_W -> { QuickSearchActivity.launch(context, null); true }
-                KeyEvent.KEYCODE_E -> { prefs.setBackspaceAsBack(!settings.backspaceAsBack); true }
-                KeyEvent.KEYCODE_M -> { prefs.setMediaDoubleTap(!settings.mediaDoubleTap); true }
+            when (page0Keys.idFor(code)) {
+                "search_toggle" -> { prefs.setHomeTypeToSearch(!settings.homeTypeToSearch); true }
+                "search_try" -> { QuickSearchActivity.launch(context, null); true }
+                "back_toggle" -> { prefs.setBackspaceAsBack(!settings.backspaceAsBack); true }
+                "media_toggle" -> { prefs.setMediaDoubleTap(!settings.mediaDoubleTap); true }
                 else -> false
             }
         } else {
-            when (code) {
-                KeyEvent.KEYCODE_R -> { addingSpeedKey = true; true }
+            when (page1Keys.idFor(code)) {
+                "add_speed" -> { addingSpeedKey = true; true }
                 else -> false
             }
         }
@@ -326,7 +333,7 @@ fun SystemShortcutsScreen(
                         compact = true,
                         trailing = {
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                KeycapBadge("Q")
+                                KeycapBadge(page0Keys.label("search_toggle"))
                                 Switch(
                                     checked = settings.homeTypeToSearch,
                                     onCheckedChange = prefs::setHomeTypeToSearch,
@@ -341,7 +348,7 @@ fun SystemShortcutsScreen(
                             modifier = Modifier.fillMaxWidth().height(34.dp),
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                KeycapBadge("W")
+                                KeycapBadge(page0Keys.label("search_try"))
                                 Text(stringResource(R.string.home_search_try), style = MaterialTheme.typography.labelLarge)
                             }
                         }
@@ -353,7 +360,7 @@ fun SystemShortcutsScreen(
                         compact = true,
                         trailing = {
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                KeycapBadge("E")
+                                KeycapBadge(page0Keys.label("back_toggle"))
                                 Switch(
                                     checked = settings.backspaceAsBack,
                                     onCheckedChange = prefs::setBackspaceAsBack,
@@ -380,7 +387,7 @@ fun SystemShortcutsScreen(
                         compact = true,
                         trailing = {
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                KeycapBadge("M")
+                                KeycapBadge(page0Keys.label("media_toggle"))
                                 Switch(
                                     checked = settings.mediaDoubleTap,
                                     onCheckedChange = prefs::setMediaDoubleTap,
@@ -421,7 +428,7 @@ fun SystemShortcutsScreen(
                         }
                         FilledTonalButton(onClick = { addingSpeedKey = true }, modifier = Modifier.fillMaxWidth()) {
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                KeycapBadge("R")
+                                KeycapBadge(page1Keys.label("add_speed"))
                                 Text(stringResource(R.string.ime_speed_key_add_title))
                             }
                         }
@@ -432,15 +439,15 @@ fun SystemShortcutsScreen(
         KeyboardHintStrip(
             hints = if (page == 0) {
                 listOf(
-                    "W" to shSearch,
-                    "E" to stringResource(R.string.shortcuts_back_title),
+                    page0Keys.label("search_try") to shSearch,
+                    page0Keys.label("back_toggle") to shBackTitle,
                     "↵" to shTab,
                 )
             } else {
                 listOf(
-                    "R" to shSpeed,
+                    page1Keys.label("add_speed") to shSpeed,
                     "↵" to shTab,
-                    "⌫" to stringResource(R.string.action_back),
+                    "⌫" to shNavBack,
                 )
             },
         )

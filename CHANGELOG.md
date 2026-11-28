@@ -13,7 +13,7 @@
 - **Instant Home Type-to-Search:** start typing on any Home screen to open a zero-animation app search overlay and press `Enter` to launch (no root required).
 - **Native HID Consumer double-tap media controls in firmware:** `2x Shift` previous, `2x Backspace` next, `2x Space` play/pause — works with the screen off, in Doze, and on Android, macOS, Windows, Linux, and iOS.
 - **System Shortcuts screen:** optional **Backspace-as-Back** outside text fields with 4-layer text-field guards and per-app exclusions, plus Speed Keys.
-- **Full keyboard navigation inside Kumi:** quick card keys (`Q-R`), `Enter` tabs, `W/S` & `J/K` scrolling, `Space` EQ A/B, and bottom shortcut hints.
+- **Full keyboard navigation inside Kumi:** locale-aware first-letter shortcuts across every screen (with globally reserved `G / B` scrolling), `Enter` tabs, `Space` EQ A/B, and bottom shortcut hints.
 
 ### Kumi Strip IME — 20 Typing Languages & 13 UI Languages
 - **13 full app UI languages** (`en, de, es, fr, it, ja, ko, pl, pt, ru, uk, zh-CN, zh-TW`) with Android Per-App Language support.

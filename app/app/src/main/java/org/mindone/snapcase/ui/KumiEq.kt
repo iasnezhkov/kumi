@@ -145,7 +145,6 @@ fun KumiEqScreen(
 
     val shTab = stringResource(R.string.kumi_key_hint_tab)
     val shAb = stringResource(R.string.kumi_key_hint_eq_ab)
-    val shPreset = stringResource(R.string.kumi_eq_tab_presets)
     val shGroup = stringResource(R.string.kumi_key_hint_group)
     val shSave = stringResource(R.string.action_save)
     val shBand = stringResource(R.string.kumi_key_hint_band)
@@ -158,20 +157,50 @@ fun KumiEqScreen(
     val shPreamp = stringResource(R.string.kumi_preamp)
     val shAuto = stringResource(R.string.kumi_preamp_auto)
 
+    val activePresetList = if (presetCategory == 0) KumiEqPresets.STANDARDS else KumiEqPresets.GENRES
+    val activePresetLabels = activePresetList.map { it.id to stringResource(presetNameRes(it.id)) }
+    val presetKeys = rememberMnemonicKeys(
+        specs = listOf(
+            ShortcutSpec("save", shSave, KeyEvent.KEYCODE_S),
+            ShortcutSpec(
+                id = "group",
+                label = shGroup,
+                fallbackKeyCode = KeyEvent.KEYCODE_Z,
+                fixedPreference = listOf(KeyEvent.KEYCODE_Z, KeyEvent.KEYCODE_X, KeyEvent.KEYCODE_Q),
+            ),
+        ) + activePresetLabels.map { (id, label) ->
+            ShortcutSpec(id, label, presetFallbackKey(id))
+        },
+    )
+    val slotsKeys = rememberMnemonicKeys(
+        specs = listOf(
+            ShortcutSpec("auto", shAuto, KeyEvent.KEYCODE_A),
+            ShortcutSpec("save", shSave, KeyEvent.KEYCODE_S),
+        ),
+        extraReserved = setOf(
+            KeyEvent.KEYCODE_Q,
+            KeyEvent.KEYCODE_W,
+            KeyEvent.KEYCODE_E,
+            KeyEvent.KEYCODE_R,
+            KeyEvent.KEYCODE_H,
+            KeyEvent.KEYCODE_J,
+        ),
+    )
+
     val scrollState = rememberScrollState()
     LaunchedEffect(page) { scrollState.scrollTo(0) }
 
     val pageShortcuts = when (page) {
-        0 -> listOf("Q–R / A–F" to shPreset, "Z" to shGroup, "C" to shSave, "␣" to shAb, "↵" to shTab)
+        0 -> presetKeys.pairs() + listOf("␣" to shAb, "↵" to shTab)
         1 -> listOf("Q–P" to shBand, "H / J" to shGain, "A / D" to shFreq, "K / L" to shQ, "F" to shType, "Z" to shZero, "␣" to shAb, "↵" to shTab)
-        else -> listOf("Q–R" to shSlot, "H / J" to shPreamp, "A" to shAuto, "S" to shSave, "␣" to shAb, "↵" to shTab)
+        else -> listOf("Q–R" to shSlot, "H / J" to shPreamp) + slotsKeys.pairs() + listOf("␣" to shAb, "↵" to shTab)
     }
 
     RegisterScreenTabs(count = 3, current = page, onSelect = { page = it })
     RegisterScreenScroll(scrollState)
 
     RegisterScreenKeys(
-        key = listOf(page, presetCategory, slot, selectedBand, profile, active, state.eqSlots, state.audio?.eqActive),
+        key = listOf(page, presetCategory, slot, selectedBand, profile, active, state.eqSlots, state.audio?.eqActive, presetKeys, slotsKeys),
         shortcuts = pageShortcuts,
     ) { code, repeat ->
         if (!repeat && code == KeyEvent.KEYCODE_SPACE) {
@@ -181,19 +210,15 @@ fun KumiEqScreen(
         when (page) {
             0 -> {
                 if (repeat) return@RegisterScreenKeys false
-                val gridIdx = PRESET_GRID_KEYCODES.indexOf(code)
-                if (gridIdx >= 0) {
-                    val list = if (presetCategory == 0) KumiEqPresets.STANDARDS else KumiEqPresets.GENRES
-                    list.getOrNull(gridIdx)?.let { preset ->
+                when (val hit = presetKeys.idFor(code)) {
+                    "group" -> { presetCategory = 1 - presetCategory; true }
+                    "save" -> { savingCustom = true; true }
+                    null -> false
+                    else -> activePresetList.firstOrNull { it.id == hit }?.let { preset ->
                         selectedBuiltInId = preset.id
                         apply(KumiEqPresets.toProfile(preset, math), true)
-                        return@RegisterScreenKeys true
-                    }
-                }
-                when (code) {
-                    KeyEvent.KEYCODE_Z -> { presetCategory = 1 - presetCategory; true }
-                    KeyEvent.KEYCODE_C -> { savingCustom = true; true }
-                    else -> false
+                        true
+                    } ?: false
                 }
             }
             1 -> {
@@ -269,9 +294,15 @@ fun KumiEqScreen(
                         apply(profile.copy(preampCentiDb = (profile.preampCentiDb + 50).coerceIn(EqProfile.MIN_PREAMP_CENTI_DB, 0)), false)
                         true
                     }
-                    KeyEvent.KEYCODE_A -> if (!repeat) { apply(math.withAutoPreamp(profile), true); true } else false
-                    KeyEvent.KEYCODE_S -> if (!repeat) { savingCustom = true; true } else false
-                    else -> false
+                    else -> if (!repeat) {
+                        when (slotsKeys.idFor(code)) {
+                            "auto" -> { apply(math.withAutoPreamp(profile), true); true }
+                            "save" -> { savingCustom = true; true }
+                            else -> false
+                        }
+                    } else {
+                        false
+                    }
                 }
             }
         }
@@ -330,6 +361,8 @@ fun KumiEqScreen(
                     customPresets = settings.customEqPresets,
                     presetCategory = presetCategory,
                     selectedBuiltInId = selectedBuiltInId,
+                    saveKeyHint = presetKeys.label("save"),
+                    presetKeyHints = activePresetList.associate { it.id to presetKeys.label(it.id) },
                     onSelectCategory = { presetCategory = it },
                     onUseSlot = { kumi.selectEq(slot) },
                     onSaveCustom = { savingCustom = true },
@@ -365,6 +398,8 @@ fun KumiEqScreen(
                     liveSpectrum = kumi.liveSpectrum,
                     eqBase = state.eqBase,
                     toneEq = state.toneEq,
+                    autoKeyHint = slotsKeys.label("auto"),
+                    saveKeyHint = slotsKeys.label("save"),
                     onSelectSlot = { idx ->
                         slot = idx
                         if (state.eqSlots.getOrNull(idx) != null) kumi.selectEq(idx)
@@ -381,7 +416,12 @@ fun KumiEqScreen(
         }
         KeyboardHintStrip(
             hints = when (page) {
-                0 -> listOf("Q–F" to shPreset, "Z" to shGroup, "↵" to shTab, "␣" to shAb)
+                0 -> listOf(
+                    presetKeys.label("save") to shSave,
+                    presetKeys.label("group") to shGroup,
+                    "↵" to shTab,
+                    "␣" to shAb,
+                )
                 1 -> listOf("Q–P" to shBand, "H/J" to shGain, "A/D" to shFreq, "↵" to shTab)
                 else -> listOf("Q–R" to shSlot, "H/J" to shPreamp, "↵" to shTab, "␣" to shAb)
             },
@@ -418,6 +458,26 @@ fun KumiEqScreen(
     }
 }
 
+private fun presetFallbackKey(id: String): Int = when (id) {
+    KumiEqPresets.FLAT -> KeyEvent.KEYCODE_F
+    KumiEqPresets.HARMAN_OE -> KeyEvent.KEYCODE_H
+    KumiEqPresets.HARMAN -> KeyEvent.KEYCODE_I
+    KumiEqPresets.STUDIO -> KeyEvent.KEYCODE_N
+    KumiEqPresets.DIFFUSE_FIELD -> KeyEvent.KEYCODE_D
+    KumiEqPresets.WARM_SMOOTH -> KeyEvent.KEYCODE_W
+    KumiEqPresets.LATE_NIGHT -> KeyEvent.KEYCODE_L
+    KumiEqPresets.DEEP_BASS -> KeyEvent.KEYCODE_V
+    KumiEqPresets.EDM -> KeyEvent.KEYCODE_E
+    KumiEqPresets.ROCK -> KeyEvent.KEYCODE_R
+    KumiEqPresets.HIPHOP -> KeyEvent.KEYCODE_H
+    KumiEqPresets.JAZZ -> KeyEvent.KEYCODE_J
+    KumiEqPresets.CLASSICAL -> KeyEvent.KEYCODE_C
+    KumiEqPresets.POP -> KeyEvent.KEYCODE_P
+    KumiEqPresets.ACOUSTIC -> KeyEvent.KEYCODE_A
+    KumiEqPresets.VOICE -> KeyEvent.KEYCODE_V
+    else -> KeyEvent.KEYCODE_Q
+}
+
 @Composable
 private fun EqPresetsPage(
     slot: Int,
@@ -431,6 +491,8 @@ private fun EqPresetsPage(
     customPresets: List<CustomEqPreset>,
     presetCategory: Int,
     selectedBuiltInId: String?,
+    saveKeyHint: String,
+    presetKeyHints: Map<String, String>,
     onSelectCategory: (Int) -> Unit,
     onUseSlot: () -> Unit,
     onSaveCustom: () -> Unit,
@@ -501,7 +563,7 @@ private fun EqPresetsPage(
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.SemiBold,
                         )
-                        KeycapBadge("C")
+                        KeycapBadge(saveKeyHint)
                     }
                 }
             }
@@ -563,10 +625,9 @@ private fun EqPresetsPage(
     val matchedId = KumiEqPresets.ALL.firstOrNull { it.bands == profile.bands }?.id
     val rows = remember(list) { list.chunked(2) }
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        rows.forEachIndexed { rowIdx, pair ->
+        rows.forEach { pair ->
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                pair.forEachIndexed { colIdx, preset ->
-                    val flatIdx = rowIdx * 2 + colIdx
+                pair.forEach { preset ->
                     val selected = matchedId == preset.id || (matchedId == null && selectedBuiltInId == preset.id)
                     Surface(
                         color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerLow,
@@ -591,7 +652,7 @@ private fun EqPresetsPage(
                                 overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier.weight(1f),
                             )
-                            PRESET_GRID_LABELS.getOrNull(flatIdx)?.let { KeycapBadge(it, emphasized = selected) }
+                            presetKeyHints[preset.id]?.takeIf { it.isNotEmpty() }?.let { KeycapBadge(it, emphasized = selected) }
                         }
                     }
                 }
@@ -1199,6 +1260,8 @@ private fun EqSlotsPage(
     liveSpectrum: StateFlow<AudioSpectrum?>,
     eqBase: EqBaseSettings?,
     toneEq: ToneEqSettings?,
+    autoKeyHint: String,
+    saveKeyHint: String,
     onSelectSlot: (Int) -> Unit,
     onTurnOff: () -> Unit,
     onPreampChange: (Int) -> Unit,
@@ -1300,13 +1363,13 @@ private fun EqSlotsPage(
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             FilledTonalButton(onClick = onAutoPreamp, modifier = Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 10.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                    KeycapBadge("A")
+                    KeycapBadge(autoKeyHint)
                     Text(stringResource(R.string.kumi_preamp_auto), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
             OutlinedButton(onClick = onSaveCustom, modifier = Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 10.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                    KeycapBadge("S")
+                    KeycapBadge(saveKeyHint)
                     Text(stringResource(R.string.action_save), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }

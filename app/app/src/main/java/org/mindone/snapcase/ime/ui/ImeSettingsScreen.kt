@@ -87,6 +87,8 @@ import org.mindone.snapcase.ui.KeycapBadge
 import org.mindone.snapcase.ui.NavRow
 import org.mindone.snapcase.ui.Note
 import org.mindone.snapcase.ui.RegisterScreenKeys
+import org.mindone.snapcase.ui.ShortcutSpec
+import org.mindone.snapcase.ui.rememberMnemonicKeys
 import org.mindone.snapcase.ui.RegisterScreenScroll
 import org.mindone.snapcase.ui.RegisterScreenTabs
 import org.mindone.snapcase.ui.SectionCard
@@ -194,39 +196,55 @@ fun ImeSettingsScreen(
     val shTab = stringResource(R.string.kumi_key_hint_tab)
     val shHaptic = stringResource(R.string.ime_haptic_label)
     val shLong = stringResource(R.string.ime_long_press_label)
+    val shAddSnippet = stringResource(R.string.ime_snippets_add)
+    val shShortcutsTitle = stringResource(R.string.shortcuts_title)
+    val shShortcutsTile = stringResource(R.string.shortcuts_tile)
     val shBack = stringResource(R.string.action_back)
+
+    val page0Keys = rememberMnemonicKeys(
+        specs = listOf(
+            ShortcutSpec("haptic", shHaptic, KeyEvent.KEYCODE_V),
+            ShortcutSpec("long_press", shLong, KeyEvent.KEYCODE_L),
+        ),
+    )
+    val page2Keys = rememberMnemonicKeys(
+        specs = listOf(
+            ShortcutSpec("shortcuts", shShortcutsTitle, KeyEvent.KEYCODE_S, hintLabel = shShortcutsTile),
+            ShortcutSpec("add_snippet", shAddSnippet, KeyEvent.KEYCODE_A),
+        ),
+    )
 
     RegisterScreenTabs(count = 3, current = page, onSelect = { page = it })
     RegisterScreenScroll(listState)
 
     RegisterScreenKeys(
-        key = listOf(page, settings.imeHapticMode, settings.imeHapticDurationMs, settings.imeLongPressBehavior),
+        key = listOf(page, settings.imeHapticMode, settings.imeHapticDurationMs, settings.imeLongPressBehavior, page0Keys, page2Keys),
         shortcuts = when (page) {
-            0 -> listOf("H" to shHaptic, "L" to shLong, "↵" to shTab, "⌫" to shBack)
-            2 -> listOf("A" to stringResource(R.string.ime_snippets_add), "F" to stringResource(R.string.shortcuts_tile), "↵" to shTab, "⌫" to shBack)
+            0 -> page0Keys.pairs() + listOf("↵" to shTab, "⌫" to shBack)
+            2 -> page2Keys.pairs() + listOf("↵" to shTab, "⌫" to shBack)
             else -> listOf("↵" to shTab, "⌫" to shBack)
         },
     ) { code, repeat ->
         if (repeat) return@RegisterScreenKeys false
         when (page) {
-            0 -> when (code) {
-                KeyEvent.KEYCODE_H -> {
+            0 -> when (page0Keys.idFor(code)) {
+                "haptic" -> {
                     val modes = HapticMode.entries
                     val next = modes[(modes.indexOf(settings.imeHapticMode) + 1) % modes.size]
                     prefs.setImeHapticMode(next)
                     if (next != HapticMode.OFF) pulseHaptic(settings.imeHapticDurationMs)
                     true
                 }
-                KeyEvent.KEYCODE_L -> {
+                "long_press" -> {
                     val behaviors = LongPressBehavior.entries
                     prefs.setImeLongPressBehavior(behaviors[(behaviors.indexOf(settings.imeLongPressBehavior) + 1) % behaviors.size])
                     true
                 }
                 else -> false
             }
-            2 -> when (code) {
-                KeyEvent.KEYCODE_A -> { addingSnippet = true; true }
-                KeyEvent.KEYCODE_F -> { onOpenShortcuts(); true }
+            2 -> when (page2Keys.idFor(code)) {
+                "add_snippet" -> { addingSnippet = true; true }
+                "shortcuts" -> { onOpenShortcuts(); true }
                 else -> false
             }
             else -> false
@@ -266,7 +284,7 @@ fun ImeSettingsScreen(
                     item {
                         SectionCard(
                             title = stringResource(R.string.ime_haptic_label),
-                            trailing = { KeycapBadge("H") },
+                            trailing = { KeycapBadge(page0Keys.label("haptic")) },
                         ) {
                             val haptics = HapticMode.entries
                             CompactPageTabs(
@@ -305,7 +323,7 @@ fun ImeSettingsScreen(
                     item {
                         SectionCard(
                             title = stringResource(R.string.ime_long_press_label),
-                            trailing = { KeycapBadge("L") },
+                            trailing = { KeycapBadge(page0Keys.label("long_press")) },
                         ) {
                             val behaviors = LongPressBehavior.entries
                             CompactPageTabs(
@@ -452,7 +470,7 @@ fun ImeSettingsScreen(
                                     R.string.shortcuts_title,
                                     stringResource(R.string.shortcuts_subtitle),
                                     onOpenShortcuts,
-                                    keyHint = "F",
+                                    keyHint = page2Keys.label("shortcuts"),
                                 )
                             }
                         }
@@ -475,7 +493,7 @@ fun ImeSettingsScreen(
                             }
                             FilledTonalButton(onClick = { addingSnippet = true }, modifier = Modifier.fillMaxWidth()) {
                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    KeycapBadge("A")
+                                    KeycapBadge(page2Keys.label("add_snippet"))
                                     Text(stringResource(R.string.ime_snippets_add))
                                 }
                             }
@@ -486,8 +504,18 @@ fun ImeSettingsScreen(
         }
         KeyboardHintStrip(
             hints = when (page) {
-                0 -> listOf("H" to shHaptic, "L" to shLong, "↵" to shTab, "⌫" to shBack)
-                2 -> listOf("A" to stringResource(R.string.ime_snippets_add), "↵" to shTab, "⌫" to shBack)
+                0 -> listOf(
+                    page0Keys.label("haptic") to shHaptic,
+                    page0Keys.label("long_press") to shLong,
+                    "↵" to shTab,
+                    "⌫" to shBack,
+                )
+                2 -> listOf(
+                    page2Keys.label("add_snippet") to shAddSnippet,
+                    page2Keys.label("shortcuts") to shShortcutsTile,
+                    "↵" to shTab,
+                    "⌫" to shBack,
+                )
                 else -> listOf("↵" to shTab, "⌫" to shBack)
             },
         )

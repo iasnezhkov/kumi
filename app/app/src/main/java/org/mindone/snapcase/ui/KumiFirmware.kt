@@ -230,21 +230,26 @@ fun KumiFirmwareScreen(
     val shTab = stringResource(R.string.kumi_key_hint_tab)
     val shBack = stringResource(R.string.action_back)
     val shDetails = stringResource(R.string.kumi_details_title)
+    val page0Keys = rememberMnemonicKeys(
+        specs = listOf(
+            ShortcutSpec("details", shDetails, KeyEvent.KEYCODE_H),
+        ),
+    )
     if (!stockOnboarding && !busy) {
         RegisterScreenTabs(count = 3, current = page, onSelect = { page = it })
         RegisterScreenScroll(listState)
     }
     RegisterScreenKeys(
-        key = listOf(page, stockOnboarding, busy, kind),
+        key = listOf(page, stockOnboarding, busy, kind, page0Keys),
         shortcuts = when {
             busy -> emptyList()
             stockOnboarding -> listOf("⌫" to shBack)
-            page == 0 && kind == CaseKind.KUMI -> listOf("D" to shDetails, "↵" to shTab, "⌫" to shBack)
+            page == 0 && kind == CaseKind.KUMI -> page0Keys.pairs() + listOf("↵" to shTab, "⌫" to shBack)
             else -> listOf("↵" to shTab, "⌫" to shBack)
         },
     ) { code, repeat ->
         if (repeat || busy) return@RegisterScreenKeys false
-        if (!stockOnboarding && page == 0 && kind == CaseKind.KUMI && code == KeyEvent.KEYCODE_D) {
+        if (!stockOnboarding && page == 0 && kind == CaseKind.KUMI && page0Keys.idFor(code) == "details") {
             onOpenDetails()
             true
         } else {
@@ -517,7 +522,7 @@ fun KumiFirmwareScreen(
                                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
                                 ) {
                                     Column(Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
-                                        NavRow(R.drawable.ic_memory, R.string.kumi_details_title, stringResource(R.string.kumi_details_subtitle), onOpenDetails, keyHint = "D")
+                                        NavRow(R.drawable.ic_memory, R.string.kumi_details_title, stringResource(R.string.kumi_details_subtitle), onOpenDetails, keyHint = page0Keys.label("details"))
                                     }
                                 }
                             }
@@ -568,7 +573,7 @@ fun KumiFirmwareScreen(
             }
             KeyboardHintStrip(
                 hints = if (page == 0 && kind == CaseKind.KUMI) {
-                    listOf("D" to shDetails, "↵" to shTab, "⌫" to shBack)
+                    listOf(page0Keys.label("details") to shDetails, "↵" to shTab, "⌫" to shBack)
                 } else {
                     listOf("↵" to shTab, "⌫" to shBack)
                 },

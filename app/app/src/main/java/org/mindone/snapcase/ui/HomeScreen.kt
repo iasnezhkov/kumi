@@ -96,21 +96,27 @@ fun HomeScreen(
     val mergedOffer = offer.takeIf { link == CaseLink.NO_ACCESS }
 
     val shStrip = stringResource(R.string.kumi_tile_strip)
+    val shStripRow = stringResource(R.string.ime_settings_title)
     val shShortcuts = stringResource(R.string.shortcuts_tile)
+    val shShortcutsRow = stringResource(R.string.shortcuts_title)
     val shFirmware = stringResource(R.string.kumi_tab_case)
-    RegisterScreenKeys(
-        key = Unit,
-        shortcuts = listOf(
-            "S" to shStrip,
-            "F" to shShortcuts,
-            "R" to shFirmware,
+    val shUpgradeRow = stringResource(R.string.kumi_offer_title)
+    val homeKeys = rememberMnemonicKeys(
+        specs = listOf(
+            ShortcutSpec("strip", shStripRow, KeyEvent.KEYCODE_A, hintLabel = shStrip),
+            ShortcutSpec("shortcuts", shShortcutsRow, KeyEvent.KEYCODE_S, hintLabel = shShortcuts),
+            ShortcutSpec("firmware", shUpgradeRow, KeyEvent.KEYCODE_U, hintLabel = shFirmware),
         ),
+    )
+    RegisterScreenKeys(
+        key = homeKeys,
+        shortcuts = homeKeys.pairs(),
     ) { code, repeat ->
         if (repeat) return@RegisterScreenKeys false
-        when (code) {
-            KeyEvent.KEYCODE_S -> { onOpenIme(); true }
-            KeyEvent.KEYCODE_F -> { onOpenShortcuts(); true }
-            KeyEvent.KEYCODE_R -> { onOpenFirmware(); true }
+        when (homeKeys.idFor(code)) {
+            "strip" -> { onOpenIme(); true }
+            "shortcuts" -> { onOpenShortcuts(); true }
+            "firmware" -> { onOpenFirmware(); true }
             else -> false
         }
     }
@@ -158,23 +164,29 @@ fun HomeScreen(
                     )
                 }
             }
-            item { KeyboardCard(settings.remapTable.entries.size, onOpenKeys, onOpenIme, onOpenShortcuts, onOpenTester) }
+            item {
+                KeyboardCard(
+                    mappings = settings.remapTable.entries.size,
+                    onOpenKeys = onOpenKeys,
+                    onOpenIme = onOpenIme,
+                    onOpenShortcuts = onOpenShortcuts,
+                    onOpenTester = onOpenTester,
+                    imeKeyHint = homeKeys.label("strip"),
+                    shortcutsKeyHint = homeKeys.label("shortcuts"),
+                )
+            }
             if (mergedOffer == null && offer == null && link != CaseLink.SERVICE_MODE) {
                 item {
                     Card(Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
-                            NavRow(R.drawable.ic_memory, R.string.kumi_offer_title, stringResource(R.string.kumi_offer_compact_text), onOpenFirmware, keyHint = "R")
+                            NavRow(R.drawable.ic_memory, R.string.kumi_offer_title, stringResource(R.string.kumi_offer_compact_text), onOpenFirmware, keyHint = homeKeys.label("firmware"))
                         }
                     }
                 }
             }
         }
         KeyboardHintStrip(
-            hints = listOf(
-                "S" to shStrip,
-                "F" to shShortcuts,
-                "R" to shFirmware,
-            ),
+            hints = homeKeys.pairs(),
         )
     }
 
@@ -525,6 +537,8 @@ private fun KeyboardCard(
     onOpenIme: () -> Unit,
     onOpenShortcuts: () -> Unit,
     onOpenTester: () -> Unit,
+    imeKeyHint: String,
+    shortcutsKeyHint: String,
 ) {
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
@@ -533,8 +547,8 @@ private fun KeyboardCard(
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.padding(vertical = 4.dp),
             )
-            NavRow(R.drawable.ic_keyboard, R.string.ime_settings_title, stringResource(R.string.ime_settings_subtitle), onOpenIme, keyHint = "S")
-            NavRow(R.drawable.ic_search, R.string.shortcuts_title, stringResource(R.string.shortcuts_subtitle), onOpenShortcuts, keyHint = "F")
+            NavRow(R.drawable.ic_keyboard, R.string.ime_settings_title, stringResource(R.string.ime_settings_subtitle), onOpenIme, keyHint = imeKeyHint)
+            NavRow(R.drawable.ic_search, R.string.shortcuts_title, stringResource(R.string.shortcuts_subtitle), onOpenShortcuts, keyHint = shortcutsKeyHint)
             AndroidKeyboardRows(mappings, onOpenKeys)
             NavRow(R.drawable.ic_check, R.string.kb_tester_title, stringResource(R.string.kb_tester_text), onOpenTester)
         }

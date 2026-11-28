@@ -112,27 +112,37 @@ fun KumiKeysScreen(
     val shTab = stringResource(R.string.kumi_key_hint_tab)
     val shStrip = stringResource(R.string.kumi_tile_strip)
     val shShortcuts = stringResource(R.string.shortcuts_tile)
+    val shShortcutsTitle = stringResource(R.string.shortcuts_title)
     val shAndroidKeys = stringResource(R.string.keys_title)
     val shTester = stringResource(R.string.kb_tester_title)
+
+    val tab0Keys = rememberMnemonicKeys(
+        specs = listOf(
+            ShortcutSpec("strip", shStrip, KeyEvent.KEYCODE_K),
+            ShortcutSpec("shortcuts", shShortcutsTitle, KeyEvent.KEYCODE_S, hintLabel = shShortcuts),
+            ShortcutSpec("remap", shAndroidKeys, KeyEvent.KEYCODE_R),
+            ShortcutSpec("tester", shTester, KeyEvent.KEYCODE_T),
+        ),
+    )
 
     RegisterScreenTabs(count = 3, current = page, onSelect = { page = it })
     RegisterScreenScroll(listState)
 
     RegisterScreenKeys(
-        key = Pair(page, layer),
+        key = listOf(page, layer, tab0Keys),
         shortcuts = if (page == 0) {
-            listOf("Q" to shStrip, "F" to shShortcuts, "W" to shAndroidKeys, "E" to shTester, "↵" to shTab)
+            tab0Keys.pairs() + ("↵" to shTab)
         } else {
             listOf("↵" to shTab, "⌫" to stringResource(R.string.action_back))
         },
     ) { code, repeat ->
         if (repeat) return@RegisterScreenKeys false
         if (page == 0) {
-            when (code) {
-                KeyEvent.KEYCODE_Q -> { onOpenIme(); true }
-                KeyEvent.KEYCODE_F -> { onOpenShortcuts(); true }
-                KeyEvent.KEYCODE_W -> { onOpenAndroidKeys(); true }
-                KeyEvent.KEYCODE_E -> { onOpenTester(); true }
+            when (tab0Keys.idFor(code)) {
+                "strip" -> { onOpenIme(); true }
+                "shortcuts" -> { onOpenShortcuts(); true }
+                "remap" -> { onOpenAndroidKeys(); true }
+                "tester" -> { onOpenTester(); true }
                 else -> false
             }
         } else {
@@ -181,8 +191,8 @@ fun KumiKeysScreen(
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
                         ) {
                             Column(Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
-                                NavRow(R.drawable.ic_keyboard, R.string.kumi_tile_strip, stringResource(R.string.ime_settings_subtitle), onOpenIme, keyHint = "Q")
-                                NavRow(R.drawable.ic_search, R.string.shortcuts_title, stringResource(R.string.shortcuts_subtitle), onOpenShortcuts, keyHint = "F")
+                                NavRow(R.drawable.ic_keyboard, R.string.kumi_tile_strip, stringResource(R.string.ime_settings_subtitle), onOpenIme, keyHint = tab0Keys.label("strip"))
+                                NavRow(R.drawable.ic_search, R.string.shortcuts_title, stringResource(R.string.shortcuts_subtitle), onOpenShortcuts, keyHint = tab0Keys.label("shortcuts"))
                             }
                         }
                     }
@@ -202,8 +212,8 @@ fun KumiKeysScreen(
                     }
                     item {
                         SectionCard(stringResource(R.string.kumi_keys_tools_title)) {
-                            AndroidKeyboardRows(settings.remapTable.entries.size, onOpenAndroidKeys, remapKeyHint = "W")
-                            NavRow(R.drawable.ic_check, R.string.kb_tester_title, stringResource(R.string.kb_tester_text), onOpenTester, keyHint = "E")
+                            AndroidKeyboardRows(settings.remapTable.entries.size, onOpenAndroidKeys, remapKeyHint = tab0Keys.label("remap"))
+                            NavRow(R.drawable.ic_check, R.string.kb_tester_title, stringResource(R.string.kb_tester_text), onOpenTester, keyHint = tab0Keys.label("tester"))
                         }
                     }
                 }
@@ -462,7 +472,12 @@ fun KumiKeysScreen(
         }
         KeyboardHintStrip(
             hints = if (page == 0) {
-                listOf("Q" to shStrip, "F" to shShortcuts, "E" to shTester, "↵" to shTab)
+                listOf(
+                    tab0Keys.label("strip") to shStrip,
+                    tab0Keys.label("shortcuts") to shShortcuts,
+                    tab0Keys.label("tester") to shTester,
+                    "↵" to shTab,
+                )
             } else {
                 listOf("↵" to shTab, "⌫" to stringResource(R.string.action_back))
             },

@@ -55,22 +55,29 @@ fun KumiDetailsScreen(
     val shBack = stringResource(R.string.action_back)
     val canDev = state.connected && state.device?.capabilities?.developer == true
 
+    val detailsKeys = rememberMnemonicKeys(
+        specs = listOf(
+            ShortcutSpec("refresh", shRefresh, KeyEvent.KEYCODE_R),
+            ShortcutSpec("dev", shDev, KeyEvent.KEYCODE_D),
+        ),
+    )
+
     RegisterScreenKeys(
-        key = listOf(state.connected, canDev),
+        key = listOf(state.connected, canDev, detailsKeys),
         shortcuts = buildList {
-            if (state.connected) add("R" to shRefresh)
-            if (canDev) add("D" to shDev)
+            if (state.connected) detailsKeys.pair("refresh")?.let(::add)
+            if (canDev) detailsKeys.pair("dev")?.let(::add)
             add("⌫" to shBack)
         },
     ) { code, repeat ->
         if (repeat) return@RegisterScreenKeys false
-        when (code) {
-            KeyEvent.KEYCODE_R -> if (state.connected) {
+        when (detailsKeys.idFor(code)) {
+            "refresh" -> if (state.connected) {
                 kumi.refreshTelemetry()
                 kumi.refreshDiagnostics()
                 true
             } else false
-            KeyEvent.KEYCODE_D -> if (canDev) {
+            "dev" -> if (canDev) {
                 onOpenDeveloper()
                 true
             } else false
@@ -169,7 +176,7 @@ fun KumiDetailsScreen(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
                 ) {
                     Box(Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
-                        NavRow(R.drawable.ic_settings, R.string.kumi_dev_title, stringResource(R.string.kumi_dev_text), onOpenDeveloper, keyHint = "D")
+                        NavRow(R.drawable.ic_settings, R.string.kumi_dev_title, stringResource(R.string.kumi_dev_text), onOpenDeveloper, keyHint = detailsKeys.label("dev"))
                     }
                 }
             }
@@ -177,8 +184,8 @@ fun KumiDetailsScreen(
         }
         KeyboardHintStrip(
             hints = buildList {
-                if (state.connected) add("R" to shRefresh)
-                if (canDev) add("D" to shDev)
+                if (state.connected) detailsKeys.pair("refresh")?.let(::add)
+                if (canDev) detailsKeys.pair("dev")?.let(::add)
                 add("⌫" to shBack)
             },
         )

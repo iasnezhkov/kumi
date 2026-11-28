@@ -163,37 +163,66 @@ fun KumiHomeScreen(
     val shStrip = stringResource(R.string.kumi_tile_strip)
     val shShortcuts = stringResource(R.string.shortcuts_tile)
 
-    RegisterScreenKeys(
-        key = listOf(state.connected, activeEq, lastEqSlot, state.eqSlots, state.dsp, state.dacExtras),
-        shortcuts = listOf(
-            "Q" to shSound,
-            "W" to shEq,
-            "E" to shKeys,
-            "R" to shCase,
-            "␣" to shToggleEq,
-            "X" to shXfeed,
-            "A" to shAwake,
-            "S" to shStrip,
-            "F" to shShortcuts,
+    val homeKeys = rememberMnemonicKeys(
+        specs = listOf(
+            ShortcutSpec("sound", shSound, KeyEvent.KEYCODE_S),
+            ShortcutSpec("eq", shEq, KeyEvent.KEYCODE_E),
+            ShortcutSpec("keys", shKeys, KeyEvent.KEYCODE_K),
+            ShortcutSpec("case", shCase, KeyEvent.KEYCODE_C),
+            ShortcutSpec("xfeed", shXfeed, KeyEvent.KEYCODE_X),
+            ShortcutSpec("awake", shAwake, KeyEvent.KEYCODE_A),
+            ShortcutSpec("strip", shStrip, KeyEvent.KEYCODE_T),
+            ShortcutSpec("shortcuts", shShortcuts, KeyEvent.KEYCODE_H),
         ),
+    )
+
+    val device = state.device
+    val good = state.connected && device != null
+
+    RegisterScreenKeys(
+        key = listOf(state.connected, good, activeEq, lastEqSlot, state.eqSlots, state.dsp, state.dacExtras, homeKeys),
+        shortcuts = if (good) {
+            listOfNotNull(
+                homeKeys.pair("sound"),
+                homeKeys.pair("eq"),
+                homeKeys.pair("keys"),
+                homeKeys.pair("case"),
+                "␣" to shToggleEq,
+                homeKeys.pair("xfeed"),
+                homeKeys.pair("awake"),
+                homeKeys.pair("strip"),
+                homeKeys.pair("shortcuts"),
+            )
+        } else {
+            listOfNotNull(
+                homeKeys.pair("strip"),
+                homeKeys.pair("shortcuts"),
+                homeKeys.pair("case"),
+            )
+        },
     ) { code, repeat ->
         if (repeat) return@RegisterScreenKeys false
-        when (code) {
-            KeyEvent.KEYCODE_Q -> if (state.connected) { onOpenAudio(); true } else false
-            KeyEvent.KEYCODE_W -> if (state.connected) { onOpenEq(activeEq ?: lastEqSlot); true } else false
-            KeyEvent.KEYCODE_E -> { onOpenKeys(); true }
-            KeyEvent.KEYCODE_R -> { caseOpenTarget(); true }
-            KeyEvent.KEYCODE_SPACE -> if (state.connected) { toggleEq(); true } else false
-            KeyEvent.KEYCODE_X -> if (state.connected && state.dsp != null) { cycleCrossfeed(); true } else false
-            KeyEvent.KEYCODE_A -> if (state.connected && state.dacExtras != null) { toggleStayAwake(); true } else false
-            KeyEvent.KEYCODE_S -> { onOpenIme(); true }
-            KeyEvent.KEYCODE_F -> { onOpenShortcuts(); true }
+        if (code == KeyEvent.KEYCODE_SPACE) {
+            return@RegisterScreenKeys if (state.connected) {
+                toggleEq()
+                true
+            } else {
+                false
+            }
+        }
+        when (homeKeys.idFor(code)) {
+            "sound" -> if (state.connected) { onOpenAudio(); true } else false
+            "eq" -> if (state.connected) { onOpenEq(activeEq ?: lastEqSlot); true } else false
+            "keys" -> { onOpenKeys(); true }
+            "case" -> { caseOpenTarget(); true }
+            "xfeed" -> if (state.connected && state.dsp != null) { cycleCrossfeed(); true } else false
+            "awake" -> if (state.connected && state.dacExtras != null) { toggleStayAwake(); true } else false
+            "strip" -> { onOpenIme(); true }
+            "shortcuts" -> { onOpenShortcuts(); true }
             else -> false
         }
     }
 
-    val device = state.device
-    val good = state.connected && device != null
     val stream = state.audio?.stream
     val scrollState = rememberScrollState()
     RegisterScreenScroll(scrollState)
@@ -299,14 +328,14 @@ fun KumiHomeScreen(
                     CompactShortcutButton(
                         icon = R.drawable.ic_keyboard,
                         label = stringResource(R.string.kumi_tile_strip),
-                        keyHint = "S",
+                        keyHint = homeKeys.label("strip"),
                         onClick = onOpenIme,
                         modifier = Modifier.weight(1f),
                     )
                     CompactShortcutButton(
                         icon = R.drawable.ic_search,
                         label = stringResource(R.string.shortcuts_tile),
-                        keyHint = "F",
+                        keyHint = homeKeys.label("shortcuts"),
                         onClick = onOpenShortcuts,
                         modifier = Modifier.weight(1f),
                     )
@@ -361,7 +390,7 @@ fun KumiHomeScreen(
                             icon = R.drawable.ic_headphones,
                             title = stringResource(R.string.kumi_tab_audio),
                             subtitle = filterSummary,
-                            keyHint = "Q",
+                            keyHint = homeKeys.label("sound"),
                             highlighted = stream != null,
                             onClick = onOpenAudio,
                             modifier = Modifier.weight(1f),
@@ -370,7 +399,7 @@ fun KumiHomeScreen(
                             icon = R.drawable.ic_equalizer,
                             title = stringResource(R.string.eq_title),
                             subtitle = eqSummary,
-                            keyHint = "W",
+                            keyHint = homeKeys.label("eq"),
                             highlighted = activeEq != null,
                             onClick = { onOpenEq(activeEq ?: lastEqSlot) },
                             modifier = Modifier.weight(1f),
@@ -381,7 +410,7 @@ fun KumiHomeScreen(
                             icon = R.drawable.ic_keyboard,
                             title = stringResource(R.string.kumi_tab_keys),
                             subtitle = stringResource(R.string.kumi_tile_strip_sub),
-                            keyHint = "E",
+                            keyHint = homeKeys.label("keys"),
                             highlighted = false,
                             onClick = onOpenKeys,
                             modifier = Modifier.weight(1f),
@@ -391,7 +420,7 @@ fun KumiHomeScreen(
                             icon = R.drawable.ic_memory,
                             title = stringResource(R.string.kumi_tab_case),
                             subtitle = if (updateTag != null) stringResource(R.string.kumi_update_to, updateTag) else slotTag,
-                            keyHint = "R",
+                            keyHint = homeKeys.label("case"),
                             highlighted = hasAnyUpdate,
                             onClick = caseOpenTarget,
                             modifier = Modifier.weight(1f),
@@ -415,7 +444,7 @@ fun KumiHomeScreen(
                         label = stringResource(R.string.kumi_tile_crossfeed),
                         value = stringResource(crossfeedShortName(crossfeed)),
                         active = crossfeed != CrossfeedMode.Off,
-                        keyHint = "X",
+                        keyHint = homeKeys.label("xfeed"),
                         enabled = state.dsp != null,
                         onClick = cycleCrossfeed,
                         modifier = Modifier.weight(1f),
@@ -424,7 +453,7 @@ fun KumiHomeScreen(
                         label = stringResource(R.string.kumi_tile_awake),
                         value = awakeValue,
                         active = stayAwake,
-                        keyHint = "A",
+                        keyHint = homeKeys.label("awake"),
                         enabled = state.dacExtras != null,
                         onClick = toggleStayAwake,
                         modifier = Modifier.weight(1f),
@@ -435,14 +464,14 @@ fun KumiHomeScreen(
                     CompactShortcutButton(
                         icon = R.drawable.ic_keyboard,
                         label = stringResource(R.string.kumi_tile_strip),
-                        keyHint = "S",
+                        keyHint = homeKeys.label("strip"),
                         onClick = onOpenIme,
                         modifier = Modifier.weight(1f),
                     )
                     CompactShortcutButton(
                         icon = R.drawable.ic_search,
                         label = stringResource(R.string.shortcuts_tile),
-                        keyHint = "F",
+                        keyHint = homeKeys.label("shortcuts"),
                         onClick = onOpenShortcuts,
                         modifier = Modifier.weight(1f),
                     )
@@ -453,15 +482,15 @@ fun KumiHomeScreen(
         KeyboardHintStrip(
             hints = if (good) {
                 listOf(
-                    "Q–R" to stringResource(R.string.kumi_key_hint_open),
+                    homeKeys.label("sound") to shSound,
+                    homeKeys.label("eq") to shEq,
                     "␣" to shToggleEq,
-                    "X" to shXfeed,
                 )
             } else {
                 listOf(
-                    "S" to shStrip,
-                    "F" to shShortcuts,
-                    "R" to shCase,
+                    homeKeys.label("strip") to shStrip,
+                    homeKeys.label("shortcuts") to shShortcuts,
+                    homeKeys.label("case") to shCase,
                 )
             },
         )

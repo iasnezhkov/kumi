@@ -5,6 +5,7 @@ import android.view.KeyEvent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.lazy.LazyColumn
@@ -16,6 +17,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.res.stringResource
@@ -41,15 +43,22 @@ fun AppSettingsScreen(prefs: AppPreferences) {
     val shDemo = stringResource(R.string.menu_demo)
     val shLauncher = stringResource(R.string.settings_launcher_title)
     val shBack = stringResource(R.string.action_back)
+    val settingsKeys = rememberMnemonicKeys(
+        specs = listOf(
+            ShortcutSpec("channel", shChannel, KeyEvent.KEYCODE_U),
+            ShortcutSpec("launcher", shLauncher, KeyEvent.KEYCODE_L),
+            ShortcutSpec("demo", shDemo, KeyEvent.KEYCODE_D),
+        ),
+    )
     RegisterScreenKeys(
-        key = listOf(settings.includePrereleases, settings.demoMode, settings.launcherBridgeEnabled),
-        shortcuts = listOf("C" to shChannel, "L" to shLauncher, "D" to shDemo, "⌫" to shBack),
+        key = listOf(settings.includePrereleases, settings.demoMode, settings.launcherBridgeEnabled, settingsKeys),
+        shortcuts = settingsKeys.pairs() + ("⌫" to shBack),
     ) { code, repeat ->
         if (repeat) return@RegisterScreenKeys false
-        when (code) {
-            KeyEvent.KEYCODE_C -> { prefs.setIncludePrereleases(!settings.includePrereleases); true }
-            KeyEvent.KEYCODE_L -> { prefs.setLauncherBridgeEnabled(!settings.launcherBridgeEnabled); true }
-            KeyEvent.KEYCODE_D -> { prefs.setDemoMode(!settings.demoMode); true }
+        when (settingsKeys.idFor(code)) {
+            "channel" -> { prefs.setIncludePrereleases(!settings.includePrereleases); true }
+            "launcher" -> { prefs.setLauncherBridgeEnabled(!settings.launcherBridgeEnabled); true }
+            "demo" -> { prefs.setDemoMode(!settings.demoMode); true }
             else -> false
         }
     }
@@ -82,7 +91,10 @@ fun AppSettingsScreen(prefs: AppPreferences) {
                     checked = settings.checkReleases,
                     onCheckedChange = { prefs.setCheckReleases(it) },
                 )
-                Text(stringResource(R.string.settings_update_channel), style = androidx.compose.material3.MaterialTheme.typography.labelLarge)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    KeycapBadge(settingsKeys.label("channel"))
+                    Text(stringResource(R.string.settings_update_channel), style = androidx.compose.material3.MaterialTheme.typography.labelLarge)
+                }
                 CompactPageTabs(
                     labels = listOf(
                         stringResource(R.string.settings_channel_stable),
@@ -122,7 +134,7 @@ fun AppSettingsScreen(prefs: AppPreferences) {
                     subtitle = stringResource(R.string.settings_launcher_bridge_text),
                     checked = settings.launcherBridgeEnabled,
                     onCheckedChange = { prefs.setLauncherBridgeEnabled(it) },
-                    keyHint = "L",
+                    keyHint = settingsKeys.label("launcher"),
                 )
             }
         }
@@ -133,7 +145,7 @@ fun AppSettingsScreen(prefs: AppPreferences) {
                     subtitle = stringResource(R.string.settings_demo_text),
                     checked = settings.demoMode,
                     onCheckedChange = { prefs.setDemoMode(it) },
-                    keyHint = "D",
+                    keyHint = settingsKeys.label("demo"),
                 )
             }
         }
@@ -148,7 +160,7 @@ fun AppSettingsScreen(prefs: AppPreferences) {
         }
         }
         KeyboardHintStrip(
-            hints = listOf("C" to shChannel, "L" to shLauncher, "D" to shDemo, "⌫" to shBack),
+            hints = settingsKeys.pairs() + ("⌫" to shBack),
         )
     }
 }

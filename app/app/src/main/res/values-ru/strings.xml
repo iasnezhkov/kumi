@@ -969,7 +969,7 @@
     <string name="kumi_err_network_rate_limit">Превышен лимит запросов GitHub. Попробуйте снова через несколько минут.</string>
     <string name="kumi_err_network_generic">Не удалось связаться с GitHub. Проверьте подключение и попробуйте снова.</string>
     <string name="shortcuts_title">Системные клавиши</string>
-    <string name="shortcuts_tile">Клавиши</string>
+    <string name="shortcuts_tile">Сочетания</string>
     <string name="shortcuts_subtitle">Поиск, Backspace = Назад и медиа</string>
     <string name="shortcuts_setup_title">Включите «Сочетания клавиш Kumi»</string>
     <string name="shortcuts_setup_badge">2 шага</string>
